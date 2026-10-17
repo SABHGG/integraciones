@@ -97,3 +97,43 @@ pub fn not_implemented(detail: impl Into<String>) -> Problem {
     Problem::new(StatusCode::NOT_IMPLEMENTED, "not-implemented", "Not Implemented")
         .with_detail(detail)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::header;
+
+    #[test]
+    fn to_json_incluye_campos_basicos_y_extensiones_aplanadas() {
+        let p = Problem::new(StatusCode::CONFLICT, "conflict", "Conflict")
+            .with_detail("bloque referenciado")
+            .with_extension("bridgeSlug", serde_json::json!("demo"));
+        let body = p.to_json(Some("/api/v1/blocks/x"));
+        assert_eq!(body["status"], 409);
+        assert_eq!(body["title"], "Conflict");
+        assert_eq!(body["detail"], "bloque referenciado");
+        assert_eq!(body["bridgeSlug"], "demo");
+        assert_eq!(body["instance"], "/api/v1/blocks/x");
+        assert!(body["type"]
+            .as_str()
+            .unwrap()
+            .ends_with("/problems/conflict"));
+    }
+
+    #[test]
+    fn into_response_usa_problem_json_y_status_correctos() {
+        let resp = unauthorized("sin header").into_response();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            resp.headers().get(header::CONTENT_TYPE).unwrap(),
+            "application/problem+json"
+        );
+    }
+
+    #[test]
+    fn campos_opcionales_no_aparecen_si_no_se_definen() {
+        let body = not_found("no existe").to_json(None);
+        assert!(body.get("instance").is_none());
+        assert!(body.get("detail").is_some());
+    }
+}
