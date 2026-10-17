@@ -24,28 +24,11 @@ pub fn hash_key(raw: &str) -> String {
     hex::encode(Sha256::digest(raw.as_bytes()))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hash_key_produce_sha256_hex_conocido() {
-        // Vector verificado contra `hash-key "dev-key-123"` en el smoke test
-        assert_eq!(
-            hash_key("dev-key-123"),
-            "0f11c9ecaecabe613512ae472855ae9cb7d9639bc8c3fe85e0357efbf4739cd4"
-        );
-    }
-
-    #[test]
-    fn hash_key_es_determinista_y_distinto_por_entrada() {
-        assert_eq!(hash_key("abc"), hash_key("abc"));
-        assert_ne!(hash_key("abc"), hash_key("abd"));
-        assert_eq!(hash_key("").len(), 64); // SHA-256 = 64 hex
-    }
-}
 
 /// Middleware del plano `/api/v1`: exige Bearer válido y no revocado.
+// axum idiomático: el middleware devuelve Response tanto en éxito como en error;
+// Response supera los 128 bytes, así que silenciamos el lint en lugar de boxear.
+#[allow(clippy::result_large_err)]
 pub async fn require_api_key(
     State(state): State<AppState>,
     mut req: Request,
@@ -92,4 +75,25 @@ pub async fn require_api_key(
 
     req.extensions_mut().insert(AuthedKey { id: row.0, name: row.1 });
     Ok(next.run(req).await)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_key_produce_sha256_hex_conocido() {
+        // Vector verificado contra `hash-key "dev-key-123"` en el smoke test
+        assert_eq!(
+            hash_key("dev-key-123"),
+            "0f11c9ecaecabe613512ae472855ae9cb7d9639bc8c3fe85e0357efbf4739cd4"
+        );
+    }
+
+    #[test]
+    fn hash_key_es_determinista_y_distinto_por_entrada() {
+        assert_eq!(hash_key("abc"), hash_key("abc"));
+        assert_ne!(hash_key("abc"), hash_key("abd"));
+        assert_eq!(hash_key("").len(), 64); // SHA-256 = 64 hex
+    }
 }
