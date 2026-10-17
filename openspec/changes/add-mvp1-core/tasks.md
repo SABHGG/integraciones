@@ -10,11 +10,11 @@
 
 ## 2. Fase 1 — Sandbox (ruta crítica)
 
-- [ ] 2.1 Wrapper rquickjs: crear isolate fresco, aplicar `set_memory_limit`, interrupt handler (timeout por puente en ms), destruir tras ejecución
-- [ ] 2.2 Cargar bloque JS compilado e invocar `export default(input, ctx)`; capturar salida síncrona, Promise resuelta y `throw` (convertido a error estructurado del ejecutor)
-- [ ] 2.3 Host functions de `ctx`: `ctx.log` (estructurado), `ctx.crypto` (hmac/sha/base64), helpers JSON
-- [ ] 2.4 `ctx.http.request({url, method, headers, body})` sobre reqwest: timeout obligatorio propio (además del interrupt del isolate), allowlist opcional de dominios, respuesta como texto o JSON parseado
-- [ ] 2.5 Suite de pruebas con bloques trampa: bucle infinito (verifica interrupt), throw, agotamiento de memoria, fetch lento, Promise colgante — todos deben terminar en error del ejecutor sin colgar el worker
+- [x] 2.1 Wrapper rquickjs: crear isolate fresco, aplicar `set_memory_limit`, interrupt handler (timeout por puente en ms), destruir tras ejecución
+- [x] 2.2 Cargar bloque JS compilado e invocar `export default(input, ctx)`; capturar salida síncrona, Promise resuelta y `throw` (convertido a error estructurado del ejecutor)
+- [x] 2.3 Host functions de `ctx`: `ctx.log` (estructurado), `ctx.crypto` (hmac/sha/base64), helpers JSON
+- [x] 2.4 `ctx.http.request({url, method, headers, body})` sobre reqwest: timeout obligatorio propio (además del interrupt del isolate), allowlist opcional de dominios, respuesta como texto o JSON parseado
+- [x] 2.5 Suite de pruebas con bloques trampa: bucle infinito (verifica interrupt), throw, agotamiento de memoria, fetch lento, Promise colgante — todos deben terminar en error del ejecutor sin colgar el worker
 
 ## 3. Fase 2 — Ejecutor
 

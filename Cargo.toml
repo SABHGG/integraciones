@@ -16,9 +16,9 @@ uuid = { version = "1", features = ["v7", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 # async / http
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 axum = "0.8"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "timeout"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # persistencia
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "json", "chrono", "migrate"] }
@@ -32,6 +32,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # utilidades
 sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
 hex = "0.4"
 dotenvy = "0.15"
 
