@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Plataforma headless de integraciones propia (no es n8n/Make/Zapier). Dos conceptos centrales:
+Plataforma de integraciones propia (no es n8n/Make/Zapier). API-first: el MVP1 expone solo API, pero el producto completo incluye **UI propia** (dashboard, formularios generados por metadatos `ui`, editor de bloques) planificada en el MVP3. Dos conceptos centrales:
 
 - **Bloque**: unidad de código ejecutable aislado. Biblioteca reutilizable versionada inmutablemente.
 - **Puente (bridge)**: cadena **lineal** de instancias de bloques que ejecutan una acción. Se dispara por HTTP, cron, evento o manualmente, y produce un registro de ejecución observable.
