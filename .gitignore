@@ -1,2 +1,18 @@
 # Local Pi runtime state
 .atl/
+
+# Rust
+/target
+**/*.rs.bk
+
+# Entorno
+.env
+.env.*
+
+# Docker volumes locales
+/pgdata
+
+# Editor / SO
+.DS_Store
+.idea/
+.vscode/
