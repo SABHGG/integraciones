@@ -102,5 +102,5 @@ Proyecto greenfield. El diseño completo fue decidido en 9 rondas de requisitos 
 ## Open Questions
 
 - Nombre del proyecto (provisional: "Bloques y Puentes").
-- Elección final de crates al construir (candidatos: axum, sqlx, swc, rquickjs).
+- ~~Elección final de crates~~ **Resuelto** al construir la Fase 0: axum 0.8.9, sqlx 0.8.6, tokio 1.53, rquickjs 0.9 (ver tabla Stack en project.md). Solo queda elegir la versión concreta de `swc_core` en la tarea 4.1.
 - Auth del plano de invocación: sin auth en v1; mecanismo por puente a futuro.

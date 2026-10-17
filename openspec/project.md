@@ -68,11 +68,21 @@ Próximo hito: MVP1 (ver `changes/add-mvp1-core/tasks.md`).
                      webhook_deliveries, missed_triggers, credentials
 ```
 
-## Stack
+## Stack (definitivo — confirmado al construir la Fase 0)
 
-- **Backend**: Rust (candidatos: axum, sqlx, swc para transpile, rquickjs para sandbox)
-- **BD**: PostgreSQL (JSONB, SKIP LOCKED)
-- **Bloques**: JS/TS transpilados a JS
+| Pieza | Elección | Versión | Por qué |
+|---|---|---|---|
+| Lenguaje | Rust (edition 2024, workspace 4 crates) | stable | Rendimiento + aislamiento nativo (mem limit / interrupt) del sandbox |
+| Runtime async | tokio | 1.53 | Estándar de facto; workers y timeouts |
+| Servidor HTTP | axum | 0.8 | Dos planos con middlewares independientes; extractores tipados |
+| BD / migraciones | sqlx (postgres, tls-rustls, json, migrate) | 0.8 | SQL real + migraciones versionadas; sin ORM |
+| Sandbox | rquickjs (quickjs-ng), feature full-async | 0.9 | Decisión de diseño: isolate fresco, memory limit, interrupt handler |
+| Transpile TS | swc (crate `swc_core`) | *por definir en tarea 4.1* | Decisión de diseño: transpile al publicar, nunca en runtime |
+| HTTP saliente (ctx.http) | reqwest (rustls, sin default-features) | 0.12 | Timeout obligatorio por llamada; allowlist de dominios en el host |
+| Utilidades | serde/serde_json 1, thiserror 2, uuid v7 1.28, chrono 0.4, sha2 0.10, hex 0.4, dotenvy 0.15, tracing 0.1 | | |
+| Infra | PostgreSQL 17 (JSONB + SKIP LOCKED), Postgres portátil sin docker vía `scripts/dev-postgres.sh` | 17 / 18.6 en dev | Una sola dependencia de estado |
+
+Fuera del stack deliberadamente (v1): ORM/diesel, apalis u otros workers externos (la cola es la propia tabla `executions` con SKIP LOCKED), Redis (abstracción de cola lista para el futuro), crate `jsonschema` (el validador es propio para el subconjunto estricto, tarea 3.4).
 
 ## Commands
 
