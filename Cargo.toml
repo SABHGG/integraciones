@@ -30,6 +30,11 @@ rquickjs = { version = "0.9", features = ["full-async"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# utilidades
+sha2 = "0.10"
+hex = "0.4"
+dotenvy = "0.15"
+
 # crates internos
 domain = { path = "crates/core" }
 sandbox = { path = "crates/sandbox" }

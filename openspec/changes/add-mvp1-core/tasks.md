@@ -6,7 +6,7 @@
 
 - [x] 1.1 Crear estructura Cargo (single crate o workspace), CI básico, `docker-compose.yml` con Postgres, `.gitignore`
 - [x] 1.2 Migraciones iniciales del esquema completo (todas las tablas e índices de design.md; los recursos MVP2/MVP3 quedan creados pero vacíos)
-- [ ] 1.3 Servidor HTTP base: enrutado de dos planos, auth `Authorization: Bearer` con API key global (hash en `api_keys`), manejador de errores RFC 9457 (application/problem+json), tracing estructurado
+- [x] 1.3 Servidor HTTP base: enrutado de dos planos, auth `Authorization: Bearer` con API key global (hash en `api_keys`), manejador de errores RFC 9457 (application/problem+json), tracing estructurado
 
 ## 2. Fase 1 — Sandbox (ruta crítica)
 
