@@ -195,7 +195,8 @@ async fn seed_workspace(pool: &PgPool, workspace_id: Uuid) -> (String, Uuid) {
 const SECRETO: &str = "sk_test_secreto_9f3b";
 
 impl Harness {
-    /// Siembra la credencial `stripe` de la bóveda del workspace.
+    /// Siembra la credencial `stripe` de la bóveda del workspace (cifrada
+    /// igual que la API: los bytes en claro ya no viven en la tabla).
     async fn credencial(&self, name: &str) {
         sqlx::query(
             "INSERT INTO credentials (id, workspace_id, name, secret_encrypted) \
@@ -204,7 +205,7 @@ impl Harness {
         .bind(Uuid::now_v7())
         .bind(self.workspace_id)
         .bind(name)
-        .bind(SECRETO.as_bytes())
+        .bind(api::vault::encrypt(SECRETO))
         .execute(&self.pool)
         .await
         .expect("credencial sembrada");

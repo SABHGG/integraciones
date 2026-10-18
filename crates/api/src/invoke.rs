@@ -392,8 +392,9 @@ fn envelope_response(envelope: Value) -> Response {
 
 /// Precarga los secretos de la bóveda del workspace (nombre → secreto) para
 /// el resolutor síncrono de `ctx.credential` y de `{$credential:nombre}` en
-/// bloques built-in. MVP1: pocos secretos por workspace, una consulta. El
-/// cifrado en reposo llega con la bóveda (task 4.7); aquí se leen los bytes.
+/// bloques built-in. MVP1: pocos secretos por workspace, una consulta. Los
+/// bytes están cifrados en reposo (AES-256-GCM, `vault`); se descifran aquí
+/// y el secreto en claro solo vive en memoria del host.
 async fn cargar_boveda(
     pool: &sqlx::PgPool,
     workspace_id: Uuid,
@@ -403,10 +404,15 @@ async fn cargar_boveda(
             .bind(workspace_id)
             .fetch_all(pool)
             .await?;
-    Ok(filas
-        .into_iter()
-        .map(|(name, bytes)| (name, String::from_utf8_lossy(&bytes).into_owned()))
-        .collect())
+    let mut boveda = HashMap::with_capacity(filas.len());
+    for (name, bytes) in filas {
+        let secreto = crate::vault::decrypt(&bytes)
+            .map_err(|error| sqlx::Error::Configuration(
+                format!("descifrar la credencial \"{name}\": {error}").into(),
+            ))?;
+        boveda.insert(name, secreto);
+    }
+    Ok(boveda)
 }
 
 /// Cierra la ejecución como `failed` con error estructurado y sin pasos

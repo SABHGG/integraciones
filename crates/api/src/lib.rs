@@ -8,6 +8,7 @@
 pub mod auth;
 pub mod blocks;
 pub mod bridges;
+pub mod credentials;
 pub mod cursor;
 pub mod executions;
 pub mod invoke;
@@ -15,6 +16,7 @@ pub mod problem;
 pub mod rest;
 pub mod state;
 pub mod transpile;
+pub mod vault;
 pub mod ui;
 
 use axum::Json;
@@ -47,6 +49,7 @@ pub fn app(state: AppState) -> Router {
         .route("/whoami", get(whoami))
         .route("/healthz", get(|| async { "ok" }))
         .merge(blocks::router())
+        .merge(credentials::router())
         .merge(bridges::router())
         .merge(executions::router())
         // Cualquier ruta /api/v1 desconocida responde Problem Details: el
