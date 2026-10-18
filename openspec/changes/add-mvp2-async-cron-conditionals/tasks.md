@@ -17,10 +17,10 @@
 
 ## 3. Fase 3 — Disparo asíncrono y polling
 
-- [ ] 3.1 `POST /x/{slug}` con `Prefer: respond-async`: encola y responde `202` + `{success, executionId}` + `Location`; errores de transporte (404/405/413/415) intactos antes de encolar; tests
-- [ ] 3.2 Idempotencia en async: repetición con misma `Idempotency-Key` devuelve ejecución original y su `Location` sin nueva fila; test
-- [ ] 3.3 `GET /x/{slug}/executions/{executionId}`: estado `pending|running` sin `data`, sobre final idéntico al síncrono al terminar, 404 cross-slug; tests (con rates-limit del plano /x verificado)
-- [ ] 3.4 OpenAPI (`crates/api/openapi.json`) actualizado con 202, `Location` y el endpoint de polling; validar con la UI de Scalar
+- [x] 3.1 `POST /x/{slug}` con `Prefer: respond-async`: encola y responde `202` + `{success, executionId}` + `Location`; errores de transporte (404/405/413/415) intactos antes de encolar; tests
+- [x] 3.2 Idempotencia en async: repetición con misma `Idempotency-Key` devuelve ejecución original y su `Location` sin nueva fila; test
+- [x] 3.3 `GET /x/{slug}/executions/{executionId}`: estado `pending|running` sin `data`, sobre final idéntico al síncrono al terminar, 404 cross-slug; tests (con rates-limit del plano /x verificado)
+- [x] 3.4 OpenAPI (`crates/api/openapi.json`) actualizado con 202, `Location` y el endpoint de polling; validar con la UI de Scalar
 
 ## 4. Fase 4 — Webhook de resultado firmado
 
