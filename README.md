@@ -1,5 +1,7 @@
 # Bloques y Puentes (nombre provisional)
 
+[![CI](https://github.com/SABHGG/integraciones/actions/workflows/ci.yml/badge.svg)](https://github.com/SABHGG/integraciones/actions/workflows/ci.yml)
+
 Plataforma de integraciones API-first: **bloques** (unidades de código JS/TS aisladas en sandbox o built-in `http`) encadenados en **puentes** (cadenas lineales disparables por HTTP). El MVP1 expone solo API; la UI (dashboard, formularios generados y editor de bloques) llega en el MVP3.
 
 La especificación completa vive en [`openspec/`](openspec/) — empezar por `openspec/project.md` y el change `openspec/changes/add-mvp1-core/`.
