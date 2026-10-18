@@ -95,5 +95,5 @@ docker compose up -d          # Postgres (cuando exista compose)
 ## Roadmap
 
 - **MVP1** — ejecutor + HTTP sync + store de ejecuciones + biblioteca de bloques + bóveda mínima
-- **MVP2** — async 202 + polling + webhook de resultado (HMAC) + cron
+- **MVP2** — async 202 + polling + webhook de resultado (HMAC) + cron + **puentes condicionales** (`when` por instancia o bloque `switch` con rutas nombradas; pasos no ejecutados se registran como `skipped`; condiciones deterministas sobre `$.`, sin JS arbitrario; prevención de ciclos — decisión tomada en conversación: el MVP1 permanece estrictamente lineal)
 - **MVP3** — eventos/colas, dry-run con mocks, replay, bóveda completa (rotación), enmascaramiento, UI (formularios + editor de código)
