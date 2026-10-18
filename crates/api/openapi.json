@@ -7,7 +7,10 @@
     "description": "Dos planos:\n\n- **Admin** (`/api/v1`, `Authorization: Bearer <api key>`): biblioteca de bloques,\n  bóveda de credenciales, puentes (borrador + validación + versiones inmutables)\n  y ejecuciones con su traza. Todos los errores son Problem Details (RFC 9457).\n- **Invocación** (`/x/{slug}`, sin auth de administración en v1): ejecución\n  síncrona de un puente publicado con sobre único `{success, data|error, executionId}`.\n\nLos listados del plano admin se paginan por cursor opaco (`limit` + `cursor`).",
     "contact": { "name": "Integraciones" }
   },
-  "servers": [{ "url": "http://localhost:3000", "description": "Desarrollo local (scripts/dev-postgres.sh + cargo run)" }],
+  "servers": [
+    { "url": "/", "description": "Este servidor (mismo origen: el cliente de la UI resuelve contra el host/puerto con el que abriste /docs)" },
+    { "url": "http://localhost:8080", "description": "Desarrollo local (scripts/dev.sh, PORT=8080)" }
+  ],
   "tags": [
     { "name": "Admin", "description": "Plano de administración `/api/v1` (Bearer)" },
     { "name": "Invocación", "description": "Plano de invocación `/x` (público en v1)" },
