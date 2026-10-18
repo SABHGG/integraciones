@@ -1,0 +1,74 @@
+//! Servidor API: plano de administración `/api/v1` (Bearer, Problem Details)
+//! y plano de invocación `/x` (sin auth en v1).
+//!
+//! El binario (`integraciones-api`) solo cablea el pool, las migraciones y el
+//! listener; el enrutado y los handlers viven aquí para que los tests de
+//! integración puedan montar la misma aplicación con Postgres real.
+
+pub mod auth;
+pub mod blocks;
+pub mod cursor;
+pub mod problem;
+pub mod state;
+pub mod transpile;
+pub mod ui;
+
+use axum::Json;
+use axum::extract::Extension;
+use axum::middleware;
+use axum::routing::get;
+use axum::Router;
+use serde_json::json;
+use sqlx::PgPool;
+
+use state::AppState;
+
+/// Abre el pool de conexiones con la configuración de producción.
+pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(10)
+        .connect(database_url)
+        .await
+}
+
+/// Aplica las migraciones embebidas (`crates/api/migrations`).
+pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
+    sqlx::migrate!("./migrations").run(pool).await
+}
+
+/// Construye la aplicación axum completa: los dos planos del design.md.
+pub fn app(state: AppState) -> Router {
+    // Plano de administración: Bearer + Problem Details (RFC 9457)
+    let admin = Router::new()
+        .route("/whoami", get(whoami))
+        .route("/healthz", get(|| async { "ok" }))
+        .merge(blocks::router())
+        // Cualquier ruta /api/v1 desconocida responde Problem Details: el
+        // cliente del plano admin solo habla application/problem+json.
+        .fallback(|| async { problem::not_found("la ruta no existe en la API") })
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_api_key,
+        ));
+
+    // Plano de invocación: sin auth en v1; las rutas /x/{slug} llegan en 4.4
+    let invocation = Router::new().route(
+        "/",
+        get(|| async { problem::not_found("Las invocaciones usan /x/{slug} del puente") }),
+    );
+
+    Router::new()
+        .route("/healthz", get(|| async { "ok" }))
+        .nest("/api/v1", admin)
+        .nest("/x", invocation)
+        .with_state(state)
+}
+
+/// Identidad autenticada (útil para diagnosticar la key y su workspace).
+async fn whoami(Extension(key): Extension<auth::AuthedKey>) -> Json<serde_json::Value> {
+    Json(json!({
+        "id": key.id,
+        "name": key.name,
+        "workspaceId": key.workspace_id,
+    }))
+}

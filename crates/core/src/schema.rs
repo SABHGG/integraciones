@@ -79,6 +79,17 @@ pub fn validate(schema: &Value, instance: &Value) -> Result<(), SchemaError> {
     }
 }
 
+/// Verifica que un documento JSON Schema pertenece al subconjunto estricto.
+///
+/// Es la puerta pública de [`check_schema`] para quien solo tiene el documento
+/// (la publicación de bloques valida `configSchema`/`inputSchema`/
+/// `outputSchema` sin instancia) y para la futura generación de formularios:
+/// a diferencia de [`validate`] no necesita una instancia, y a diferencia de
+/// `check_schema` forma parte de la API pública del crate.
+pub fn validate_schema_doc(schema: &Value) -> Result<(), SchemaError> {
+    check_schema(schema, "$")
+}
+
 /// Recorre el schema comprobando que solo usa keywords soportadas y bien
 /// formadas. Es independiente de la instancia: un schema no soportado se
 /// detecta siempre, aunque la instancia nunca llegase a tocarlo.
@@ -674,6 +685,59 @@ mod tests {
             "properties": { "id": { "type": "string", "title": "ID", "ui": { "help": "x" } } }
         });
         assert!(validate(&schema, &json!({"id": "a"})).is_ok());
+    }
+
+    #[test]
+    fn validate_schema_doc_acepta_el_subconjunto_y_rechaza_lo_demas() {
+        // Válidos: vacío, completo con anotaciones ignoradas y anidamiento.
+        assert!(validate_schema_doc(&json!({})).is_ok());
+        assert!(
+            validate_schema_doc(&json!({
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "title": "Entrada",
+                "type": "object",
+                "required": ["id"],
+                "properties": {
+                    "id": { "type": "string", "format": "uuid", "ui": { "widget": "text" } },
+                    "tags": { "type": "array", "items": { "type": "string" } },
+                    "modo": { "enum": ["a", "b"] }
+                }
+            }))
+            .is_ok()
+        );
+
+        // Fuera del subconjunto (keyword, tipo y forma), incluido lo anidado.
+        let rechazados = [
+            json!({ "pattern": "^a" }),
+            json!({ "oneOf": [{ "type": "string" }] }),
+            json!({ "type": "float" }),
+            json!({ "required": [] }),
+            json!({ "type": "array", "items": [{ "type": "integer" }] }),
+            json!({ "type": "object", "properties": { "x": { "$ref": "#/defs/x" } } }),
+            json!({ "type": "string", "format": "password" }),
+        ];
+        for schema in rechazados {
+            assert!(
+                matches!(validate_schema_doc(&schema), Err(SchemaError::Unsupported { .. })),
+                "debería rechazarse: {schema}"
+            );
+        }
+
+        // Un documento que no es objeto también es Unsupported.
+        for schema in [json!(true), json!("object"), json!(null)] {
+            assert!(matches!(
+                validate_schema_doc(&schema),
+                Err(SchemaError::Unsupported { .. })
+            ));
+        }
+
+        // El error nombra la ruta exacta del documento.
+        let err = validate_schema_doc(&json!({
+            "type": "object",
+            "properties": { "x": { "minimum": 1 } }
+        }))
+        .expect_err("minimum no está soportado");
+        assert_eq!(err.to_string(), "schema no soportado en $.properties.x: la keyword \"minimum\" no pertenece al subconjunto soportado");
     }
 
     #[test]

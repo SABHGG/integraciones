@@ -30,12 +30,28 @@ rquickjs = { version = "0.9", features = ["full-async"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# TypeScript → JavaScript al publicar una versión de bloque (design.md: el
+# pipeline corre al publicar, nunca en runtime).
+# Versión fijada a la última estable al construir la tarea 4.1 (82.1.1, publicada
+# el 2026-10-15): los crates internos de swc cambian de API entre majors, así
+# que se ancla el major y se activa solo el subconjunto necesario (parser TS,
+# codegen, transform de TypeScript) para no arrastrar bundler/minifier/CSS.
+swc_core = { version = "82.1.1", features = [
+    "common",
+    "ecma_ast",
+    "ecma_parser",
+    "ecma_parser_typescript",
+    "ecma_codegen",
+    "ecma_transforms_typescript",
+] }
+
 # utilidades
 sha2 = "0.10"
 hmac = "0.12"
 base64 = "0.22"
 hex = "0.4"
 dotenvy = "0.15"
+tower = { version = "0.5", features = ["util"] }
 
 # crates internos
 domain = { path = "crates/core" }

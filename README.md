@@ -33,9 +33,17 @@ RUST_LOG=info
 
 ### Alta de una API key de administración
 
+La biblioteca de bloques es por workspace, así que la key debe estar vinculada a uno
+(`api_keys.workspace_id`): una key sin workspace autentica, pero recibe 403 en
+`/api/v1/blocks`.
+
 ```bash
 cargo run -p api -- hash-key "mi-key-secreta"   # imprime el SHA-256
-psql "$DATABASE_URL" -c "INSERT INTO api_keys (id, name, key_hash) VALUES (gen_random_uuid(), 'dev', '<hash>');"
+psql "$DATABASE_URL" -c "
+WITH ws AS (INSERT INTO workspaces (id, name, slug)
+            VALUES (gen_random_uuid(), 'dev', 'dev') RETURNING id)
+INSERT INTO api_keys (id, workspace_id, name, key_hash)
+SELECT gen_random_uuid(), ws.id, 'dev', '<hash>' FROM ws;"
 ```
 
 La auth del plano admin es `Authorization: Bearer mi-key-secreta`.

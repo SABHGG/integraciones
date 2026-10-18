@@ -37,7 +37,6 @@ impl Problem {
     }
 
     /// Se usa desde la Fase 4 (idempotencia, validación de entrada).
-    #[allow(dead_code)]
     pub fn with_extension(mut self, key: impl Into<String>, value: Value) -> Self {
         self.extensions.insert(key.into(), value);
         self
@@ -89,8 +88,32 @@ pub fn internal(detail: impl Into<String>) -> Problem {
         .with_detail(detail)
 }
 
+pub fn forbidden(detail: impl Into<String>) -> Problem {
+    Problem::new(StatusCode::FORBIDDEN, "forbidden", "Forbidden").with_detail(detail)
+}
+
 pub fn not_found(detail: impl Into<String>) -> Problem {
     Problem::new(StatusCode::NOT_FOUND, "not-found", "Not Found").with_detail(detail)
+}
+
+pub fn conflict(detail: impl Into<String>) -> Problem {
+    Problem::new(StatusCode::CONFLICT, "conflict", "Conflict").with_detail(detail)
+}
+
+/// Entrada inválida a nivel de transporte o de query string (400).
+pub fn bad_request(detail: impl Into<String>) -> Problem {
+    Problem::new(StatusCode::BAD_REQUEST, "bad-request", "Bad Request").with_detail(detail)
+}
+
+/// Cuerpo bien formado pero que no cumple el contrato (JSON Schema fuera del
+/// subconjunto, código TypeScript que no compila, `ui` inválido, …).
+pub fn unprocessable_entity(detail: impl Into<String>) -> Problem {
+    Problem::new(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "unprocessable-entity",
+        "Unprocessable Entity",
+    )
+    .with_detail(detail)
 }
 
 pub fn not_implemented(detail: impl Into<String>) -> Problem {
@@ -135,5 +158,22 @@ mod tests {
         let body = not_found("no existe").to_json(None);
         assert!(body.get("instance").is_none());
         assert!(body.get("detail").is_some());
+    }
+
+    #[test]
+    fn constructores_de_conflicto_prohibido_y_validacion() {
+        assert_eq!(conflict("slug duplicado").status, StatusCode::CONFLICT);
+        assert_eq!(forbidden("sin workspace").status, StatusCode::FORBIDDEN);
+        assert_eq!(bad_request("cursor inválido").status, StatusCode::BAD_REQUEST);
+        let unprocessable = unprocessable_entity("código no compila");
+        assert_eq!(unprocessable.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(unprocessable.type_slug, "unprocessable-entity");
+        assert!(
+            unprocessable
+                .to_json(None)["type"]
+                .as_str()
+                .unwrap()
+                .ends_with("/problems/unprocessable-entity")
+        );
     }
 }
