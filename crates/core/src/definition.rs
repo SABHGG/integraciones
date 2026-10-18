@@ -71,6 +71,13 @@ pub struct TriggerDefinition {
     /// Ruta de invocación (solo disparador `http`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// Expresión cron de 5 campos (solo disparador `cron`), validada al
+    /// publicar y congelada en el snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<String>,
+    /// Zona horaria IANA del schedule (solo disparador `cron`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timezone: Option<String>,
 }
 
 /// Tipos de disparador soportados por el contrato del trigger.
@@ -118,6 +125,10 @@ pub struct BlockInstance {
     /// JS ya compilado con `export default function(input, ctx)`.
     #[serde(default)]
     pub code: Option<String>,
+    /// Condición declarativa (`domain::conditions`) que decide si la instancia
+    /// se ejecuta: falso ⇒ paso `skipped` sin invocar el sandbox.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<Value>,
     /// Mapeo de entrada del bloque: valores literales o referencias `$.`.
     #[serde(default = "empty_object")]
     pub input: Value,

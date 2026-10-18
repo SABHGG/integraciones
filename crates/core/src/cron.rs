@@ -90,6 +90,12 @@ pub fn validate(expr: &str) -> Result<(), CronError> {
     parse(expr).map(|_| ())
 }
 
+/// Valida que el texto sea una zona horaria IANA conocida
+/// (`Europe/Madrid`, `UTC`, …).
+pub fn validate_timezone(raw: &str) -> bool {
+    raw.parse::<chrono_tz::Tz>().is_ok()
+}
+
 /// Parsea el texto de un campo: `*`, número, rango (`a-b`, ascendente) o paso
 /// (`*/n`, `a-b/n`, `a/n` = `a-con-fin/n`). Devuelve la máscara de bits y si el
 /// campo está restringido (solo un `*` exacto no lo está, regla vixie).
@@ -447,6 +453,16 @@ mod tests {
     fn los_nombres_de_dia_y_mes_no_estan_soportados() {
         assert!(validate("0 9 * * 1,MON").is_err(), "nombres de día");
         assert!(validate("0 9 * * JAN").is_err(), "nombres de mes");
+    }
+
+    #[test]
+    fn una_timezone_iana_desconocida_se_rechaza() {
+        assert!(validate_timezone("Europe/Madrid"));
+        assert!(validate_timezone("UTC"));
+        assert!(validate_timezone("America/Argentina/Buenos_Aires"));
+        assert!(!validate_timezone("Marte/Olympus"));
+        assert!(!validate_timezone(""));
+        assert!(!validate_timezone("Europe/"));
     }
 
     #[test]

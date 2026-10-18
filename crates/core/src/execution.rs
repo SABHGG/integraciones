@@ -137,6 +137,9 @@ pub enum StepStatus {
     Succeeded,
     /// El bloque es el punto exacto del fallo (o falló antes de invocarse).
     Failed,
+    /// El bloque no se ejecutó por enrutado condicional (`when` falso o ruta
+    /// de `switch` no tomada): sin input ejecutado, salida ni duración.
+    Skipped,
 }
 
 impl StepStatus {
@@ -145,6 +148,7 @@ impl StepStatus {
         match self {
             Self::Succeeded => "succeeded",
             Self::Failed => "failed",
+            Self::Skipped => "skipped",
         }
     }
 }
@@ -204,6 +208,7 @@ mod tests {
         assert_eq!(ExecutionStatus::parse("cancelled"), None);
         assert_eq!(StepStatus::Succeeded.as_str(), "succeeded");
         assert_eq!(StepStatus::Failed.as_str(), "failed");
+        assert_eq!(StepStatus::Skipped.as_str(), "skipped");
     }
 
     #[test]
