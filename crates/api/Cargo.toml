@@ -28,6 +28,7 @@ base64.workspace = true
 dotenvy.workspace = true
 swc_core.workspace = true
 aes-gcm.workspace = true
+scalar_api_reference.workspace = true
 
 [dev-dependencies]
 tower.workspace = true

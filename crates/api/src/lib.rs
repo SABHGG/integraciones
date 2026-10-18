@@ -10,6 +10,7 @@ pub mod blocks;
 pub mod bridges;
 pub mod credentials;
 pub mod cursor;
+pub mod docs;
 pub mod executions;
 pub mod invoke;
 pub mod problem;
@@ -66,8 +67,13 @@ pub fn app(state: AppState) -> Router {
     let invocation = invoke::router()
         .fallback(|| async { problem::not_found("las invocaciones usan /x/{slug} del puente") });
 
+    // Documentación embebida: OpenAPI 3.1 + UI de Scalar (sin auth: leer la
+    // referencia no revela datos, y la UI vive junto a la API que documenta).
+    let docs = docs::doc_router();
+
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
+        .merge(docs)
         .nest("/api/v1", admin)
         .nest("/x", invocation)
         .with_state(state)

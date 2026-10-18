@@ -48,6 +48,9 @@ swc_core = { version = "82.1.1", features = [
 # utilidades
 sha2 = "0.10"
 aes-gcm = "0.10"
+# UI de Scalar para la referencia OpenAPI embebida (el feature "axum" trae
+# el módulo scalar_api_reference::axum con router y respuestas listas).
+scalar_api_reference = { version = "0.2.15", features = ["axum"] }
 hmac = "0.12"
 base64 = "0.22"
 hex = "0.4"
