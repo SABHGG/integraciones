@@ -35,7 +35,7 @@
 
 ## 5. Fase 4 — Cierre
 
-- [ ] 5.1 Bloque CUSTOM_LOGIC de ejemplo (biblioteca) + puente demo de 3 bloques encadenados (http-get → custom → http-post)
-- [ ] 5.2 Prueba end-to-end: invocar `/x/{slug}` → 200 con sobre → verificar en el store el trace completo con IO por bloque
-- [ ] 5.3 Job de retención: purga de `execution_steps` a 30 días y `executions` a 1 año (configurables)
-- [ ] 5.4 README mínimo: cómo crear biblioteca, publicar puente e invocarlo (guía del primer usuario)
+- [x] 5.1 Bloque CUSTOM_LOGIC de ejemplo (biblioteca) + puente demo de 3 bloques encadenados (http-get → custom → http-post)
+- [x] 5.2 Prueba end-to-end: invocar `/x/{slug}` → 200 con sobre → verificar en el store el trace completo con IO por bloque
+- [x] 5.3 Job de retención: purga de `execution_steps` a 30 días y `executions` a 1 año (configurables)
+- [x] 5.4 README mínimo: cómo crear biblioteca, publicar puente e invocarlo (guía del primer usuario)
