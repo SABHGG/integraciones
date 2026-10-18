@@ -5,33 +5,68 @@
     "version": "0.1.0",
     "summary": "Backend de puentes de integración: cadenas de bloques ejecutadas en sandbox JS.",
     "description": "Dos planos:\n\n- **Admin** (`/api/v1`, `Authorization: Bearer <api key>`): biblioteca de bloques,\n  bóveda de credenciales, puentes (borrador + validación + versiones inmutables)\n  y ejecuciones con su traza. Todos los errores son Problem Details (RFC 9457).\n- **Invocación** (`/x/{slug}`, sin auth de administración en v1): ejecución\n  síncrona de un puente publicado con sobre único `{success, data|error, executionId}`.\n\nLos listados del plano admin se paginan por cursor opaco (`limit` + `cursor`).",
-    "contact": { "name": "Integraciones" }
+    "contact": {
+      "name": "Integraciones"
+    }
   },
   "servers": [
-    { "url": "/", "description": "Este servidor (mismo origen: el cliente de la UI resuelve contra el host/puerto con el que abriste /docs)" },
-    { "url": "http://localhost:8080", "description": "Desarrollo local (scripts/dev.sh, PORT=8080)" }
+    {
+      "url": "/",
+      "description": "Este servidor (mismo origen: el cliente de la UI resuelve contra el host/puerto con el que abriste /docs)"
+    },
+    {
+      "url": "http://localhost:8080",
+      "description": "Desarrollo local (scripts/dev.sh, PORT=8080)"
+    }
   ],
   "tags": [
-    { "name": "Admin", "description": "Plano de administración `/api/v1` (Bearer)" },
-    { "name": "Invocación", "description": "Plano de invocación `/x` (público en v1)" },
-    { "name": "Infra", "description": "Salud e identidad de la sesión" }
+    {
+      "name": "Admin",
+      "description": "Plano de administración `/api/v1` (Bearer)"
+    },
+    {
+      "name": "Invocación",
+      "description": "Plano de invocación `/x` (público en v1)"
+    },
+    {
+      "name": "Infra",
+      "description": "Salud e identidad de la sesión"
+    }
   ],
-  "security": [{ "bearerAuth": [] }],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
   "paths": {
     "/healthz": {
       "get": {
-        "tags": ["Infra"],
+        "tags": [
+          "Infra"
+        ],
         "summary": "Liveness",
         "description": "Devuelve `ok` en texto plano. No requiere auth.",
         "security": [],
         "responses": {
-          "200": { "description": "Servicio vivo", "content": { "text/plain": { "schema": { "type": "string", "example": "ok" } } } }
+          "200": {
+            "description": "Servicio vivo",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "ok"
+                }
+              }
+            }
+          }
         }
       }
     },
     "/whoami": {
       "get": {
-        "tags": ["Infra"],
+        "tags": [
+          "Infra"
+        ],
         "summary": "Identidad de la API key",
         "description": "Eco de la key autenticada: útil para diagnosticar a qué workspace pertenece.",
         "responses": {
@@ -42,43 +77,73 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "id": { "type": "string", "format": "uuid" },
-                    "name": { "type": "string" },
-                    "workspaceId": { "type": "string", "format": "uuid" }
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
                   },
-                  "required": ["id", "name", "workspaceId"]
+                  "required": [
+                    "id",
+                    "name",
+                    "workspaceId"
+                  ]
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Problem401" }
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          }
         }
       }
     },
     "/api/v1/blocks": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Lista bloques de la biblioteca",
         "description": "Paginación por cursor (`created_at, id` descendente). `limit` entre 1 y 100.",
         "parameters": [
-          { "$ref": "#/components/parameters/limit" },
-          { "$ref": "#/components/parameters/cursor" }
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/cursor"
+          }
         ],
         "responses": {
-          "200": { "$ref": "#/components/responses/PaginaBloques" },
-          "400": { "$ref": "#/components/responses/Problem400" },
-          "401": { "$ref": "#/components/responses/Problem401" }
+          "200": {
+            "$ref": "#/components/responses/PaginaBloques"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          }
         }
       },
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Crea un bloque (borrador sin versión)",
         "description": "Los bloques `http` y `custom_logic` built-in ya existen; este endpoint crea bloques con código propio (TypeScript, transpilado a JS al publicar).",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/CreateBlock" },
+              "schema": {
+                "$ref": "#/components/schemas/CreateBlock"
+              },
               "examples": {
                 "custom_logic": {
                   "value": {
@@ -95,57 +160,125 @@
           }
         },
         "responses": {
-          "201": { "$ref": "#/components/responses/Bloque201" },
-          "400": { "$ref": "#/components/responses/Problem400" },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "409": { "$ref": "#/components/responses/Problem409" }
+          "201": {
+            "$ref": "#/components/responses/Bloque201"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
         }
       }
     },
     "/api/v1/blocks/{id}": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Obtiene un bloque",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "responses": {
-          "200": { "description": "El bloque", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Block" } } } },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "200": {
+            "description": "El bloque",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Block"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       },
       "delete": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Elimina un bloque",
         "description": "Fallará con Problem si un puente publicado referencia alguna de sus versiones.",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "responses": {
-          "204": { "description": "Eliminado" },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" },
-          "409": { "$ref": "#/components/responses/Problem409" }
+          "204": {
+            "description": "Eliminado"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
         }
       }
     },
     "/api/v1/blocks/{id}/versions": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Lista las versiones publicadas del bloque",
         "parameters": [
-          { "$ref": "#/components/parameters/id" },
-          { "$ref": "#/components/parameters/limit" },
-          { "$ref": "#/components/parameters/cursor" }
+          {
+            "$ref": "#/components/parameters/id"
+          },
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/cursor"
+          }
         ],
         "responses": {
-          "200": { "description": "Página de versiones", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginaBlockVersion" } } } },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "200": {
+            "description": "Página de versiones",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaBlockVersion"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       },
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Publica una versión inmutable",
         "description": "Transpila el TypeScript a JS con swc, valida `inputSchema`/`ui` y congela el snapshot. Las versiones jamás se modifican.",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -153,25 +286,50 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "code": { "type": "string", "description": "Código TypeScript del bloque (bloques custom)." },
-                  "inputSchema": { "$ref": "#/components/schemas/JsonSchema" },
-                  "ui": { "type": "object", "additionalProperties": true }
+                  "code": {
+                    "type": "string",
+                    "description": "Código TypeScript del bloque (bloques custom)."
+                  },
+                  "inputSchema": {
+                    "$ref": "#/components/schemas/JsonSchema"
+                  },
+                  "ui": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Versión publicada", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BlockVersion" } } } },
-          "400": { "$ref": "#/components/responses/Problem400" },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "201": {
+            "description": "Versión publicada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       }
     },
     "/api/v1/credentials": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Lista metadatos de credenciales",
         "description": "Jamás incluye secretos: solo `id`, `name`, `description` y fechas.",
         "responses": {
@@ -182,109 +340,227 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "credentials": { "type": "array", "items": { "$ref": "#/components/schemas/Credential" } }
+                    "credentials": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Credential"
+                      }
+                    }
                   },
-                  "required": ["credentials"]
+                  "required": [
+                    "credentials"
+                  ]
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Problem401" }
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          }
         }
       },
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Crea una credencial",
         "description": "El `secret` es write-only: se cifra en reposo (AES-256-GCM) y nunca se devuelve.",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/CreateCredential" },
-              "examples": { "api-token": { "value": { "name": "crm-token", "secret": "s3cr3t0", "description": "Token del CRM" } } }
+              "schema": {
+                "$ref": "#/components/schemas/CreateCredential"
+              },
+              "examples": {
+                "api-token": {
+                  "value": {
+                    "name": "crm-token",
+                    "secret": "s3cr3t0",
+                    "description": "Token del CRM"
+                  }
+                }
+              }
             }
           }
         },
         "responses": {
-          "201": { "description": "Credencial creada (sin secreto)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Credential" } } } },
-          "400": { "$ref": "#/components/responses/Problem400" },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "409": { "$ref": "#/components/responses/Problem409" }
+          "201": {
+            "description": "Credencial creada (sin secreto)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Credential"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
         }
       }
     },
     "/api/v1/credentials/{id}": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Obtiene metadatos de una credencial",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "responses": {
-          "200": { "description": "Metadatos (sin secreto)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Credential" } } } },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "200": {
+            "description": "Metadatos (sin secreto)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Credential"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       },
       "patch": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Rota el secreto o actualiza metadatos",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/PatchCredential" }
+              "schema": {
+                "$ref": "#/components/schemas/PatchCredential"
+              }
             }
           }
         },
         "responses": {
-          "200": { "description": "Credencial actualizada", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Credential" } } } },
-          "400": { "$ref": "#/components/responses/Problem400" },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" },
-          "409": { "$ref": "#/components/responses/Problem409" }
+          "200": {
+            "description": "Credencial actualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Credential"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
         }
       },
       "delete": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Elimina una credencial",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "responses": {
-          "204": { "description": "Eliminada" },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "204": {
+            "description": "Eliminada"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       }
     },
     "/api/v1/bridges": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Lista puentes",
         "parameters": [
-          { "$ref": "#/components/parameters/limit" },
-          { "$ref": "#/components/parameters/cursor" }
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/cursor"
+          }
         ],
         "responses": {
-          "200": { "description": "Página de puentes", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginaBridge" } } } },
-          "400": { "$ref": "#/components/responses/Problem400" },
-          "401": { "$ref": "#/components/responses/Problem401" }
+          "200": {
+            "description": "Página de puentes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaBridge"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          }
         }
       },
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Crea un puente (borrador)",
         "description": "El borrador agrupa `trigger`, `inputSchema` y `blocks`; se valida al publicar, no al crear la forma.",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/CreateBridge" },
+              "schema": {
+                "$ref": "#/components/schemas/CreateBridge"
+              },
               "examples": {
                 "webhook-http": {
                   "value": {
                     "slug": "lead-entrante",
                     "name": "Lead entrante",
                     "description": "Webhook del formulario al CRM",
-                    "trigger": { "type": "http", "method": "POST" },
+                    "trigger": {
+                      "type": "http",
+                      "method": "POST"
+                    },
                     "blocks": []
                   }
                 }
@@ -293,56 +569,128 @@
           }
         },
         "responses": {
-          "201": { "$ref": "#/components/responses/Bridge201" },
-          "400": { "$ref": "#/components/responses/Problem400" },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "409": { "$ref": "#/components/responses/Problem409" }
+          "201": {
+            "$ref": "#/components/responses/Bridge201"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
         }
       }
     },
     "/api/v1/bridges/{id}": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Obtiene un puente",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "responses": {
-          "200": { "description": "El puente", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Bridge" } } } },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "200": {
+            "description": "El puente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bridge"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       },
       "patch": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Actualiza el borrador del puente",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateBridge" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBridge"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "Puente actualizado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Bridge" } } } },
-          "400": { "$ref": "#/components/responses/Problem400" },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "200": {
+            "description": "Puente actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bridge"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       },
       "delete": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Elimina un puente",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "responses": {
-          "204": { "description": "Eliminado" },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "204": {
+            "description": "Eliminado"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       }
     },
     "/api/v1/bridges/{id}/validate": {
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Valida el borrador sin publicar",
         "description": "Devuelve los problemas de forma y de referencias del borrador (bloques inexistentes, schemas no soportados, …) sin gastar versión.",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Resultado de la validación (issues por campo)",
@@ -351,14 +699,20 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "valid": { "type": "boolean" },
+                    "valid": {
+                      "type": "boolean"
+                    },
                     "issues": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "field": { "type": "string" },
-                          "message": { "type": "string" }
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
                         }
                       }
                     }
@@ -367,74 +721,166 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       }
     },
     "/api/v1/bridges/{id}/versions": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Lista las versiones publicadas del puente",
         "parameters": [
-          { "$ref": "#/components/parameters/id" },
-          { "$ref": "#/components/parameters/limit" },
-          { "$ref": "#/components/parameters/cursor" }
+          {
+            "$ref": "#/components/parameters/id"
+          },
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/cursor"
+          }
         ],
         "responses": {
-          "200": { "description": "Página de versiones", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginaBridgeVersion" } } } },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "200": {
+            "description": "Página de versiones",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaBridgeVersion"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       },
       "post": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Publica una versión inmutable del puente",
         "description": "Valida el borrador completo (trigger, instancias, inputSchema) y congela el snapshot `definition`. Si es la primera, `latestVersion` = 1 y el puente queda invocable por slug.",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "responses": {
-          "201": { "description": "Versión publicada", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BridgeVersion" } } } },
-          "400": { "$ref": "#/components/responses/Problem400" },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" },
-          "409": { "$ref": "#/components/responses/Problem409" }
+          "201": {
+            "description": "Versión publicada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BridgeVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          }
         }
       }
     },
     "/api/v1/executions": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Lista ejecuciones del workspace",
         "parameters": [
-          { "$ref": "#/components/parameters/limit" },
-          { "$ref": "#/components/parameters/cursor" }
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/cursor"
+          }
         ],
         "responses": {
-          "200": { "description": "Página de ejecuciones", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginaExecution" } } } },
-          "400": { "$ref": "#/components/responses/Problem400" },
-          "401": { "$ref": "#/components/responses/Problem401" }
+          "200": {
+            "description": "Página de ejecuciones",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaExecution"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          }
         }
       }
     },
     "/api/v1/executions/{id}": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Detalle de una ejecución",
         "description": "Incluye el `triggerData`, el estado, fechas y la versión exacta de la definición con la que corrió.",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "responses": {
-          "200": { "description": "Detalle", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExecutionDetail" } } } },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "200": {
+            "description": "Detalle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       }
     },
     "/api/v1/executions/{id}/trace": {
       "get": {
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Traza paso a paso",
         "description": "Pasos persistidos con la avanzación de estado: entrada/salida por bloque y errores estructurados.",
-        "parameters": [{ "$ref": "#/components/parameters/id" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/id"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Traza de la ejecución",
@@ -443,23 +889,37 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "steps": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+                    "steps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    }
                   },
-                  "required": ["steps"]
+                  "required": [
+                    "steps"
+                  ]
                 }
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Problem401" },
-          "404": { "$ref": "#/components/responses/Problem404" }
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       }
     },
     "/x/{slug}": {
       "post": {
-        "tags": ["Invocación"],
+        "tags": [
+          "Invocación"
+        ],
         "summary": "Invoca un puente publicado",
-        "description": "Ejecución síncrona de la última versión publicada del puente con ese slug. Cualquier método HTTP es aceptado en el router; el `method` real se valida contra el trigger del puente (405 Problem si no coincide).\n\n- El body (JSON) y la query string llegan al trigger como `{body, query}`.\n- Valida el body contra el `inputSchema` del puente antes de gastar isolate.\n- `Idempotency-Key` opcional: la repetición devuelve el sobre previo sin re-ejecutar.\n- Sobre único 200: `{success: true, data, executionId}` o `{success: false, error, executionId}`.",
+        "description": "Ejecución síncrona de la última versión publicada del puente con ese slug. Cualquier método HTTP es aceptado en el router; el `method` real se valida contra el trigger del puente (405 Problem si no coincide).\n\n- El body (JSON) y la query string llegan al trigger como `{body, query}`.\n- Valida el body contra el `inputSchema` del puente antes de gastar isolate.\n- `Idempotency-Key` opcional: la repetición devuelve el sobre previo sin re-ejecutar.\n- Sobre único 200: `{success: true, data, executionId}` o `{success: false, error, executionId}`.\n- `Prefer: respond-async` (RFC 7240, MVP2): encola y responde `202` con `{success: true, executionId}` y `Location: /x/{slug}/executions/{executionId}`; el resultado se consulta por polling. Los errores de transporte (404/405/413/415) son idénticos antes de encolar.",
         "security": [],
         "parameters": [
           {
@@ -467,32 +927,207 @@
             "in": "path",
             "required": true,
             "description": "Slug del puente publicado.",
-            "schema": { "type": "string" },
-            "examples": { "lead": { "value": "lead-entrante" } }
+            "schema": {
+              "type": "string"
+            },
+            "examples": {
+              "lead": {
+                "value": "lead-entrante"
+              }
+            }
           },
           {
             "name": "Idempotency-Key",
             "in": "header",
             "required": false,
-            "schema": { "type": "string" },
+            "schema": {
+              "type": "string"
+            },
             "description": "Key de idempotencia: la misma key devuelve el sobre de la corrida original."
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token `respond-async` (RFC 7240): disparo asíncrono con respuesta 202 y polling del resultado."
           }
         ],
         "requestBody": {
           "required": false,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/JsonSchema" },
-              "examples": { "lead": { "value": { "email": "ana@example.com", "nombre": "Ana" } } }
+              "schema": {
+                "$ref": "#/components/schemas/JsonSchema"
+              },
+              "examples": {
+                "lead": {
+                  "value": {
+                    "email": "ana@example.com",
+                    "nombre": "Ana"
+                  }
+                }
+              }
             }
           }
         },
         "responses": {
-          "200": { "description": "Sobre de invocación (éxito o fallo estructurado)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InvokeEnvelope" } } } },
-          "404": { "$ref": "#/components/responses/Problem404" },
-          "405": { "description": "El método no coincide con el trigger del puente", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
-          "413": { "description": "Body excede el límite", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
-          "415": { "description": "Content-Type no soportado", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+          "200": {
+            "description": "Sobre de invocación (éxito o fallo estructurado)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvokeEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "405": {
+            "description": "El método no coincide con el trigger del puente",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body excede el límite",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type no soportado",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Disparo aceptado en modo asíncrono: la ejecución queda encolada (`pending`) y el resultado se consulta en el recurso `Location`.",
+            "headers": {
+              "Location": {
+                "description": "Recurso de resultado: `/x/{slug}/executions/{executionId}`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "executionId"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "executionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/x/{slug}/executions/{executionId}": {
+      "get": {
+        "tags": [
+          "Invocación"
+        ],
+        "summary": "Consulta el resultado de una ejecución (polling)",
+        "description": "Recurso de resultado del disparo asíncrono, en el mismo plano de invocación (sin auth de administración). Mientras la ejecución está `pending` o `running` responde `{success: true, executionId, status}` sin `data`; al terminar responde el sobre final idéntico al síncrono (`{success, data}` o `{success: false, error}`).\n\nEl recurso queda acotado al slug: un executionId de otro puente responde 404.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "description": "Slug del puente publicado.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "description": "Id de la ejecución (UUID v7, del ack del 202).",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado en curso (`{success, executionId, status}`) o sobre final (`{success, data}` / `{success: false, error}`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "success",
+                        "executionId",
+                        "status"
+                      ],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "executionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "running"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvokeEnvelope"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
         }
       }
     }
@@ -510,42 +1145,123 @@
         "name": "id",
         "in": "path",
         "required": true,
-        "schema": { "type": "string", "format": "uuid" }
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
       },
       "limit": {
         "name": "limit",
         "in": "query",
         "required": false,
         "description": "Tamaño de página (1..=100).",
-        "schema": { "type": "string", "pattern": "^[0-9]+$" },
-        "examples": { "veinte": { "value": "20" } }
+        "schema": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "examples": {
+          "veinte": {
+            "value": "20"
+          }
+        }
       },
       "cursor": {
         "name": "cursor",
         "in": "query",
         "required": false,
         "description": "Cursor opaco de la página siguiente (tal cual `nextCursor`).",
-        "schema": { "type": "string", "maxLength": 256 }
+        "schema": {
+          "type": "string",
+          "maxLength": 256
+        }
       }
     },
     "responses": {
-      "Problem400": { "description": "Cuerpo inválido (Problem Details)", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
-      "Problem401": { "description": "Sin o con API key inválida (Problem Details)", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
-      "Problem404": { "description": "No existe en el workspace (Problem Details)", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
-      "Problem409": { "description": "Conflicto: slug duplicado o recurso referenciado (Problem Details)", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Problem400": {
+        "description": "Cuerpo inválido (Problem Details)",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem401": {
+        "description": "Sin o con API key inválida (Problem Details)",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem404": {
+        "description": "No existe en el workspace (Problem Details)",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Problem409": {
+        "description": "Conflicto: slug duplicado o recurso referenciado (Problem Details)",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
       "Bloque201": {
         "description": "Bloque creado",
-        "headers": { "Location": { "schema": { "type": "string" }, "description": "URL del recurso creado" } },
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Block" } } }
+        "headers": {
+          "Location": {
+            "schema": {
+              "type": "string"
+            },
+            "description": "URL del recurso creado"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Block"
+            }
+          }
+        }
       },
       "Bridge201": {
         "description": "Puente creado",
-        "headers": { "Location": { "schema": { "type": "string" }, "description": "URL del recurso creado" } },
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Bridge" } } }
+        "headers": {
+          "Location": {
+            "schema": {
+              "type": "string"
+            },
+            "description": "URL del recurso creado"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Bridge"
+            }
+          }
+        }
       },
       "PaginaBloques": {
         "description": "Página de bloques",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginaBlock" } } }
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/PaginaBlock"
+            }
+          }
+        }
       }
     },
     "schemas": {
@@ -553,13 +1269,28 @@
         "type": "object",
         "description": "Problem Details (RFC 9457). `type` es un slug corto (`not-found`, `unauthorized`, `internal`, …) y los miembros extra son extensiones.",
         "properties": {
-          "type": { "type": "string", "description": "Slug del tipo de problema, p. ej. `not-found`." },
-          "title": { "type": "string" },
-          "status": { "type": "integer" },
-          "detail": { "type": "string" },
-          "instance": { "type": "string" }
+          "type": {
+            "type": "string",
+            "description": "Slug del tipo de problema, p. ej. `not-found`."
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          }
         },
-        "required": ["type", "title", "status"]
+        "required": [
+          "type",
+          "title",
+          "status"
+        ]
       },
       "JsonSchema": {
         "type": "object",
@@ -569,62 +1300,165 @@
       "CreateBlock": {
         "type": "object",
         "properties": {
-          "slug": { "type": "string" },
-          "name": { "type": "string", "maxLength": 200 },
-          "blockType": { "type": "string", "enum": ["custom_logic"], "description": "Los built-in `http`/`custom_logic` ya existen; aquí se crean bloques con código propio." },
-          "category": { "type": "string" },
-          "description": { "type": "string" },
-          "icon": { "type": "string" }
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "blockType": {
+            "type": "string",
+            "enum": [
+              "custom_logic"
+            ],
+            "description": "Los built-in `http`/`custom_logic` ya existen; aquí se crean bloques con código propio."
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          }
         },
-        "required": ["slug", "name", "blockType"]
+        "required": [
+          "slug",
+          "name",
+          "blockType"
+        ]
       },
       "Block": {
         "type": "object",
         "description": "Fila de la biblioteca de bloques.",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "workspaceId": { "type": "string", "format": "uuid" },
-          "slug": { "type": "string" },
-          "name": { "type": "string" },
-          "blockType": { "type": "string" },
-          "category": { "type": "string" },
-          "description": { "type": "string" },
-          "icon": { "type": "string" },
-          "latestVersion": { "type": ["integer", "null"], "description": "Última versión publicada (null = sin versiones)." },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "blockType": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "latestVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Última versión publicada (null = sin versiones)."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         },
-        "required": ["id", "workspaceId", "slug", "name", "blockType", "category", "description", "icon", "createdAt", "updatedAt"]
+        "required": [
+          "id",
+          "workspaceId",
+          "slug",
+          "name",
+          "blockType",
+          "category",
+          "description",
+          "icon",
+          "createdAt",
+          "updatedAt"
+        ]
       },
       "BlockVersion": {
         "type": "object",
         "description": "Versión inmutable de un bloque. `code` es el JS transpilado (null solo en bloques built-in históricos).",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "blockId": { "type": "string", "format": "uuid" },
-          "version": { "type": "integer" },
-          "code": { "type": ["string", "null"] },
-          "inputSchema": { "$ref": "#/components/schemas/JsonSchema" },
-          "createdAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "blockId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inputSchema": {
+            "$ref": "#/components/schemas/JsonSchema"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         },
-        "required": ["id", "blockId", "version"]
+        "required": [
+          "id",
+          "blockId",
+          "version"
+        ]
       },
       "CreateCredential": {
         "type": "object",
         "properties": {
-          "name": { "type": "string" },
-          "secret": { "type": "string", "writeOnly": true, "description": "Secreto en claro: se cifra en reposo y jamás se devuelve." },
-          "description": { "type": "string" }
+          "name": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Secreto en claro: se cifra en reposo y jamás se devuelve."
+          },
+          "description": {
+            "type": "string"
+          }
         },
-        "required": ["name", "secret"]
+        "required": [
+          "name",
+          "secret"
+        ]
       },
       "PatchCredential": {
         "type": "object",
         "description": "Al menos un campo (`secret`, `name` o `description`).",
         "properties": {
-          "secret": { "type": "string", "writeOnly": true, "description": "Nuevo valor (rotación)." },
-          "name": { "type": "string" },
-          "description": { "type": "string" },
+          "secret": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Nuevo valor (rotación)."
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
           "minProperties": 1
         }
       },
@@ -632,88 +1466,234 @@
         "type": "object",
         "description": "Metadatos de una credencial: jamás incluye el secreto.",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string" },
-          "description": { "type": "string" },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         },
-        "required": ["id", "name", "description", "createdAt", "updatedAt"]
+        "required": [
+          "id",
+          "name",
+          "description",
+          "createdAt",
+          "updatedAt"
+        ]
       },
       "CreateBridge": {
         "type": "object",
         "description": "Borrador de puente: `trigger` + `blocks` + `inputSchema` opcional. La validación fuerte ocurre al publicar.",
         "properties": {
-          "slug": { "type": "string" },
-          "name": { "type": "string", "maxLength": 200 },
-          "description": { "type": "string", "maxLength": 2000 },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
           "trigger": {
             "type": "object",
             "description": "Disparo del puente; en MVP1 `http` con `method` opcional (default GET).",
             "properties": {
-              "type": { "type": "string", "enum": ["http"] },
-              "method": { "type": "string", "description": "Método HTTP aceptado (default GET)." }
+              "type": {
+                "type": "string",
+                "enum": [
+                  "http"
+                ]
+              },
+              "method": {
+                "type": "string",
+                "description": "Método HTTP aceptado (default GET)."
+              }
             }
           },
-          "inputSchema": { "$ref": "#/components/schemas/JsonSchema" },
+          "inputSchema": {
+            "$ref": "#/components/schemas/JsonSchema"
+          },
           "blocks": {
             "type": "array",
             "description": "Instancias de bloques encadenados.",
-            "items": { "type": "object", "additionalProperties": true }
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
           }
         },
-        "required": ["slug", "name", "description", "trigger", "blocks"]
+        "required": [
+          "slug",
+          "name",
+          "description",
+          "trigger",
+          "blocks"
+        ]
       },
       "Bridge": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "slug": { "type": "string" },
-          "name": { "type": "string" },
-          "description": { "type": "string" },
-          "latestVersion": { "type": ["integer", "null"], "description": "Versión publicada invocable (null = sin publicar)." },
-          "draft": { "type": ["object", "null"], "additionalProperties": true, "description": "Borrador actual (trigger + blocks + inputSchema)." },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "latestVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Versión publicada invocable (null = sin publicar)."
+          },
+          "draft": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true,
+            "description": "Borrador actual (trigger + blocks + inputSchema)."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         },
-        "required": ["id", "slug", "name", "description", "createdAt", "updatedAt"]
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "description",
+          "createdAt",
+          "updatedAt"
+        ]
       },
       "BridgeVersion": {
         "type": "object",
         "description": "Versión publicada inmutable; el snapshot completo vive en `definition`.",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "bridgeId": { "type": "string", "format": "uuid" },
-          "version": { "type": "integer" },
-          "createdAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "bridgeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         },
-        "required": ["id", "bridgeId", "version"]
+        "required": [
+          "id",
+          "bridgeId",
+          "version"
+        ]
       },
       "Execution": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "bridgeId": { "type": "string", "format": "uuid" },
-          "bridgeVersionId": { "type": "string", "format": "uuid" },
-          "triggerType": { "type": "string" },
-          "status": { "type": "string", "description": "`pending`, `success`, `failed`, …" },
-          "error": { "type": ["object", "null"], "$ref": "#/components/schemas/InvokeError" },
-          "startedAt": { "type": ["string", "null"], "format": "date-time" },
-          "finishedAt": { "type": ["string", "null"], "format": "date-time" },
-          "createdAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "bridgeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "bridgeVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "triggerType": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "`pending`, `success`, `failed`, …"
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "$ref": "#/components/schemas/InvokeError"
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         },
-        "required": ["id", "bridgeId", "bridgeVersionId", "triggerType", "status", "createdAt"]
+        "required": [
+          "id",
+          "bridgeId",
+          "bridgeVersionId",
+          "triggerType",
+          "status",
+          "createdAt"
+        ]
       },
       "ExecutionDetail": {
         "type": "object",
         "description": "Detalle completo: añade `triggerData` y `definition` (snapshot exacto con el que corrió).",
         "allOf": [
-          { "$ref": "#/components/schemas/Execution" },
+          {
+            "$ref": "#/components/schemas/Execution"
+          },
           {
             "type": "object",
             "properties": {
-              "triggerData": { "type": "object", "additionalProperties": true },
-              "definition": { "type": "object", "additionalProperties": true }
+              "triggerData": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "definition": {
+                "type": "object",
+                "additionalProperties": true
+              }
             }
           }
         ]
@@ -722,12 +1702,31 @@
         "type": "object",
         "description": "Error estructurado de una ejecución.",
         "properties": {
-          "code": { "type": "string", "enum": ["VALIDATION_FAILED", "BLOCK_FAILED", "TIMEOUT", "REF_UNRESOLVED"] },
-          "message": { "type": "string" },
-          "block": { "type": "string", "description": "Instancia de bloque donde ocurrió, si aplica." },
-          "details": { "type": "object", "additionalProperties": true }
+          "code": {
+            "type": "string",
+            "enum": [
+              "VALIDATION_FAILED",
+              "BLOCK_FAILED",
+              "TIMEOUT",
+              "REF_UNRESOLVED"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "block": {
+            "type": "string",
+            "description": "Instancia de bloque donde ocurrió, si aplica."
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          }
         },
-        "required": ["code", "message"]
+        "required": [
+          "code",
+          "message"
+        ]
       },
       "InvokeEnvelope": {
         "type": "object",
@@ -736,62 +1735,150 @@
           {
             "type": "object",
             "properties": {
-              "success": { "const": true },
-              "data": { "description": "Salida del último bloque (o null)." },
-              "executionId": { "type": "string", "format": "uuid" }
+              "success": {
+                "const": true
+              },
+              "data": {
+                "description": "Salida del último bloque (o null)."
+              },
+              "executionId": {
+                "type": "string",
+                "format": "uuid"
+              }
             },
-            "required": ["success", "data", "executionId"]
+            "required": [
+              "success",
+              "data",
+              "executionId"
+            ]
           },
           {
             "type": "object",
             "properties": {
-              "success": { "const": false },
-              "error": { "$ref": "#/components/schemas/InvokeError" },
-              "executionId": { "type": "string", "format": "uuid" }
+              "success": {
+                "const": false
+              },
+              "error": {
+                "$ref": "#/components/schemas/InvokeError"
+              },
+              "executionId": {
+                "type": "string",
+                "format": "uuid"
+              }
             },
-            "required": ["success", "error", "executionId"]
+            "required": [
+              "success",
+              "error",
+              "executionId"
+            ]
           }
         ]
       },
       "PaginaBlock": {
         "type": "object",
         "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Block" } },
-          "nextCursor": { "type": ["string", "null"], "description": "Cursor opaco para la siguiente página (null en la última)." }
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Block"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cursor opaco para la siguiente página (null en la última)."
+          }
         },
-        "required": ["items", "nextCursor"]
+        "required": [
+          "items",
+          "nextCursor"
+        ]
       },
       "PaginaBlockVersion": {
         "type": "object",
         "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/BlockVersion" } },
-          "nextCursor": { "type": ["string", "null"] }
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlockVersion"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         },
-        "required": ["items", "nextCursor"]
+        "required": [
+          "items",
+          "nextCursor"
+        ]
       },
       "PaginaBridge": {
         "type": "object",
         "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Bridge" } },
-          "nextCursor": { "type": ["string", "null"] }
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Bridge"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         },
-        "required": ["items", "nextCursor"]
+        "required": [
+          "items",
+          "nextCursor"
+        ]
       },
       "PaginaBridgeVersion": {
         "type": "object",
         "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/BridgeVersion" } },
-          "nextCursor": { "type": ["string", "null"] }
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BridgeVersion"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         },
-        "required": ["items", "nextCursor"]
+        "required": [
+          "items",
+          "nextCursor"
+        ]
       },
       "PaginaExecution": {
         "type": "object",
         "properties": {
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Execution" } },
-          "nextCursor": { "type": ["string", "null"] }
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Execution"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         },
-        "required": ["items", "nextCursor"]
+        "required": [
+          "items",
+          "nextCursor"
+        ]
       }
     }
   }
