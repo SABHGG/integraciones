@@ -1,5 +1,8 @@
-//! Dominio de la plataforma: tipos del modelo (bloques, puentes, ejecuciones),
-//! resolución de referencias `$.` y validador del subconjunto JSON Schema.
+//! Dominio de la plataforma: tipos del modelo (definición de puente,
+//! ejecuciones), resolución de referencias `$.` y validador del subconjunto
+//! JSON Schema.
 
-/// Placeholder: se implementa en la tarea 3.1 (resolución de referencias).
-pub fn placeholder() {}
+pub mod definition;
+pub mod execution;
+pub mod refs;
+pub mod schema;
