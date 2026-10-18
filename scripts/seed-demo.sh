@@ -64,6 +64,14 @@ post() { $CURL -s -X POST "$BASE_URL$1" -H "$AUTH" -H "$CT" -d "$2"; }
 patch_() { $CURL -s -X PATCH "$BASE_URL$1" -H "$AUTH" -H "$CT" -d "$2"; }
 jget() { python3 -c "import json,sys; d=json.load(sys.stdin); print(d$1)"; }
 
+# ── bóveda ──────────────────────────────────────────────────────────────
+HAS_CRED=$($PSQL "$DATABASE_URL" -tAc "
+    SELECT 1 FROM credentials WHERE workspace_id = '$WORKSPACE_ID' AND name = 'pago-api'" | tr -d '[:space:]')
+if [ -z "$HAS_CRED" ]; then
+    post "/api/v1/credentials" '{"name": "pago-api", "secret": "sk_demo_secreto", "description": "key del proveedor (demo)"}' >/dev/null
+    echo ">> credencial pago-api sembrada"
+fi
+
 # ¿Ya está sembrado? (puente publicado ⇒ nada por hacer)
 BRIDGE_ID=$($PSQL "$DATABASE_URL" -tAc "
     SELECT id FROM bridges WHERE workspace_id = '$WORKSPACE_ID' AND slug = 'registro-cliente'" | tr -d '[:space:]')
@@ -72,14 +80,6 @@ if [ -n "$BRIDGE_ID" ] && [ -n "$($PSQL "$DATABASE_URL" -tAc "
     echo ">> el puente demo ya está publicado (id $BRIDGE_ID): nada por hacer."
     echo ">> key: $DEMO_KEY"
     exit 0
-fi
-
-# ── bóveda ──────────────────────────────────────────────────────────────
-HAS_CRED=$($PSQL "$DATABASE_URL" -tAc "
-    SELECT 1 FROM credentials WHERE workspace_id = '$WORKSPACE_ID' AND name = 'pago-api'" | tr -d '[:space:]')
-if [ -z "$HAS_CRED" ]; then
-    post "/api/v1/credentials" '{"name": "pago-api", "secret": "sk_demo_secreto", "description": "key del proveedor (demo)"}' >/dev/null
-    echo ">> credencial pago-api sembrada"
 fi
 
 # ── biblioteca: tres bloques con su versión publicada ──────────────────
