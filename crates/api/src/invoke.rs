@@ -194,7 +194,48 @@ async fn invoke_slug(
     .await
     .map_err(|error| problem::internal(format!("marcar la ejecución running: {error}")))?;
 
-    // 8. La corrida: el futuro del ejecutor no es Send (rquickjs full-async),
+    // 8. Validación de entrada (task 4.5): si el puente declara inputSchema,
+    // el body debe cumplirlo ANTES de gastar isolate. Inválido → la ejecución
+    // cierra `failed` con VALIDATION_FAILED, sin pasos y sin correr la cadena.
+    if let Some(schema) = &definition.input_schema {
+        match domain::schema::validate(schema, &body_value) {
+            Ok(()) => {}
+            Err(domain::schema::SchemaError::Invalid { errors }) => {
+                let detalles: Vec<Value> = errors
+                    .iter()
+                    .map(|error| json!({ "path": error.path, "message": error.message }))
+                    .collect();
+                let message = errors
+                    .iter()
+                    .map(|error| format!("{}: {}", error.path, error.message))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                let error = ErrorPayload::new(
+                    domain::execution::ErrorCode::ValidationFailed,
+                    format!("la entrada del trigger no cumple el inputSchema: {message}"),
+                )
+                .with_details(json!(detalles));
+                finish_failed(&state.pool, execution_id, &error)
+                    .await
+                    .map_err(|e| problem::internal(format!("persistir la validación: {e}")))?;
+                return Ok(envelope_response(json!({
+                    "success": false,
+                    "error": error,
+                    "executionId": execution_id,
+                })));
+            }
+            // Un inputSchema con keywords no soportadas no debería haber
+            // pasado la publicación; si llega aquí (snapshot manipulado),
+            // falla cerrado sin correr nada.
+            Err(domain::schema::SchemaError::Unsupported { path, reason }) => {
+                return Err(problem::internal(format!(
+                    "el inputSchema publicado no está soportado en {path}: {reason}"
+                )));
+            }
+        }
+    }
+
+    // 9. La corrida: el futuro del ejecutor no es Send (rquickjs full-async),
     // así que corre en un hilo blocking con runtime current-thread + LocalSet.
     let outcome = tokio::task::spawn_blocking(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -210,13 +251,13 @@ async fn invoke_slug(
     .await
     .expect("hilo blocking de la ejecución");
 
-    // 9. Persistencia: pasos con IO completo + cierre en UNA transacción (spec
+    // 10. Persistencia: pasos con IO completo + cierre en UNA transacción (spec
     // `execution-store`: los pasos se persisten con la avanzación de estado).
     persist_outcome(&state.pool, execution_id, &outcome)
         .await
         .map_err(|error| problem::internal(format!("persistir el resultado: {error}")))?;
 
-    // 10. Sobre único 200 con códigos de error estables.
+    // 11. Sobre único 200 con códigos de error estables.
     if outcome.is_success() {
         Ok(envelope_response(json!({
             "success": true,
@@ -335,6 +376,26 @@ fn envelope_response(envelope: Value) -> Response {
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(envelope.to_string()))
         .expect("sobre: builder con status válido no puede fallar")
+}
+
+/// Cierra la ejecución como `failed` con error estructurado y sin pasos
+/// (validación de entrada rechazada antes de invocar el sandbox).
+async fn finish_failed(
+    pool: &sqlx::PgPool,
+    execution_id: Uuid,
+    error: &ErrorPayload,
+) -> Result<(), sqlx::Error> {
+    let error = serde_json::to_value(error).map_err(|error| {
+        sqlx::Error::Configuration(error.into())
+    })?;
+    sqlx::query(
+        "UPDATE executions SET status = 'failed', error = $2, finished_at = now() WHERE id = $1",
+    )
+    .bind(execution_id)
+    .bind(error)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 /// Persiste la corrida: pasos con IO completo + cierre del estado en UNA

@@ -222,9 +222,21 @@ impl Harness {
     /// Siembra un puente publicado (v1) con el trigger y la cadena dados: la
     /// definición snapshot ya lleva el JS de cada instancia embebido.
     async fn bridge(&self, slug: &str, method: &str, blocks: Value) -> Uuid {
+        self.bridge_con_schema(slug, method, None, blocks).await
+    }
+
+    /// Igual que [`Self::bridge`] pero con `inputSchema` opcional (task 4.5).
+    async fn bridge_con_schema(
+        &self,
+        slug: &str,
+        method: &str,
+        input_schema: Option<Value>,
+        blocks: Value,
+    ) -> Uuid {
         let bridge_id = Uuid::now_v7();
         let definition = json!({
             "trigger": { "type": "http", "method": method, "path": format!("/{slug}") },
+            "inputSchema": input_schema,
             "blocks": blocks,
         });
 
@@ -563,4 +575,89 @@ async fn idempotency_key_repetida_devuelve_la_ejecucion_previa() {
     assert_eq!(sobre_r["executionId"], sobre_f["executionId"]);
     assert_eq!(sobre_r["error"]["code"], "BLOCK_FAILED");
     assert_eq!(h.execution_count().await, 3, "una ejecución nueva, no dos");
+}
+
+#[tokio::test]
+async fn inputschema_invalido_da_validacion_failed_sin_gastar_isolate() {
+    let Some(h) = begin().await else { return };
+
+    let js_marca = "export default function(input, ctx) {\n    return { visto: true };\n}";
+    h.bridge_con_schema(
+        "validado",
+        "POST",
+        Some(json!({
+            "type": "object",
+            "required": ["total"],
+            "properties": { "total": { "type": "integer" } }
+        })),
+        json!([{
+            "id": "b1",
+            "name": "marca",
+            "code": js_marca,
+            "input": {},
+            "config": {}
+        }]),
+    )
+    .await;
+
+    // Body que viola el inputSchema → 200 con VALIDATION_FAILED (sobre, no
+    // error de transporte) y SIN ejecutar la cadena.
+    let respuesta = h
+        .x(
+            Method::POST,
+            "validado",
+            Some(("application/json", json!({ "otro": 1 }))),
+            None,
+        )
+        .await;
+    assert_eq!(respuesta.status, StatusCode::OK, "{}", respuesta.body);
+    let sobre = respuesta.json();
+    assert_eq!(sobre["success"], false, "{}", sobre);
+    assert_eq!(sobre["error"]["code"], "VALIDATION_FAILED", "código estable");
+    let mensaje = sobre["error"]["message"].as_str().expect("mensaje");
+    assert!(mensaje.contains("total"), "mensaje quirúrgico: {mensaje}");
+    assert!(sobre["data"].is_null());
+    let execution_id = sobre["executionId"].as_str().expect("executionId").to_string();
+
+    // La ejecución queda failed con el error estructurado y SIN pasos: no se
+    // gastó isolate (la cadena ni arrancó).
+    let detalle = h
+        .admin_get(&format!("/api/v1/executions/{execution_id}"))
+        .await
+        .json();
+    assert_eq!(detalle["status"], "failed");
+    assert_eq!(detalle["error"]["code"], "VALIDATION_FAILED");
+    assert!(detalle["finishedAt"].is_string());
+    let trace = h
+        .admin_get(&format!("/api/v1/executions/{execution_id}/trace"))
+        .await
+        .json();
+    assert_eq!(trace["steps"], json!([]), "sin pasos: {trace}");
+
+    // Body con tipo equivocado → mismo contrato.
+    let respuesta = h
+        .x(
+            Method::POST,
+            "validado",
+            Some(("application/json", json!({ "total": "no-soy-entero" }))),
+            None,
+        )
+        .await;
+    let sobre = respuesta.json();
+    assert_eq!(sobre["success"], false);
+    assert_eq!(sobre["error"]["code"], "VALIDATION_FAILED");
+
+    // Body conforme → ejecuta la cadena normal.
+    let respuesta = h
+        .x(
+            Method::POST,
+            "validado",
+            Some(("application/json", json!({ "total": 2 }))),
+            None,
+        )
+        .await;
+    assert_eq!(respuesta.status, StatusCode::OK, "{}", respuesta.body);
+    let sobre = respuesta.json();
+    assert_eq!(sobre["success"], true, "{}", sobre);
+    assert_eq!(sobre["data"], json!({ "visto": true }));
 }
