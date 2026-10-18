@@ -1,0 +1,17 @@
+-- Borrador editable del puente (spec.md `bridge-management`, tarea 4.2).
+--
+-- `bridges` no tenía dónde guardar el borrador y el spec exige CRUD de borrador,
+-- así que se añade una columna JSONB (una migración nueva en lugar de tocar
+-- 0001: el esquema inicial ya está aplicado en las bases existentes).
+--
+-- Forma del borrador: la misma que `bridge_versions.definition`
+-- ({trigger, inputSchema, blocks}) PERO con las instancias **sin resolver**:
+--   * sin `code` copiado (el JS vive en la `block_versions` referenciada),
+--   * sin `inputSchema`/`outputSchema` copiados (son los de la `block_versions`).
+-- Cada instancia declara `blockId` + `blockVersionId`; la publicación resuelve
+-- esos dos ids contra `block_versions` y escribe el snapshot completo en
+-- `bridge_versions.definition` (design.md: "documento JSONB por versión").
+--
+-- `NULL` = puente creado sin borrador (solo posible por datos históricos: la API
+-- siempre escribe un documento, aunque sea `{blocks: []}`).
+ALTER TABLE bridges ADD COLUMN draft jsonb;

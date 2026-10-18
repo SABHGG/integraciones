@@ -7,8 +7,10 @@
 
 pub mod auth;
 pub mod blocks;
+pub mod bridges;
 pub mod cursor;
 pub mod problem;
+pub mod rest;
 pub mod state;
 pub mod transpile;
 pub mod ui;
@@ -43,6 +45,7 @@ pub fn app(state: AppState) -> Router {
         .route("/whoami", get(whoami))
         .route("/healthz", get(|| async { "ok" }))
         .merge(blocks::router())
+        .merge(bridges::router())
         // Cualquier ruta /api/v1 desconocida responde Problem Details: el
         // cliente del plano admin solo habla application/problem+json.
         .fallback(|| async { problem::not_found("la ruta no existe en la API") })

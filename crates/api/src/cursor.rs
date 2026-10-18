@@ -4,8 +4,9 @@
 //! El cursor es base64url (sin relleno) de las partes separadas por `|`, de modo
 //! que el cliente no puede interpretarlo ni construirlo a mano, pero el servidor
 //! lo decodifica sin estado. Cada listado decide sus partes:
-//! - bloques: `created_at (RFC 3339) | id`, keyset sobre `(created_at, id)`.
-//! - versiones de bloque: `version`, keyset sobre `version`.
+//! - bloques y puentes: `created_at (RFC 3339) | id`, keyset sobre
+//!   `(created_at, id)`.
+//! - versiones de bloque y de puente: `version`, keyset sobre `version`.
 //!
 //! Un cursor corrupto o con partes de más/menos es un 400 del handler.
 
@@ -61,13 +62,13 @@ pub fn decode(raw: &str, expected: usize) -> Result<Vec<String>, CursorError> {
     Ok(parts)
 }
 
-/// Cursor del listado de bloques: `created_at | id`.
-pub fn encode_block_cursor(created_at: DateTime<Utc>, id: Uuid) -> String {
+/// Cursor de un listado keyset por `created_at | id` (bloques y puentes).
+fn encode_row_cursor(created_at: DateTime<Utc>, id: Uuid) -> String {
     encode(&[&created_at.to_rfc3339(), &id.to_string()])
 }
 
-/// Decodifica el cursor del listado de bloques.
-pub fn decode_block_cursor(raw: &str) -> Result<(DateTime<Utc>, Uuid), CursorError> {
+/// Decodifica un cursor keyset por `created_at | id`.
+fn decode_row_cursor(raw: &str) -> Result<(DateTime<Utc>, Uuid), CursorError> {
     let parts = decode(raw, 2)?;
     let created_at = DateTime::parse_from_rfc3339(&parts[0])
         .map_err(|e| CursorError::InvalidPart {
@@ -80,6 +81,26 @@ pub fn decode_block_cursor(raw: &str) -> Result<(DateTime<Utc>, Uuid), CursorErr
         reason: e.to_string(),
     })?;
     Ok((created_at, id))
+}
+
+/// Cursor del listado de bloques: `created_at | id`.
+pub fn encode_block_cursor(created_at: DateTime<Utc>, id: Uuid) -> String {
+    encode_row_cursor(created_at, id)
+}
+
+/// Decodifica el cursor del listado de bloques.
+pub fn decode_block_cursor(raw: &str) -> Result<(DateTime<Utc>, Uuid), CursorError> {
+    decode_row_cursor(raw)
+}
+
+/// Cursor del listado de puentes: `created_at | id`.
+pub fn encode_bridge_cursor(created_at: DateTime<Utc>, id: Uuid) -> String {
+    encode_row_cursor(created_at, id)
+}
+
+/// Decodifica el cursor del listado de puentes.
+pub fn decode_bridge_cursor(raw: &str) -> Result<(DateTime<Utc>, Uuid), CursorError> {
+    decode_row_cursor(raw)
 }
 
 /// Cursor del listado de versiones: `version` (UNIQUE (block_id, version) hace

@@ -239,21 +239,31 @@ pub fn resolve_input(context: &Value, spec: &Value) -> Result<Value, RefError> {
     }
 }
 
-/// Interpola todos los `{$.ref}` de un string de config.
+/// Un tramo de un string de config: texto literal o una referencia `{$.…}`.
+enum TemplatePart<'a> {
+    /// Texto que se copia tal cual.
+    Literal(&'a str),
+    /// Texto de una referencia, sin las llaves.
+    Ref(&'a str),
+}
+
+/// Divide un string de config en tramos literales y referencias.
 ///
-/// Las llaves cuyo contenido no empieza por `$.` se dejan intactas (permite JSON
-/// literal en la config). Los valores no-string se serializan como JSON compacto.
-pub fn interpolate(context: &Value, template: &str) -> Result<String, RefError> {
-    let mut out = String::with_capacity(template.len());
+/// Las llaves cuyo contenido no empieza por `$.` no son interpolaciones y se
+/// conservan como literal. Una interpolación sin cerrar es un error de sintaxis.
+fn scan_template(template: &str) -> Result<Vec<TemplatePart<'_>>, RefError> {
+    let mut parts = Vec::new();
     let mut rest = template;
 
     while let Some(open) = rest.find('{') {
-        out.push_str(&rest[..open]);
+        if open > 0 {
+            parts.push(TemplatePart::Literal(&rest[..open]));
+        }
         let after_open = &rest[open + 1..];
 
         // Llave literal (JSON, por ejemplo): no es una interpolación.
         if !after_open.starts_with(ROOT) {
-            out.push('{');
+            parts.push(TemplatePart::Literal("{"));
             rest = after_open;
             continue;
         }
@@ -265,14 +275,47 @@ pub fn interpolate(context: &Value, template: &str) -> Result<String, RefError> 
             });
         };
 
-        let raw_ref = &after_open[..close];
-        let value = resolve_ref(context, raw_ref)?;
-        out.push_str(&interpolated_text(value));
+        parts.push(TemplatePart::Ref(&after_open[..close]));
         rest = &after_open[close + 1..];
     }
 
-    out.push_str(rest);
+    if !rest.is_empty() {
+        parts.push(TemplatePart::Literal(rest));
+    }
+    Ok(parts)
+}
+
+/// Interpola todos los `{$.ref}` de un string de config.
+///
+/// Las llaves cuyo contenido no empieza por `$.` se dejan intactas (permite JSON
+/// literal en la config). Los valores no-string se serializan como JSON compacto.
+pub fn interpolate(context: &Value, template: &str) -> Result<String, RefError> {
+    let mut out = String::with_capacity(template.len());
+    for part in scan_template(template)? {
+        match part {
+            TemplatePart::Literal(text) => out.push_str(text),
+            TemplatePart::Ref(raw) => {
+                out.push_str(&interpolated_text(resolve_ref(context, raw)?));
+            }
+        }
+    }
     Ok(out)
+}
+
+/// Extrae las referencias `{$.…}` de un string de config **sin resolverlas**.
+///
+/// Es la mitad estática de [`interpolate`]: sirve para validar en tiempo de
+/// diseño las refs de una config (publicación de puentes) sin contexto de
+/// ejecución. Las llaves que no son refs se ignoran y una interpolación sin
+/// cerrar sigue siendo un [`RefError::Syntax`].
+pub fn template_refs(template: &str) -> Result<Vec<&str>, RefError> {
+    Ok(scan_template(template)?
+        .into_iter()
+        .filter_map(|part| match part {
+            TemplatePart::Ref(raw) => Some(raw),
+            TemplatePart::Literal(_) => None,
+        })
+        .collect())
 }
 
 /// Resuelve una config de instancia de forma recursiva: interpola los strings
@@ -570,6 +613,40 @@ mod tests {
             interpolate(&ctx, "ok={$.bloque.ok} n={$.bloque.n} z={$.bloque.nulo}").unwrap(),
             "ok=true n=3 z=null"
         );
+    }
+
+    #[test]
+    fn template_refs_extrae_las_refs_sin_resolverlas() {
+        assert_eq!(
+            template_refs("https://api.x.com/users/{$.trigger.body.userId}").unwrap(),
+            vec!["$.trigger.body.userId"]
+        );
+        assert_eq!(
+            template_refs("{$.a.id}:{$.b.0.x}").unwrap(),
+            vec!["$.a.id", "$.b.0.x"]
+        );
+        assert!(template_refs("sin refs").unwrap().is_empty());
+        assert!(template_refs("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn template_refs_ignora_las_llaves_que_no_son_refs() {
+        assert_eq!(
+            template_refs("{\"id\":\"{$.fetchUser.id}\"}").unwrap(),
+            vec!["$.fetchUser.id"]
+        );
+        assert!(template_refs("{no-es-ref}").unwrap().is_empty());
+        assert!(template_refs("{}").unwrap().is_empty());
+    }
+
+    #[test]
+    fn template_refs_reporta_una_interpolacion_sin_cerrar() {
+        let err = template_refs("https://x/{$.now").expect_err("sin cerrar");
+        let RefError::Syntax { raw, reason } = err else {
+            panic!("se esperaba Syntax");
+        };
+        assert_eq!(raw, "https://x/{$.now");
+        assert!(reason.contains('}'), "motivo: {reason}");
     }
 
     #[test]

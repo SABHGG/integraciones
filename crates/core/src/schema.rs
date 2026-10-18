@@ -11,6 +11,8 @@
 
 use serde_json::Value;
 
+use crate::refs::Segment;
+
 /// Una violación concreta de una instancia contra su schema.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationError {
@@ -77,6 +79,124 @@ pub fn validate(schema: &Value, instance: &Value) -> Result<(), SchemaError> {
     } else {
         Err(SchemaError::Invalid { errors })
     }
+}
+
+/// Resultado de verificar estáticamente una ruta contra un schema.
+///
+/// Es la base de la validación de referencias al publicar un puente: una ruta
+/// **verificable e inexistente** bloquea la publicación, mientras que un schema
+/// suelto (sin forma declarada) se acepta sin ruido (design.md).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PathResolution<'a> {
+    /// La ruta existe y este es el schema del nodo destino.
+    Found(&'a Value),
+    /// El schema no declara una forma para esa ruta: no se puede verificar.
+    Unknown,
+    /// El schema declara una forma en la que la ruta no puede existir.
+    Missing(String),
+}
+
+/// Recorre `segments` dentro de `schema` sin instancia.
+///
+/// Reglas del subconjunto estricto (deterministas y documentadas):
+/// - un schema con `properties` declara su superficie de claves: una clave (o un
+///   índice sobre un objeto) ausente es [`PathResolution::Missing`];
+/// - un schema con `items` solo admite índices numéricos: una clave de texto es
+///   `Missing`;
+/// - un schema escalar (`type` sin object/array) no admite segmentos;
+/// - el resto (schema vacío, `type: object` sin `properties`, `type: array` sin
+///   `items`, solo anotaciones) es `Unknown`: free-form, se permite;
+/// - un schema que no es objeto JSON tampoco es verificable: `Unknown`.
+pub fn resolve_path<'a>(schema: &'a Value, segments: &[Segment]) -> PathResolution<'a> {
+    let mut current = schema;
+    for (index, segment) in segments.iter().enumerate() {
+        let Value::Object(map) = current else {
+            return PathResolution::Unknown;
+        };
+        let walked = walk_text(&segments[..=index]);
+
+        if let Some(Value::Object(properties)) = map.get("properties") {
+            let key = match segment {
+                Segment::Key(key) => key.clone(),
+                Segment::Index(number) => number.to_string(),
+            };
+            match properties.get(&key) {
+                Some(sub) => {
+                    current = sub;
+                    continue;
+                }
+                None => {
+                    return PathResolution::Missing(format!(
+                        "{walked} no existe: el schema no declara la propiedad \"{key}\" \
+                         (declaradas: {})",
+                        list_property_names(properties)
+                    ));
+                }
+            }
+        }
+
+        if let Some(items) = map.get("items") {
+            match segment {
+                Segment::Index(_) => {
+                    current = items;
+                    continue;
+                }
+                Segment::Key(key) => {
+                    return PathResolution::Missing(format!(
+                        "{walked} no existe: el schema declara un array y \"{key}\" no es un \
+                         índice numérico"
+                    ));
+                }
+            }
+        }
+
+        if let Some(kind) = scalar_type(map) {
+            return PathResolution::Missing(format!(
+                "{walked} no existe: el schema declara un valor {kind} y no tiene propiedades"
+            ));
+        }
+
+        return PathResolution::Unknown;
+    }
+
+    PathResolution::Found(current)
+}
+
+/// Texto de una ruta de segmentos (`$.a.b.0`) para los mensajes de error.
+fn walk_text(segments: &[Segment]) -> String {
+    let mut text = String::from("$");
+    for segment in segments {
+        text.push('.');
+        match segment {
+            Segment::Key(key) => text.push_str(key),
+            Segment::Index(index) => text.push_str(&index.to_string()),
+        }
+    }
+    text
+}
+
+/// Claves declaradas en un `properties`, ordenadas, para el mensaje de error.
+fn list_property_names(properties: &serde_json::Map<String, Value>) -> String {
+    if properties.is_empty() {
+        return "ninguna".to_string();
+    }
+    let mut names: Vec<&str> = properties.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    names.join(", ")
+}
+
+/// Si el schema declara `type` y todos sus nombres son escalares, devuelve su
+/// descripción legible. `None` si no declara `type` o admite object/array.
+fn scalar_type(map: &serde_json::Map<String, Value>) -> Option<String> {
+    let names: Vec<&str> = match map.get("type")? {
+        Value::String(name) => vec![name.as_str()],
+        Value::Array(items) => items.iter().filter_map(Value::as_str).collect(),
+        other => return Some(other.to_string()),
+    };
+    if names.is_empty() || names.iter().any(|name| matches!(*name, "object" | "array")) {
+        return None;
+    }
+    Some(names.join(" | "))
 }
 
 /// Verifica que un documento JSON Schema pertenece al subconjunto estricto.
@@ -778,5 +898,106 @@ mod tests {
         let text = err.to_string();
         assert!(text.contains("id"), "{text}");
         assert!(text.contains('$'), "{text}");
+    }
+
+    // ── verificación estática de rutas (publicación de puentes) ────────
+
+    fn segments(path: &str) -> Vec<crate::refs::Segment> {
+        crate::refs::RefPath::parse(path)
+            .expect("ruta válida")
+            .segments()
+            .to_vec()
+    }
+
+    fn found<'a>(schema: &'a Value, path: &str) -> &'a Value {
+        match resolve_path(schema, &segments(path)) {
+            PathResolution::Found(sub) => sub,
+            other => panic!("{path}: se esperaba Found, llegó {other:?}"),
+        }
+    }
+
+    fn assert_missing(schema: &Value, path: &str, needle: &str) {
+        match resolve_path(schema, &segments(path)) {
+            PathResolution::Missing(reason) => {
+                assert!(reason.contains(needle), "{path}: motivo {reason}");
+            }
+            other => panic!("{path}: se esperaba Missing, llegó {other:?}"),
+        }
+    }
+
+    fn assert_unknown(schema: &Value, path: &str) {
+        match resolve_path(schema, &segments(path)) {
+            PathResolution::Unknown => {}
+            other => panic!("{path}: se esperaba Unknown, llegó {other:?}"),
+        }
+    }
+
+    #[test]
+    fn un_schema_suelto_no_permite_verificar_ninguna_ruta() {
+        for schema in [json!({}), json!({ "type": "object" }), json!({ "title": "x" })] {
+            assert_unknown(&schema, "$.a");
+            assert_unknown(&schema, "$.a.b.0");
+        }
+    }
+
+    #[test]
+    fn recorre_properties_e_items_hasta_la_ruta_pedida() {
+        let schema = json!({ "type": "object", "properties": {
+            "cliente": { "type": "object", "properties": {
+                "email": { "type": "string" },
+                "pedidos": { "type": "array", "items": { "type": "object", "properties": {
+                    "total": { "type": "number" }
+                } } }
+            } }
+        } });
+        assert_eq!(found(&schema, "$.cliente.email"), &json!({ "type": "string" }));
+        assert_eq!(
+            found(&schema, "$.cliente.pedidos.0.total"),
+            &json!({ "type": "number" })
+        );
+        // Una ref a nodo completo devuelve el schema del nodo.
+        assert_eq!(
+            found(&schema, "$.cliente.pedidos"),
+            &json!({ "type": "array", "items": { "type": "object", "properties": {
+                "total": { "type": "number" }
+            } } })
+        );
+    }
+
+    #[test]
+    fn una_ruta_verificable_e_inexistente_es_missing() {
+        let schema = json!({ "type": "object", "properties": {
+            "cliente": { "type": "object", "properties": { "email": { "type": "string" } } },
+            "nombre": { "type": "string" },
+            "lista": { "type": "array", "items": { "type": "object", "properties": {
+                "total": { "type": "number" }
+            } } }
+        } });
+        // Propiedad no declarada de un objeto cuyas propiedades sí se declaran.
+        assert_missing(&schema, "$.cliente.telefono", "telefono");
+        // Descender dentro de un escalar declarado.
+        assert_missing(&schema, "$.nombre.length", "nombre");
+        // Clave sobre un array declarado.
+        assert_missing(&schema, "$.lista.total", "lista");
+        // Raíz no declarada.
+        assert_missing(&schema, "$.otro.campo", "otro");
+    }
+
+    #[test]
+    fn los_objetos_anidados_sin_properties_siguen_siendo_no_verificables() {
+        let schema = json!({ "type": "object", "properties": {
+            "libre": { "type": "object" },
+            "suelto": {}
+        } });
+        assert_unknown(&schema, "$.libre.lo.que.sea");
+        assert_unknown(&schema, "$.suelto.lo.que.sea");
+        // Pero la raíz del objeto sí está declarada.
+        assert_eq!(found(&schema, "$.libre"), &json!({ "type": "object" }));
+    }
+
+    #[test]
+    fn un_schema_que_no_es_objeto_no_permite_verificar() {
+        assert_unknown(&json!(true), "$.a");
+        assert_unknown(&json!("object"), "$.a");
     }
 }

@@ -30,8 +30,8 @@
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderValue, StatusCode, header};
-use axum::response::{IntoResponse, Response};
+use axum::http::StatusCode;
+use axum::response::Response;
 use axum::routing::get;
 use axum::{Extension, Router};
 use chrono::{DateTime, Utc};
@@ -42,6 +42,10 @@ use uuid::Uuid;
 use crate::auth::AuthedKey;
 use crate::cursor;
 use crate::problem::{self, Problem};
+use crate::rest::{
+    Page, PageQuery, check_slug, check_text, created, db_error, field_error, invalid_body,
+    is_unique_violation, next_cursor, page_limit, parse_body, parse_id,
+};
 use crate::state::AppState;
 use crate::transpile::{self, TranspileError};
 use crate::ui;
@@ -64,11 +68,6 @@ const BLOCK_COLUMNS: &str = "id, workspace_id, slug, name, block_type, category,
 /// Columnas de `block_versions` en el orden de [`BlockVersionDto`].
 const VERSION_COLUMNS: &str = "id, block_id, version, code, config_schema, input_schema, \
                                output_schema, ui, created_at";
-
-/// Página por defecto de los listados.
-const DEFAULT_LIMIT: i64 = 20;
-/// Tope duro de la página: el cliente puede pedir menos, nunca más.
-const MAX_LIMIT: i64 = 100;
 
 /// Bloque tal como lo expone la API.
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -101,22 +100,6 @@ struct BlockVersionDto {
     output_schema: Value,
     ui: Value,
     created_at: DateTime<Utc>,
-}
-
-/// Envelope común de listados paginados por cursor.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Page<T> {
-    items: Vec<T>,
-    next_cursor: Option<String>,
-}
-
-/// Query string de los listados. `limit` se recibe como texto para poder
-/// responder 400 Problem Details en lugar del 400 en texto plano de axum.
-#[derive(Debug, Deserialize)]
-struct PageQuery {
-    limit: Option<String>,
-    cursor: Option<String>,
 }
 
 // ── POST /blocks ───────────────────────────────────────────────────────
@@ -267,7 +250,7 @@ async fn get_block(
     Path(id): Path<String>,
 ) -> Result<Json<BlockDto>, Problem> {
     let workspace_id = key.workspace()?;
-    let id = parse_id(&id)?;
+    let id = parse_id(&id, "el bloque no existe en este workspace")?;
     let block = load_block(&state, workspace_id, id).await?;
     Ok(Json(block))
 }
@@ -279,7 +262,7 @@ async fn delete_block(
     Path(id): Path<String>,
 ) -> Result<StatusCode, Problem> {
     let workspace_id = key.workspace()?;
-    let id = parse_id(&id)?;
+    let id = parse_id(&id, "el bloque no existe en este workspace")?;
     // 404 si no existe o es de otro workspace (no se filtra su existencia).
     let block = load_block(&state, workspace_id, id).await?;
 
@@ -356,7 +339,7 @@ async fn publish_version(
     body: Bytes,
 ) -> Result<Response, Problem> {
     let workspace_id = key.workspace()?;
-    let id = parse_id(&id)?;
+    let id = parse_id(&id, "el bloque no existe en este workspace")?;
     let request: PublishVersionRequest = parse_body(&body)?;
 
     // Bloqueo de la fila del bloque: serializa publicaciones concurrentes del
@@ -496,7 +479,7 @@ async fn list_versions(
     Query(query): Query<PageQuery>,
 ) -> Result<Json<Page<BlockVersionDto>>, Problem> {
     let workspace_id = key.workspace()?;
-    let id = parse_id(&id)?;
+    let id = parse_id(&id, "el bloque no existe en este workspace")?;
     let limit = page_limit(query.limit.as_deref())?;
     let after_version = match query.cursor.as_deref() {
         Some(raw) => Some(
@@ -547,215 +530,18 @@ async fn load_block(state: &AppState, workspace_id: Uuid, id: Uuid) -> Result<Bl
 
 /// Deserializa el cuerpo crudo para responder 422 Problem Details (con el campo
 /// culpable cuando serde lo nombra) en lugar del 400 en texto plano de axum.
-fn parse_body<T: serde::de::DeserializeOwned>(body: &Bytes) -> Result<T, Problem> {
-    serde_json::from_slice(body).map_err(|error| {
-        invalid_body(
-            "el cuerpo de la petición no cumple el contrato",
-            vec![field_error(
-                &field_from_serde_error(&error),
-                error.to_string(),
-            )],
-        )
-    })
-}
-
-/// Nombre del campo culpable a partir del mensaje de `serde_json`.
-///
-/// `serde_json` no expone la ruta del error de forma estructurada; los tres
-/// mensajes que sí la nombran son `missing field`, `unknown field` y
-/// `duplicate field`. El resto (tipos, sintaxis) cae a `"body"`.
-fn field_from_serde_error(error: &serde_json::Error) -> String {
-    let message = error.to_string();
-    for marker in ["missing field `", "unknown field `", "duplicate field `"] {
-        if let Some(rest) = message.split(marker).nth(1)
-            && let Some(field) = rest.split('`').next()
-            && !field.is_empty()
-        {
-            return field.to_string();
-        }
-    }
-    "body".to_string()
-}
-
-/// Un 422 con la extensión `errors` (lista de `{field, message, …}`).
-fn invalid_body(detail: impl Into<String>, errors: Vec<Value>) -> Problem {
-    problem::unprocessable_entity(detail).with_extension("errors", Value::Array(errors))
-}
-
-/// Entrada de `errors` con el campo señalado.
-fn field_error(field: &str, message: impl Into<String>) -> Value {
-    json!({ "field": field, "message": message.into() })
-}
-
-/// Valida el `limit` de la query string: `1..=MAX_LIMIT`, default [`DEFAULT_LIMIT`].
-fn page_limit(raw: Option<&str>) -> Result<i64, Problem> {
-    let Some(raw) = raw else {
-        return Ok(DEFAULT_LIMIT);
-    };
-    let limit: i64 = raw.trim().parse().map_err(|_| {
-        problem::bad_request(format!(
-            "limit debe ser un entero entre 1 y {MAX_LIMIT} (se recibió \"{raw}\")"
-        ))
-    })?;
-    if !(1..=MAX_LIMIT).contains(&limit) {
-        return Err(problem::bad_request(format!(
-            "limit debe estar entre 1 y {MAX_LIMIT} (se recibió {limit})"
-        )));
-    }
-    Ok(limit)
-}
-
-/// Recorta la página a `limit` y calcula el cursor de la siguiente si sobró
-/// exactamente la fila de sondeo.
-fn next_cursor<T>(items: &mut Vec<T>, limit: i64, encode: impl Fn(&T) -> String) -> Option<String> {
-    if items.len() as i64 <= limit {
-        return None;
-    }
-    items.truncate(limit as usize);
-    items.last().map(encode)
-}
-
-/// Slugs: minúsculas alfanuméricas en grupos separados por un único `-`.
-fn check_slug(slug: &str) -> Result<(), String> {
-    if slug.is_empty() || slug.chars().count() > 64 {
-        return Err("el slug debe tener entre 1 y 64 caracteres".to_string());
-    }
-    let valid = !slug.starts_with('-')
-        && !slug.ends_with('-')
-        && !slug.contains("--")
-        && slug
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
-    if !valid {
-        return Err(format!(
-            "el slug \"{slug}\" no es válido: solo minúsculas, dígitos y guiones simples \
-             (p.ej. http-get)"
-        ));
-    }
-    Ok(())
-}
-
-/// Texto obligatorio: no vacío (ignorando espacios) y con tope de longitud.
-fn check_text(field: &str, value: &str, max: usize) -> Result<(), String> {
-    if value.trim().is_empty() {
-        return Err(format!("{field} no puede estar vacío"));
-    }
-    if value.chars().count() > max {
-        return Err(format!("{field} no puede superar los {max} caracteres"));
-    }
-    Ok(())
-}
-
-/// Interpreta el `{id}` de la ruta. Un id no-UUID es 404 (no existe tal recurso),
-/// no el 400 en texto plano que daría un extractor `Path<Uuid>`.
-fn parse_id(raw: &str) -> Result<Uuid, Problem> {
-    Uuid::parse_str(raw).map_err(|_| problem::not_found("el bloque no existe en este workspace"))
-}
-
-/// `true` si el error es una violación de unicidad de Postgres (SQLSTATE 23505).
-fn is_unique_violation(error: &sqlx::Error) -> bool {
-    error
-        .as_database_error()
-        .is_some_and(|db| db.is_unique_violation())
-}
-
-/// 500 Problem Details con el detalle técnico solo en los logs.
-fn db_error(context: &str, error: sqlx::Error) -> Problem {
-    tracing::error!(error = %error, contexto = context, "fallo de base de datos");
-    problem::internal(format!("fallo de base de datos al {context}"))
-}
-
-/// 201 con `Location` del recurso recién creado.
-fn created(location: &str, body: Json<impl Serialize>) -> Response {
-    let mut response = body.into_response();
-    *response.status_mut() = StatusCode::CREATED;
-    response.headers_mut().insert(
-        header::LOCATION,
-        HeaderValue::from_str(location).expect("la ruta del recurso es un header válido"),
-    );
-    response
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn los_slugs_validos_son_minusculas_con_guiones_simples() {
-        for slug in ["a", "http-get", "bloque-2", "x1-y2-z3"] {
-            assert!(check_slug(slug).is_ok(), "{slug} debería ser válido");
-        }
-        for slug in [
-            "",
-            "Con-Mayusculas",
-            "con espacio",
-            "guion-final-",
-            "-guion-inicial",
-            "doble--guion",
-            "acentué",
-            "emoji🙂",
-            "punto.y.coma",
-        ] {
-            assert!(check_slug(slug).is_err(), "{slug} debería rechazarse");
-        }
-        assert!(check_slug(&"a".repeat(64)).is_ok());
-        assert!(check_slug(&"a".repeat(65)).is_err());
-    }
-
-    #[test]
-    fn el_limit_por_defecto_y_los_fuera_de_rango() {
-        assert_eq!(page_limit(None).unwrap(), DEFAULT_LIMIT);
-        assert_eq!(page_limit(Some("1")).unwrap(), 1);
-        assert_eq!(page_limit(Some("100")).unwrap(), 100);
-        for raw in ["0", "101", "-1", "abc", ""] {
-            let problem = page_limit(Some(raw)).expect_err(raw);
-            assert_eq!(problem.status, StatusCode::BAD_REQUEST);
-        }
-    }
-
-    #[test]
-    fn el_campo_culpable_se_extrae_del_error_de_serde() {
-        #[derive(Debug, Deserialize)]
-        #[serde(rename_all = "camelCase", deny_unknown_fields)]
-        #[allow(dead_code)]
-        struct Demo {
-            slug: String,
-        }
-
-        let missing = serde_json::from_str::<Demo>("{}").expect_err("falta slug");
-        assert_eq!(field_from_serde_error(&missing), "slug");
-
-        let unknown = serde_json::from_str::<Demo>(r#"{"slug":"x","raro":1}"#)
-            .expect_err("campo desconocido");
-        assert_eq!(field_from_serde_error(&unknown), "raro");
-
-        let wrong_type = serde_json::from_str::<Demo>(r#"{"slug":42}"#).expect_err("tipo");
-        assert_eq!(field_from_serde_error(&wrong_type), "body");
-
-        let syntax = serde_json::from_str::<Demo>("{").expect_err("json roto");
-        assert_eq!(field_from_serde_error(&syntax), "body");
-    }
-
-    #[test]
-    fn el_cursor_de_la_pagina_solo_aparece_si_sobra_la_fila_de_sondeo() {
-        let mut justos = vec![3, 2];
-        assert_eq!(next_cursor(&mut justos, 2, |v| v.to_string()), None);
-        assert_eq!(justos, vec![3, 2]);
-
-        let mut sobran = vec![3, 2, 1];
-        assert_eq!(
-            next_cursor(&mut sobran, 2, |v| v.to_string()).as_deref(),
-            Some("2")
+    fn un_id_que_no_es_uuid_es_un_404_con_el_mensaje_del_recurso() {
+        let problem = parse_id("no-es-uuid", "el bloque no existe en este workspace")
+            .expect_err("id inválido");
+        assert_eq!(problem.status, StatusCode::NOT_FOUND);
+        assert!(
+            problem.detail.unwrap().contains("bloque"),
+            "el 404 nombra el recurso"
         );
-        assert_eq!(sobran, vec![3, 2], "la fila de sondeo se descarta");
-    }
-
-    #[test]
-    fn el_422_lleva_los_errores_por_campo() {
-        let problem = invalid_body("contrato", vec![field_error("slug", "inválido")]);
-        assert_eq!(problem.status, StatusCode::UNPROCESSABLE_ENTITY);
-        let body = problem.to_json(None);
-        assert_eq!(body["errors"][0]["field"], "slug");
-        assert_eq!(body["errors"][0]["message"], "inválido");
     }
 }
