@@ -10,7 +10,7 @@
 
 mod convert;
 mod host;
-mod http;
+pub mod http;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

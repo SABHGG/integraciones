@@ -6,18 +6,24 @@ use std::time::Duration;
 use rquickjs::{Object, Value};
 use serde_json::Value as Json;
 
-/// Petición HTTP normalizada desde el objeto JS `{url, method, headers, body}`.
+/// Petición HTTP normalizada (`{url, method, headers, body}`): la construye
+/// `ctx.http.request` desde el objeto JS y el host desde la config de un
+/// bloque built-in `http` (la firma Rust se comparte).
 #[derive(Debug, Clone)]
-pub(crate) struct HttpRequest {
+pub struct HttpRequest {
+    /// URL de la petición.
     pub url: String,
+    /// Método HTTP en mayúsculas (default `GET`).
     pub method: String,
+    /// Pares de header, envueltos como (nombre, valor).
     pub headers: Vec<(String, String)>,
+    /// Cuerpo: `None` = sin cuerpo (GET).
     pub body: Option<Json>,
 }
 
 /// Fallo de una petición HTTP originado en el host.
 #[derive(Debug)]
-pub(crate) enum HttpFailure {
+pub enum HttpFailure {
     /// El dominio no está en la allowlist configurada.
     Denied(String),
     /// La petición excedió su deadline propio.
@@ -28,7 +34,7 @@ pub(crate) enum HttpFailure {
 
 impl HttpFailure {
     /// Convierte el fallo en el mensaje marcado que se lanza a JS.
-    pub(crate) fn message(&self) -> String {
+    pub fn message(&self) -> String {
         match self {
             HttpFailure::Denied(domain) => format!("{}{domain}", super::MARKER_HTTP_DENIED),
             HttpFailure::Timeout(url) => format!(
@@ -97,7 +103,7 @@ pub(crate) fn domain_allowed(host: &str, allow: &[String]) -> bool {
 }
 
 /// Ejecuta la petición con deadline propio y devuelve el body como JSON o texto.
-pub(crate) async fn execute(
+pub async fn execute(
     client: &reqwest::Client,
     timeout: Duration,
     allow_domains: Option<&[String]>,

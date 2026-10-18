@@ -40,7 +40,9 @@ if ! ./pg18/bin/pg_ctl -D "$DATA" status >/dev/null 2>&1; then
     ./pg18/bin/pg_ctl -D "$DATA" -o "-p 5433 -k $BASE" -l "$BASE/pg.log" start
 fi
 
-./pg18/bin/createdb -h "$BASE" -p 5433 -U integraciones integraciones 2>/dev/null \
-    || echo ">> db 'integraciones' ya existe"
+for db in integraciones integraciones_engine; do
+    ./pg18/bin/createdb -h "$BASE" -p 5433 -U integraciones "$db" 2>/dev/null \
+        || echo ">> db '$db' ya existe"
+done
 
 echo ">> listo. DATABASE_URL=postgres://integraciones@127.0.0.1:5433/integraciones"

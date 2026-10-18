@@ -7,6 +7,7 @@
 
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 
 use sandbox::{SandboxConfig, SandboxError, run_block};
 use serde_json::Value as Json;
@@ -34,12 +35,39 @@ pub struct InvokeRequest<'a> {
 /// `AsyncContext` full-async de rquickjs. El ejecutor se ejecuta en un hilo
 /// current-thread (la decisión de workers/`LocalSet` para el binario de la API
 /// se toma en la Fase 4).
+/// Petición de ejecución de un **bloque built-in del host** (instancia sin
+/// `code`: los bloques `http` de la biblioteca base, tarea 4.6). El ejecutor
+/// resuelve refs e inputSchema igual que para CUSTOM_LOGIC; el comportamiento
+/// vive en el invoker.
+#[derive(Debug, Clone)]
+pub struct BuiltInRequest<'a> {
+    /// Config de instancia ya resuelta (interpolación `{$.ref}` aplicada).
+    /// Los placeholders `{$credential:nombre}` quedan intactos: los resuelve
+    /// el host justo antes de la llamada, sin que el secreto entre al IO.
+    pub config: &'a Json,
+    /// Timeout del bloque en milisegundos (también deadline de la petición).
+    pub timeout_ms: u64,
+}
+
 pub trait BlockInvoker {
     /// Ejecuta el bloque y devuelve su salida JSON.
     fn invoke(
         &self,
         request: InvokeRequest<'_>,
     ) -> impl Future<Output = Result<Json, SandboxError>>;
+
+    /// Ejecuta un bloque built-in `http` del host. El default falla: solo los
+    /// invokers con salida a red lo implementan.
+    fn invoke_built_in_http(
+        &self,
+        _request: BuiltInRequest<'_>,
+    ) -> impl Future<Output = Result<Json, SandboxError>> {
+        async {
+            Err(SandboxError::HostError {
+                message: "este invoker no soporta bloques built-in http".to_string(),
+            })
+        }
+    }
 }
 
 /// Invoker de producción: un isolate QuickJS fresco por bloque.
@@ -97,6 +125,74 @@ impl SandboxInvoker {
     }
 }
 
+/// Placeholder de credencial en la config de un bloque built-in.
+const CREDENTIAL_ANCHOR: &str = "{$credential:";
+
+impl SandboxInvoker {
+    /// Sustituye cada `{$credential:nombre}` de `text` por el secreto que
+    /// resuelve el host. El secreto solo existe en memoria del host: jamás
+    /// entra al contexto de ejecución ni al IO persistido.
+    fn resolver_credenciales(&self, text: &str) -> Result<String, SandboxError> {
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(open) = rest.find(CREDENTIAL_ANCHOR) {
+            out.push_str(&rest[..open]);
+            let despues = &rest[open + CREDENTIAL_ANCHOR.len()..];
+            let Some(close) = despues.find('}') else {
+                return Err(SandboxError::HostError {
+                    message: "interpolación de credencial sin cerrar: falta '}'".to_string(),
+                });
+            };
+            let name = &despues[..close];
+            let Some(secret) = (self.credential_resolver)(name.to_string()) else {
+                return Err(SandboxError::HostError {
+                    message: format!(
+                        "la credencial \"{name}\" no existe en la bóveda del workspace"
+                    ),
+                });
+            };
+            out.push_str(&secret);
+            rest = &despues[close + 1..];
+        }
+        out.push_str(rest);
+        Ok(out)
+    }
+
+    /// Resuelve placeholders de credenciales de forma recursiva en un valor de
+    /// config (strings, arrays y objetos).
+    fn resolver_credenciales_en_valor(&self, value: &Json) -> Result<Json, SandboxError> {
+        match value {
+            Json::String(text) => Ok(Json::String(self.resolver_credenciales(text)?)),
+            Json::Array(items) => items
+                .iter()
+                .map(|item| self.resolver_credenciales_en_valor(item))
+                .collect::<Result<Vec<_>, _>>()
+                .map(Json::Array),
+            Json::Object(map) => map
+                .iter()
+                .map(|(key, value)| {
+                    Ok((key.clone(), self.resolver_credenciales_en_valor(value)?))
+                })
+                .collect::<Result<serde_json::Map<String, Json>, _>>()
+                .map(Json::Object),
+            otro => Ok(otro.clone()),
+        }
+    }
+
+    /// Traduce un [`sandbox::http::HttpFailure`] al contrato de [`SandboxError`].
+    fn traducir_http(fallo: sandbox::http::HttpFailure) -> SandboxError {
+        match fallo {
+            sandbox::http::HttpFailure::Denied(domain) => SandboxError::HttpDenied { domain },
+            sandbox::http::HttpFailure::Timeout(url) => SandboxError::HostError {
+                message: format!("http request timed out: {url}"),
+            },
+            sandbox::http::HttpFailure::Transport(detail) => SandboxError::HostError {
+                message: format!("http request failed: {detail}"),
+            },
+        }
+    }
+}
+
 impl BlockInvoker for SandboxInvoker {
     fn invoke(
         &self,
@@ -111,5 +207,54 @@ impl BlockInvoker for SandboxInvoker {
         };
         let code = request.code.to_owned();
         async move { run_block(&code, request.input, config).await }
+    }
+
+    async fn invoke_built_in_http(
+        &self,
+        request: BuiltInRequest<'_>,
+    ) -> Result<Json, SandboxError> {
+        let config = request.config;
+
+        let Some(url) = config.get("url").and_then(Json::as_str) else {
+            return Err(SandboxError::HostError {
+                message: "el bloque built-in http requiere config.url (string)".to_string(),
+            });
+        };
+        let method = config
+            .get("method")
+            .and_then(Json::as_str)
+            .unwrap_or("GET")
+            .to_string();
+
+        let mut headers = Vec::new();
+        if let Some(objeto) = config.get("headers").and_then(Json::as_object) {
+            for (nombre, valor) in objeto {
+                let Some(texto) = valor.as_str() else {
+                    return Err(SandboxError::HostError {
+                        message: format!("el header '{nombre}' debe ser un string"),
+                    });
+                };
+                headers.push((nombre.clone(), self.resolver_credenciales(texto)?));
+            }
+        }
+
+        let body = match config.get("body") {
+            None | Some(Json::Null) => None,
+            Some(valor) => Some(self.resolver_credenciales_en_valor(valor)?),
+        };
+
+        sandbox::http::execute(
+            &self.http_client,
+            Duration::from_millis(request.timeout_ms),
+            self.allow_domains.as_deref(),
+            sandbox::http::HttpRequest {
+                url: self.resolver_credenciales(url)?,
+                method,
+                headers,
+                body,
+            },
+        )
+        .await
+        .map_err(Self::traducir_http)
     }
 }

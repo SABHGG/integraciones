@@ -33,6 +33,14 @@ async fn begin() -> Option<(PgPool, MutexGuard<'static, ()>)> {
             return None;
         }
     };
+    // La cola de ejecuciones es GLOBAL (claim_next cruza workspaces), así que
+    // estos tests usan una base de datos dedicada: si compartieran la BD con
+    // los tests de la API, un worker podría reclamar ejecuciones `pending`
+    // sembradas por otro binario de pruebas (carrera intermitente).
+    let url = url
+        .rsplit_once('/')
+        .map(|(base, _db)| format!("{base}/integraciones_engine"))
+        .expect("DATABASE_URL con nombre de base de datos");
 
     let pool = PgPoolOptions::new()
         .max_connections(4)

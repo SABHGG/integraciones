@@ -15,7 +15,7 @@ use domain::refs;
 use domain::schema::{self, SchemaError};
 use serde_json::{Map, Value as Json, json};
 
-use crate::invoker::{BlockInvoker, InvokeRequest};
+use crate::invoker::{BlockInvoker, BuiltInRequest, InvokeRequest};
 
 /// Timeout por defecto de un bloque cuando la instancia no lo define (ms).
 pub const DEFAULT_TIMEOUT_MS: u64 = 5_000;
@@ -178,28 +178,27 @@ impl<I: BlockInvoker> Executor<I> {
                 return failed_outcome(steps, step, context);
             }
 
-            let Some(code) = block.code.as_deref() else {
-                let step = failed_step(
-                    seq,
-                    block,
-                    resolved_input,
-                    missing_code_error(block),
-                    None,
-                );
-                return failed_outcome(steps, step, context);
-            };
-
             let timeout_ms = block.timeout_ms.unwrap_or(self.default_timeout_ms);
             let started = Instant::now();
-            let result = self
-                .invoker
-                .invoke(InvokeRequest {
-                    code,
-                    input: resolved_input.clone(),
-                    config: resolved_config,
-                    timeout_ms,
-                })
-                .await;
+            // CUSTOM_LOGIC (con code) → sandbox; sin code → bloque built-in
+            // `http` de la biblioteca base: el host ejecuta desde la config.
+            let result = if let Some(code) = block.code.as_deref() {
+                self.invoker
+                    .invoke(InvokeRequest {
+                        code,
+                        input: resolved_input.clone(),
+                        config: resolved_config,
+                        timeout_ms,
+                    })
+                    .await
+            } else {
+                self.invoker
+                    .invoke_built_in_http(BuiltInRequest {
+                        config: &resolved_config,
+                        timeout_ms,
+                    })
+                    .await
+            };
             let duration_ms = Some(elapsed_ms(started));
 
             match result {
@@ -400,20 +399,6 @@ fn sandbox_error(block: &BlockInstance, error: sandbox::SandboxError) -> ErrorPa
     }
 }
 
-/// Error de un bloque sin código JS (bloque built-in no disponible en el
-/// ejecutor de cadenas).
-fn missing_code_error(block: &BlockInstance) -> ErrorPayload {
-    ErrorPayload::new(
-        ErrorCode::BlockFailed,
-        format!(
-            "el bloque \"{}\" no tiene código JavaScript en la definición",
-            block.name
-        ),
-    )
-    .with_block(block.name.clone())
-    .with_details(json!({ "reason": "BLOCK_WITHOUT_CODE" }))
-}
-
 /// Duración en ms acotada al rango de `execution_steps.duration_ms`.
 fn elapsed_ms(started: Instant) -> i32 {
     started.elapsed().as_millis().min(i32::MAX as u128) as i32
@@ -442,19 +427,34 @@ mod tests {
     #[derive(Default)]
     struct MockInvoker {
         responses: RefCell<VecDeque<Result<Value, SandboxError>>>,
+        builtins: RefCell<VecDeque<Result<Value, SandboxError>>>,
         calls: RefCell<Vec<(String, Value, u64)>>,
+        builtin_calls: RefCell<Vec<(Value, u64)>>,
     }
 
     impl MockInvoker {
         fn new(responses: Vec<Result<Value, SandboxError>>) -> Self {
             Self {
                 responses: RefCell::new(responses.into()),
+                builtins: RefCell::new(VecDeque::new()),
                 calls: RefCell::new(Vec::new()),
+                builtin_calls: RefCell::new(Vec::new()),
             }
+        }
+
+        /// Mock preparado para bloques built-in http (sin code).
+        fn con_builtin(builtins: Vec<Result<Value, SandboxError>>) -> Self {
+            let mut mock = Self::new(vec![]);
+            mock.builtins = RefCell::new(builtins.into());
+            mock
         }
 
         fn calls(&self) -> usize {
             self.calls.borrow().len()
+        }
+
+        fn builtin_calls(&self) -> usize {
+            self.builtin_calls.borrow().len()
         }
 
         fn call(&self, index: usize) -> (String, Value, u64) {
@@ -478,6 +478,19 @@ mod tests {
                     .pop_front()
                     .expect("el ejecutor pidió más bloques de los previstos"),
             )
+        }
+
+        async fn invoke_built_in_http(
+            &self,
+            request: crate::invoker::BuiltInRequest<'_>,
+        ) -> Result<Value, SandboxError> {
+            self.builtin_calls
+                .borrow_mut()
+                .push((request.config.clone(), request.timeout_ms));
+            self.builtins
+                .borrow_mut()
+                .pop_front()
+                .expect("el ejecutor pidió más bloques built-in de los previstos")
         }
     }
 
@@ -807,17 +820,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn un_bloque_sin_codigo_falla_sin_invocar_el_sandbox() {
-        let mut definition = definition(vec![block("builtin", "code", json!({}), json!({}))]);
-        definition.blocks[0].code = None;
-        let invoker = MockInvoker::new(vec![]);
+    async fn un_bloque_sin_codigo_usa_el_camino_builtin_del_host() {
+        let mut definicion = definition(vec![block("builtin", "code", json!({}), json!({}))]);
+        definicion.blocks[0].code = None;
+        let invoker = MockInvoker::con_builtin(vec![Ok(json!({ "eco": true }))]);
         let executor = Executor::new(invoker);
 
-        let outcome = executor.run(run(&definition)).await;
+        let outcome = executor.run(run(&definicion)).await;
 
+        // La cadena corrió por el camino built-in: el sandbox no se invocó.
         assert_eq!(executor.invoker().calls(), 0);
-        let error = outcome.error.expect("error estructurado");
+        assert_eq!(executor.invoker().builtin_calls(), 1);
+        assert_eq!(outcome.status, ExecutionStatus::Succeeded);
+        assert_eq!(outcome.output, Some(json!({ "eco": true })));
+
+        // Y un fallo del built-in (red, credencial ausente…) corta la cadena.
+        let mut definicion_fallo = definition(vec![block("builtin", "code", json!({}), json!({}))]);
+        definicion_fallo.blocks[0].code = None;
+        let invoker2 = MockInvoker::con_builtin(vec![Err(SandboxError::HostError {
+            message: "la credencial \"x\" no existe en la bóveda del workspace".to_string(),
+        })]);
+        let executor2 = Executor::new(invoker2);
+        let outcome2 = executor2.run(run(&definicion_fallo)).await;
+        assert_eq!(outcome2.status, ExecutionStatus::Failed);
+        let error = outcome2.error.expect("error estructurado");
         assert_eq!(error.code, ErrorCode::BlockFailed);
-        assert_eq!(error.details.unwrap()["reason"], json!("BLOCK_WITHOUT_CODE"));
+        assert_eq!(error.details.unwrap()["reason"], json!("HOST_ERROR"));
     }
 }

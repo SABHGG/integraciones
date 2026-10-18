@@ -20,6 +20,8 @@
 // tamaño se autoriza a nivel de módulo igual que en blocks.rs.
 #![allow(clippy::result_large_err)]
 
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::collections::BTreeMap;
 
 use axum::Router;
@@ -235,7 +237,14 @@ async fn invoke_slug(
         }
     }
 
-    // 9. La corrida: el futuro del ejecutor no es Send (rquickjs full-async),
+    // 9. Bóveda del workspace: los secretos se precargan a memoria del host
+    // ANTES del hilo blocking (el resolutor de ctx.credential es síncrono y no
+    // puede tocar la BD desde el isolate). Nunca entran al contexto ni al IO.
+    let boveda = cargar_boveda(&state.pool, published.workspace_id)
+        .await
+        .map_err(|error| problem::internal(format!("cargar la bóveda: {error}")))?;
+
+    // 10. La corrida: el futuro del ejecutor no es Send (rquickjs full-async),
     // así que corre en un hilo blocking con runtime current-thread + LocalSet.
     let outcome = tokio::task::spawn_blocking(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -244,7 +253,10 @@ async fn invoke_slug(
             .expect("runtime current-thread para el ejecutor");
         let local = tokio::task::LocalSet::new();
         local.block_on(&runtime, async {
-            let executor = Executor::new(SandboxInvoker::new());
+            let invoker = SandboxInvoker::new().with_credential_resolver(Arc::new(
+                move |name: String| boveda.get(&name).cloned(),
+            ));
+            let executor = Executor::new(invoker);
             executor.run(ChainRun::new(&definition, trigger_data)).await
         })
     })
@@ -376,6 +388,25 @@ fn envelope_response(envelope: Value) -> Response {
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(envelope.to_string()))
         .expect("sobre: builder con status válido no puede fallar")
+}
+
+/// Precarga los secretos de la bóveda del workspace (nombre → secreto) para
+/// el resolutor síncrono de `ctx.credential` y de `{$credential:nombre}` en
+/// bloques built-in. MVP1: pocos secretos por workspace, una consulta. El
+/// cifrado en reposo llega con la bóveda (task 4.7); aquí se leen los bytes.
+async fn cargar_boveda(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+) -> Result<HashMap<String, String>, sqlx::Error> {
+    let filas: Vec<(String, Vec<u8>)> =
+        sqlx::query_as("SELECT name, secret_encrypted FROM credentials WHERE workspace_id = $1")
+            .bind(workspace_id)
+            .fetch_all(pool)
+            .await?;
+    Ok(filas
+        .into_iter()
+        .map(|(name, bytes)| (name, String::from_utf8_lossy(&bytes).into_owned()))
+        .collect())
 }
 
 /// Cierra la ejecución como `failed` con error estructurado y sin pasos
