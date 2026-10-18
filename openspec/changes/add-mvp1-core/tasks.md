@@ -30,8 +30,8 @@
 - [x] 4.3 API de executions: `GET /executions` (filtros bridge/status/fechas + paginación por cursor), `GET /executions/{id}`, `GET /executions/{id}/trace`
 - [x] 4.4 Plano de invocación `/x/{slug}`: matching de method del trigger del puente, errores de transporte (404/405/413/415 con Problem Details), ejecución sync y respuesta 200 con sobre `{success, data, error?, executionId}`, códigos de error estables
 - [x] 4.5 Validación de entrada: si el puente declara inputSchema, validar `$.trigger.body` antes de ejecutar; inválido → 200 con `VALIDATION_FAILED` sin gastar isolate
-- [ ] 4.6 Bloques built-in de la biblioteca base: `http-get`/`http-post` con config (url con interpolación `{$.ref}`, headers, body) y resolución de `ctx.credential(name)`
-- [ ] 4.7 Bóveda mínima: `POST/PATCH/DELETE /credentials` (secreto write-only cifrado, nunca devuelto) + host function `ctx.credential(name)` que resuelve en el host
+- [x] 4.6 Bloques built-in de la biblioteca base: `http-get`/`http-post` con config (url con interpolación `{$.ref}`, headers, body) y resolución de `ctx.credential(name)`
+- [x] 4.7 Bóveda mínima: `POST/PATCH/DELETE /credentials` (secreto write-only cifrado, nunca devuelto) + host function `ctx.credential(name)` que resuelve en el host
 
 ## 5. Fase 4 — Cierre
 

@@ -985,3 +985,49 @@ async fn las_versiones_se_listan_de_mas_nueva_a_mas_vieja_con_cursor() {
         .await
         .problem(StatusCode::BAD_REQUEST);
 }
+
+// ── versiones de bloques built-in http (biblioteca base, task 4.6/5.1) ──
+
+#[tokio::test]
+async fn un_bloque_http_publica_versiones_sin_codigo() {
+    let Some(h) = begin().await else { return };
+
+    let block = h.create_block("http-get", "http").await;
+    let id = uuid_of(&block).to_string();
+
+    // Sin `code`: la versión guarda code NULL y puede llevar schemas.
+    let response = h
+        .publish(
+            &id,
+            json!({
+                "inputSchema": {},
+                "outputSchema": { "type": "object" },
+                "configSchema": {
+                    "type": "object",
+                    "properties": { "url": { "type": "string" } }
+                }
+            }),
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::CREATED, "{}", response.body);
+    let version = response.json();
+    assert_eq!(version["version"], 1);
+    assert!(version["code"].is_null(), "code queda NULL: {}", response.body);
+    assert_eq!(version["configSchema"]["properties"]["url"]["type"], "string");
+
+    // Segunda versión: el contador sigue por bloque.
+    let second = h.publish(&id, json!({})).await;
+    assert_eq!(second.status, StatusCode::CREATED, "{}", second.body);
+    assert_eq!(second.json()["version"], 2);
+}
+
+#[tokio::test]
+async fn un_custom_logic_exige_codigo_para_publicar() {
+    let Some(h) = begin().await else { return };
+
+    // custom_logic sin code: 422 — sin código no hay comportamiento.
+    let cl_block = h.create_block("sin-codigo", "custom_logic").await;
+    let sin_code = h.publish(&uuid_of(&cl_block).to_string(), json!({})).await;
+    let problem = sin_code.problem(StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(problem["errors"][0]["field"], "code");
+}

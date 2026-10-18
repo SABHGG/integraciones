@@ -320,7 +320,9 @@ async fn delete_block(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PublishVersionRequest {
     /// TypeScript del bloque (`export default function (input, ctx) { … }`).
-    code: String,
+    /// Solo para `custom_logic`: los built-in http publican sin código.
+    #[serde(default)]
+    code: Option<String>,
     #[serde(default)]
     config_schema: Option<Value>,
     #[serde(default)]
@@ -366,43 +368,58 @@ async fn publish_version(
         ));
     };
 
-    if block_type != "custom_logic" {
-        return Err(invalid_body(
-            "solo los bloques custom_logic llevan código publicado",
-            vec![field_error(
-                "blockType",
-                format!(
-                    "el bloque es de tipo \"{block_type}\": su comportamiento lo define el \
-                     ejecutor y no acepta código propio (crea un bloque custom_logic para \
-                     publicar TypeScript)"
-                ),
-            )],
-        ));
-    }
-
-    // TypeScript → JavaScript: un error de compilación no crea versión.
-    let js = transpile::transpile_typescript(&request.code).map_err(|error| match error {
-        TranspileError::Syntax {
-            line,
-            column,
-            message,
-        } => invalid_body(
-            "el código del bloque no compila",
-            vec![json!({
-                "field": "code",
-                "message": message,
-                "line": line,
-                "column": column,
-            })],
-        ),
-        TranspileError::MissingDefaultExport => invalid_body(
-            "el código del bloque no cumple el contrato",
-            vec![field_error("code", error.to_string())],
-        ),
-        TranspileError::Codegen(message) => problem::internal(format!(
-            "no se pudo generar el JavaScript del bloque: {message}"
-        )),
-    })?;
+    // El código depende del tipo: custom_logic lo exige (el JS es su
+    // comportamiento); los built-in http lo prohíben (lo define el ejecutor)
+    // y publican versiones de solo schemas con `code` NULL.
+    let js: Option<String> = if block_type == "custom_logic" {
+        let Some(code) = &request.code else {
+            return Err(invalid_body(
+                "los bloques custom_logic necesitan código publicado",
+                vec![field_error(
+                    "code",
+                    "un bloque custom_logic publica siempre su TypeScript: falta \"code\"",
+                )],
+            ));
+        };
+        // TypeScript → JavaScript: un error de compilación no crea versión.
+        Some(transpile::transpile_typescript(code).map_err(|error| match error {
+            TranspileError::Syntax {
+                line,
+                column,
+                message,
+            } => invalid_body(
+                "el código del bloque no compila",
+                vec![json!({
+                    "field": "code",
+                    "message": message,
+                    "line": line,
+                    "column": column,
+                })],
+            ),
+            TranspileError::MissingDefaultExport => invalid_body(
+                "el código del bloque no cumple el contrato",
+                vec![field_error("code", error.to_string())],
+            ),
+            TranspileError::Codegen(message) => problem::internal(format!(
+                "no se pudo generar el JavaScript del bloque: {message}"
+            )),
+        })?)
+    } else {
+        if request.code.is_some() {
+            return Err(invalid_body(
+                "solo los bloques custom_logic llevan código publicado",
+                vec![field_error(
+                    "blockType",
+                    format!(
+                        "el bloque es de tipo \"{block_type}\": su comportamiento lo define el \
+                         ejecutor y no acepta código propio (crea un bloque custom_logic para \
+                         publicar TypeScript)"
+                    ),
+                )],
+            ));
+        }
+        None
+    };
 
     // Los tres schemas deben pertenecer al subconjunto estricto de design.md.
     let config_schema = request.config_schema.unwrap_or_else(|| json!({}));
