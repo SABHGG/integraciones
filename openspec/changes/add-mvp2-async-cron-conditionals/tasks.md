@@ -2,10 +2,10 @@
 
 ## 1. Fase 1 — Dominio: condiciones y esquema
 
-- [ ] 1.1 Gramática de condiciones en `crates/domain`: evaluador declarativo (`eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `exists`, `contains` + `and`/`or`/`not`) sobre refs `$.`, con tests unitarios de cada operador y combinador (RED/GREEN)
-- [ ] 1.2 `REF_UNRESOLVED` al evaluar una condición con referencia no resuelta (mismo criterio que los mapeos de entrada), con test
-- [ ] 1.3 Migración `0002`: CHECK de `execution_steps.status` pasa a admitir `skipped` + índice parcial de `webhook_deliveries` (pending por `next_retry_at`); migración aplicable desde 0001 existente
-- [ ] 1.4 Parser de cron de 5 campos + timezone IANA (`chrono-tz`) en el workspace: validación y cálculo de próximas ocurrencias, con tests de horarios de verano
+- [x] 1.1 Gramática de condiciones en `crates/domain`: evaluador declarativo (`eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `exists`, `contains` + `and`/`or`/`not`) sobre refs `$.`, con tests unitarios de cada operador y combinador (RED/GREEN)
+- [x] 1.2 `REF_UNRESOLVED` al evaluar una condición con referencia no resuelta (mismo criterio que los mapeos de entrada), con test
+- [x] 1.3 Migración `0002`: CHECK de `execution_steps.status` pasa a admitir `skipped` + índice parcial de `webhook_deliveries` (pending por `next_retry_at`); migración aplicable desde 0001 existente
+- [x] 1.4 Parser de cron de 5 campos + timezone IANA (`chrono-tz`) en el workspace: validación y cálculo de próximas ocurrencias, con tests de horarios de verano
 
 ## 2. Fase 2 — Enrutado condicional (engine + validación)
 
