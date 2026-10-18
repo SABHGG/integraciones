@@ -48,6 +48,14 @@ async fn begin() -> Option<(PgPool, MutexGuard<'static, ()>, Uuid)> {
         .await
         .expect("limpieza de workspaces previos");
 
+    // Higiene del fixture: otras suites dejan filas viejas en la BD
+    // compartida (por ejemplo, steps de 1970 del cursor de executions_api).
+    // Purgamos ANTES de sembrar para que los conteos exactos de los asserts
+    // solo vean filas de este suite.
+    api::retention::purge(&pool, 30, 365)
+        .await
+        .expect("limpieza de filas viejas ajenas");
+
     let workspace_id = Uuid::now_v7();
     sqlx::query("INSERT INTO workspaces (id, name, slug) VALUES ($1, $2, $3)")
         .bind(workspace_id)
