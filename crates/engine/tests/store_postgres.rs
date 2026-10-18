@@ -315,6 +315,64 @@ async fn finish_persiste_todos_los_pasos_y_el_estado_final_en_una_transaccion() 
 }
 
 #[tokio::test]
+async fn los_pasos_skipped_se_persisten_en_su_seq_original_sin_io_ni_duracion() {
+    let Some((pool, _turno)) = begin().await else {
+        return;
+    };
+    let fixture = fixture(&pool).await;
+    let store = ExecutionStore::new(pool.clone());
+
+    let created = store.create(new_execution(&fixture)).await.expect("crear");
+    store.claim_next().await.expect("claim").expect("reclamada");
+
+    let outcome = succeeded_outcome(vec![
+        succeeded_step(1, "origen", json!({}), json!({ "pais": "ES" })),
+        ExecutionStep {
+            seq: 2,
+            block_instance_id: "instancia-condicional".to_string(),
+            block_name: "condicional".to_string(),
+            status: StepStatus::Skipped,
+            input: json!({}),
+            output: None,
+            error: None,
+            duration_ms: None,
+        },
+        succeeded_step(3, "final", json!({}), json!({ "fin": true })),
+    ]);
+    store
+        .finish(created.id, &outcome)
+        .await
+        .expect("cerrar ejecución");
+
+    let (status, _, _) = execution_state(&pool, created.id).await;
+    assert_eq!(status, "succeeded");
+
+    type FilaSkipped = (i32, String, String, String, Value, Option<Value>, Option<i32>);
+    let filas: Vec<FilaSkipped> = sqlx::query_as(
+        "SELECT seq, block_instance_id, block_name, status, input, output, duration_ms
+           FROM execution_steps
+          WHERE execution_id = $1
+          ORDER BY seq",
+    )
+    .bind(created.id)
+    .fetch_all(&pool)
+    .await
+    .expect("pasos de la ejecución");
+
+    assert_eq!(filas.len(), 3, "los tres pasos quedan en el trace");
+    assert_eq!(filas[0].3, "succeeded");
+    // El paso skipped conserva su seq original sin IO ni duración.
+    assert_eq!(filas[1].0, 2);
+    assert_eq!(filas[1].1, "instancia-condicional");
+    assert_eq!(filas[1].3, "skipped");
+    assert_eq!(filas[1].4, serde_json::json!({}), "input marcador, no ejecutado");
+    assert_eq!(filas[1].5, None);
+    assert_eq!(filas[1].6, None);
+    assert_eq!(filas[2].3, "succeeded");
+    assert_eq!(filas[2].5, Some(json!({ "fin": true })));
+}
+
+#[tokio::test]
 async fn finish_con_error_persiste_el_detalle_en_la_ejecucion_y_en_el_paso() {
     let Some((pool, _turno)) = begin().await else {
         return;

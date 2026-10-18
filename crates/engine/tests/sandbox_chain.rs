@@ -15,6 +15,7 @@ fn block(name: &str, code: &str, input: Value) -> BlockInstance {
         block_id: None,
         block_version_id: None,
         code: Some(code.to_string()),
+        when: None,
         input,
         config: json!({}),
         input_schema: json!({}),
@@ -26,6 +27,8 @@ fn block(name: &str, code: &str, input: Value) -> BlockInstance {
 fn definition(blocks: Vec<BlockInstance>) -> BridgeDefinition {
     BridgeDefinition {
         trigger: TriggerDefinition {
+            schedule: None,
+            timezone: None,
             trigger_type: TriggerType::Http,
             method: Some("POST".to_string()),
             path: Some("/x/demo".to_string()),

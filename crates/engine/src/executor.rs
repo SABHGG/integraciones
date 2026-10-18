@@ -9,6 +9,7 @@
 use std::collections::HashSet;
 use std::time::Instant;
 
+use domain::conditions;
 use domain::definition::{BlockInstance, BridgeDefinition};
 use domain::execution::{ErrorCode, ErrorPayload, ExecutionStatus, StepStatus};
 use domain::refs;
@@ -133,9 +134,159 @@ impl<I: BlockInvoker> Executor<I> {
 
         let mut steps = Vec::with_capacity(run.definition.blocks.len());
         let mut last_output: Option<Json> = None;
+        // Objetivos de rutas `switch` no tomadas: cuando el flujo lineal llega
+        // a uno de ellos, se registra `skipped` sin ejecutarlo.
+        let mut non_chosen: HashSet<String> = HashSet::new();
+        let total = run.definition.blocks.len();
+        let mut index = 0usize;
 
-        for (index, block) in run.definition.blocks.iter().enumerate() {
+        while index < total {
+            let block = &run.definition.blocks[index];
             let seq = index as i32 + 1;
+
+            // 0) Objetivo de una ruta `switch` no tomada: `skipped` en su seq.
+            if non_chosen.contains(&block.id) {
+                steps.push(skipped_step(seq, block));
+                index += 1;
+                continue;
+            }
+
+            // 1) `when`: la condición decide si la instancia corre.
+            if let Some(condition) = &block.when {
+                match conditions::evaluate(&context, condition) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        steps.push(skipped_step(seq, block));
+                        index += 1;
+                        continue;
+                    }
+                    Err(error) => {
+                        let step = failed_step(
+                            seq,
+                            block,
+                            json!({}),
+                            condition_error(block, error),
+                            None,
+                        );
+                        return failed_outcome(steps, step, context);
+                    }
+                }
+            }
+
+            // 2) Built-in `switch`: enruta la cadena sin invocar el sandbox.
+            // Contrato: instancia sin código cuya config declara `routes`
+            // (array de {when, to}) con `default` opcional (id de instancia
+            // posterior). La validación de publicación garantiza la forma.
+            let is_switch = block.code.is_none() && block.config.get("routes").is_some();
+            if is_switch {
+                let routes = match parse_routes(block) {
+                    Ok(routes) => routes,
+                    Err(error) => {
+                        let step = failed_step(seq, block, json!({}), error, None);
+                        return failed_outcome(steps, step, context);
+                    }
+                };
+
+                // Primera condición verdadera, en orden de declaración; el
+                // resto NO se evalúa.
+                let mut chosen: Option<String> = None;
+                for route in &routes {
+                    match conditions::evaluate(&context, &route.when) {
+                        Ok(true) => {
+                            chosen = Some(route.to.clone());
+                            break;
+                        }
+                        Ok(false) => continue,
+                        Err(error) => {
+                            let step = failed_step(
+                                seq,
+                                block,
+                                json!({}),
+                                condition_error(block, error),
+                                None,
+                            );
+                            return failed_outcome(steps, step, context);
+                        }
+                    }
+                }
+                if chosen.is_none() {
+                    chosen = block
+                        .config
+                        .get("default")
+                        .and_then(Json::as_str)
+                        .map(str::to_string);
+                }
+
+                // El objetivo debe existir y ser posterior (sin ciclos).
+                let jump_to = match &chosen {
+                    Some(target_id) => {
+                        match run.definition.blocks.iter().position(|b| &b.id == target_id) {
+                            Some(at) if at > index => Some(at),
+                            _ => {
+                                let error = ErrorPayload::new(
+                                    ErrorCode::ValidationFailed,
+                                    format!(
+                                        "la ruta del switch \"{}\" apunta a \"{target_id}\", que no existe o no es posterior en la cadena",
+                                        block.name
+                                    ),
+                                )
+                                .with_block(block.name.clone())
+                                .with_details(json!({ "reason": "SWITCH_TARGET_INVALID" }));
+                                let step = failed_step(seq, block, json!({}), error, None);
+                                return failed_outcome(steps, step, context);
+                            }
+                        }
+                    }
+                    None => None,
+                };
+
+                // El switch registra su decisión (útil en el trace) sin IO.
+                let decision = json!({ "to": chosen });
+                if let Json::Object(map) = &mut context {
+                    map.insert(block.name.clone(), decision.clone());
+                }
+                last_output = Some(decision.clone());
+                steps.push(ExecutionStep {
+                    seq,
+                    block_instance_id: block.id.clone(),
+                    block_name: block.name.clone(),
+                    status: StepStatus::Succeeded,
+                    input: block.config.clone(),
+                    output: Some(decision),
+                    error: None,
+                    duration_ms: None,
+                });
+
+                // Los objetivos no tomados (incluido el default no elegido)
+                // quedan `skipped` cuando el flujo lineal los alcance.
+                for route in &routes {
+                    if chosen.as_deref() != Some(route.to.as_str()) {
+                        non_chosen.insert(route.to.clone());
+                    }
+                }
+                if let Some(default_to) = block.config.get("default").and_then(Json::as_str)
+                    && chosen.as_deref() != Some(default_to)
+                {
+                    non_chosen.insert(default_to.to_string());
+                }
+
+                // Salto: los bloques intermedios hasta el objetivo se marcan
+                // `skipped` (conservan su seq original) y la ejecución sigue
+                // en el objetivo.
+                index = match jump_to {
+                    Some(j) => {
+                        for bypassed in (index + 1)..j {
+                            steps.push(skipped_step(
+                                bypassed as i32 + 1,
+                                &run.definition.blocks[bypassed],
+                            ));
+                        }
+                        j
+                    }
+                    None => index + 1,
+                };
+                continue;
+            }
 
             // La config se resuelve aunque el sandbox de CUSTOM_LOGIC no la
             // consuma: una ref rota en la config debe fallar, no pasar muda.
@@ -229,6 +380,8 @@ impl<I: BlockInvoker> Executor<I> {
                     return failed_outcome(steps, step, context);
                 }
             }
+
+            index += 1;
         }
 
         ExecutionOutcome {
@@ -260,6 +413,96 @@ fn failed_outcome(
         context,
         steps,
     }
+}
+
+/// Construye un paso `skipped`: bloque no ejecutado por enrutado condicional,
+/// en su seq original y sin input ejecutado, salida, error ni duración.
+fn skipped_step(seq: i32, block: &BlockInstance) -> ExecutionStep {
+    ExecutionStep {
+        seq,
+        block_instance_id: block.id.clone(),
+        block_name: block.name.clone(),
+        status: StepStatus::Skipped,
+        input: json!({}),
+        output: None,
+        error: None,
+        duration_ms: None,
+    }
+}
+
+/// Traduce un fallo de condición al contrato de error: referencia no resuelta
+/// es `REF_UNRESOLVED` (identificando la ref); una condición malformada o con
+/// operandos incomparables es fail-closed con `VALIDATION_FAILED`.
+fn condition_error(block: &BlockInstance, error: conditions::ConditionError) -> ErrorPayload {
+    match error {
+        conditions::ConditionError::Unresolved { raw, detail } => ErrorPayload::new(
+            ErrorCode::RefUnresolved,
+            format!(
+                "la condición del bloque \"{}\" referenció {raw}, que no resolvió: {detail}",
+                block.name
+            ),
+        )
+        .with_block(block.name.clone())
+        .with_details(json!({ "reason": "CONDITION_REF_UNRESOLVED", "ref": raw })),
+        other => ErrorPayload::new(
+            ErrorCode::ValidationFailed,
+            format!(
+                "la condición del bloque \"{}\" no es válida: {other}",
+                block.name
+            ),
+        )
+        .with_block(block.name.clone())
+        .with_details(json!({ "reason": "CONDITION_INVALID" })),
+    }
+}
+
+/// Una ruta de un switch: condición e instancia destino.
+struct SwitchRoute {
+    when: Json,
+    to: String,
+}
+
+/// Error de la forma del switch del bloque.
+fn invalid_switch(block: &BlockInstance, reason: &str) -> ErrorPayload {
+    ErrorPayload::new(
+        ErrorCode::ValidationFailed,
+        format!(
+            "la config del switch \"{}\" no es válida: {reason}",
+            block.name
+        ),
+    )
+    .with_block(block.name.clone())
+    .with_details(json!({ "reason": "SWITCH_INVALID" }))
+}
+
+/// Parsea las rutas del switch desde la config: `routes: [{when, to}]`.
+fn parse_routes(block: &BlockInstance) -> Result<Vec<SwitchRoute>, ErrorPayload> {
+    let Some(items) = block.config.get("routes").and_then(Json::as_array) else {
+        return Err(invalid_switch(
+            block,
+            "\"routes\" debe ser un array de objetos {when, to}",
+        ));
+    };
+    let mut routes = Vec::with_capacity(items.len());
+    for item in items {
+        let Some(when) = item.get("when").filter(|value| value.is_object()) else {
+            return Err(invalid_switch(
+                block,
+                "cada ruta necesita \"when\" (un objeto de la gramática declarativa)",
+            ));
+        };
+        let Some(to) = item.get("to").and_then(Json::as_str) else {
+            return Err(invalid_switch(
+                block,
+                "cada ruta necesita \"to\" (el id de la instancia destino)",
+            ));
+        };
+        routes.push(SwitchRoute {
+            when: when.clone(),
+            to: to.to_string(),
+        });
+    }
+    Ok(routes)
 }
 
 /// Construye un paso fallido.
@@ -504,9 +747,37 @@ mod tests {
             block_id: None,
             block_version_id: None,
             code: Some(code.to_string()),
+            when: None,
             input,
             config: json!({}),
             input_schema,
+            output_schema: json!({}),
+            timeout_ms: None,
+        }
+    }
+
+    /// Instancia con condición `when` declarativa.
+    fn con_when(mut block: BlockInstance, when: Value) -> BlockInstance {
+        block.when = Some(when);
+        block
+    }
+
+    /// Bloque built-in `switch`: sin código, config con `routes` (+ `default`).
+    fn switch_block(name: &str, routes: Value, default: Option<&str>) -> BlockInstance {
+        let mut config = json!({ "routes": routes });
+        if let Some(to) = default {
+            config["default"] = json!(to);
+        }
+        BlockInstance {
+            id: format!("instancia-{name}"),
+            name: name.to_string(),
+            block_id: None,
+            block_version_id: None,
+            code: None,
+            when: None,
+            input: json!({}),
+            config,
+            input_schema: json!({}),
             output_schema: json!({}),
             timeout_ms: None,
         }
@@ -518,6 +789,8 @@ mod tests {
                 trigger_type: TriggerType::Http,
                 method: Some("POST".to_string()),
                 path: Some("/x/demo".to_string()),
+                schedule: None,
+                timezone: None,
             },
             input_schema: None,
             blocks,
@@ -786,7 +1059,259 @@ mod tests {
         assert!(error.message.contains("$.auth.token"), "{}", error.message);
     }
 
-    // ── timeout por instancia ──────────────────────────────────────────
+    // ── enrutado condicional (MVP2) ───────────────────────────────────
+
+    #[tokio::test]
+    async fn un_when_falso_marca_el_paso_como_skipped_y_la_cadena_continua() {
+        let medio = con_when(
+            block("medio", "code-medio", json!({}), json!({})),
+            json!({ "eq": ["$.trigger.body.cantidad", 99] }), // falso: cantidad = 2
+        );
+        let definition = definition(vec![
+            block("uno", "code-1", json!({}), json!({})),
+            medio,
+            block("tres", "code-3", json!({}), json!({})),
+        ]);
+        let invoker = MockInvoker::new(vec![ok(json!({ "paso": 1 })), ok(json!({ "paso": 3 }))]);
+        let executor = Executor::new(invoker);
+
+        let outcome = executor.run(run(&definition)).await;
+
+        assert!(outcome.is_success(), "{:?}", outcome.error);
+        assert_eq!(executor.invoker().calls(), 2, "el bloque saltado no se invoca");
+        assert_eq!(outcome.steps.len(), 3);
+        assert_eq!(outcome.steps[1].seq, 2);
+        assert_eq!(outcome.steps[1].block_name, "medio");
+        assert_eq!(outcome.steps[1].status, StepStatus::Skipped);
+        assert_eq!(outcome.steps[1].input, json!({}), "sin input ejecutado");
+        assert_eq!(outcome.steps[1].output, None);
+        assert_eq!(outcome.steps[1].error, None);
+        assert_eq!(outcome.steps[1].duration_ms, None, "sin duración");
+        assert!(outcome.context.get("medio").is_none(), "no produce salida");
+        assert_eq!(outcome.output, Some(json!({ "paso": 3 })));
+    }
+
+    #[tokio::test]
+    async fn un_when_verdadero_se_ejecuta_normalmente() {
+        let condicionado = con_when(
+            block("extra", "code-extra", json!({}), json!({})),
+            json!({ "gte": ["$.trigger.body.cantidad", 1] }),
+        );
+        let definition = definition(vec![condicionado]);
+        let invoker = MockInvoker::new(vec![ok(json!({ "ok": true }))]);
+        let outcome = Executor::new(invoker).run(run(&definition)).await;
+
+        assert!(outcome.is_success());
+        assert_eq!(outcome.steps[0].status, StepStatus::Succeeded);
+        assert_eq!(outcome.context["extra"], json!({ "ok": true }));
+    }
+
+    #[tokio::test]
+    async fn una_condicion_con_referencia_no_resuelta_falla_fast_con_ref_unresolved() {
+        let condicionado = con_when(
+            block("cond", "code-cond", json!({}), json!({})),
+            json!({ "exists": "$.cliente.pais" }),
+        );
+        let definition = definition(vec![condicionado]);
+        let invoker = MockInvoker::new(vec![ok(json!({}))]);
+        let executor = Executor::new(invoker);
+        let outcome = executor.run(run(&definition)).await;
+
+        assert_eq!(executor.invoker().calls(), 0, "la condición falla antes de invocar");
+        let error = outcome.error.expect("error estructurado");
+        assert_eq!(error.code, ErrorCode::RefUnresolved);
+        assert_eq!(error.code.as_str(), "REF_UNRESOLVED");
+        assert_eq!(error.block.as_deref(), Some("cond"));
+        assert!(error.message.contains("$.cliente.pais"), "{}", error.message);
+        assert_eq!(outcome.steps[0].status, StepStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn un_switch_enruta_por_la_primera_condicion_verdadera() {
+        let switch = switch_block(
+            "switch",
+            json!([
+                { "when": { "gte": ["$.trigger.body.cantidad", 10] }, "to": "instancia-vip" },
+                { "when": { "eq": ["$.trigger.body.cantidad", 2] }, "to": "instancia-normal" }
+            ]),
+            Some("instancia-normal"),
+        );
+        let definition = definition(vec![
+            switch,
+            block("vip", "code-vip", json!({}), json!({})),
+            block("normal", "code-normal", json!({}), json!({})),
+        ]);
+        // cantidad = 2: la ruta vip no aplica, la normal sí.
+        let invoker = MockInvoker::new(vec![ok(json!({ "ruta": "normal" }))]);
+        let executor = Executor::new(invoker);
+
+        let outcome = executor.run(run(&definition)).await;
+
+        assert!(outcome.is_success(), "{:?}", outcome.error);
+        assert_eq!(executor.invoker().calls(), 1, "solo la ruta tomada se invoca");
+        assert_eq!(outcome.steps.len(), 3);
+        // El switch registra su decisión sin invocar el sandbox.
+        assert_eq!(outcome.steps[0].status, StepStatus::Succeeded);
+        assert_eq!(outcome.steps[0].duration_ms, None);
+        assert_eq!(outcome.steps[0].output, Some(json!({ "to": "instancia-normal" })));
+        // La ruta vip queda skipped en su seq original.
+        assert_eq!(outcome.steps[1].block_name, "vip");
+        assert_eq!(outcome.steps[1].status, StepStatus::Skipped);
+        assert_eq!(outcome.steps[2].block_name, "normal");
+        assert_eq!(outcome.steps[2].status, StepStatus::Succeeded);
+        assert_eq!(outcome.output, Some(json!({ "ruta": "normal" })));
+    }
+
+    #[tokio::test]
+    async fn un_switch_sin_ruta_verdadera_usa_default() {
+        let switch = switch_block(
+            "switch",
+            json!([
+                { "when": { "gte": ["$.trigger.body.cantidad", 10] }, "to": "instancia-vip" },
+                { "when": { "gte": ["$.trigger.body.cantidad", 5] }, "to": "instancia-media" }
+            ]),
+            Some("instancia-normal"),
+        );
+        let definition = definition(vec![
+            switch,
+            block("vip", "code-vip", json!({}), json!({})),
+            block("media", "code-media", json!({}), json!({})),
+            block("normal", "code-normal", json!({}), json!({})),
+        ]);
+        // cantidad = 2: ninguna ruta aplica → default (saltando los intermedios).
+        let invoker = MockInvoker::new(vec![ok(json!({ "ruta": "default" }))]);
+        let executor = Executor::new(invoker);
+
+        let outcome = executor.run(run(&definition)).await;
+
+        assert!(outcome.is_success(), "{:?}", outcome.error);
+        assert_eq!(executor.invoker().calls(), 1);
+        assert_eq!(outcome.steps[0].output, Some(json!({ "to": "instancia-normal" })));
+        assert_eq!(outcome.steps[1].status, StepStatus::Skipped, "vip (ruta no tomada)");
+        assert_eq!(outcome.steps[2].status, StepStatus::Skipped, "media (intermedio saltado)");
+        assert_eq!(outcome.steps[3].block_name, "normal");
+        assert_eq!(outcome.steps[3].status, StepStatus::Succeeded);
+    }
+
+    #[tokio::test]
+    async fn el_switch_salta_hacia_delante_y_marca_los_intermedios_como_skipped() {
+        let switch = switch_block(
+            "switch",
+            json!([{ "when": { "exists": "$.trigger.body.userId" }, "to": "instancia-destino" }]),
+            None,
+        );
+        let definition = definition(vec![
+            switch,
+            block("medio", "code-medio", json!({}), json!({})),
+            block("destino", "code-destino", json!({}), json!({})),
+            block("despues", "code-despues", json!({}), json!({})),
+        ]);
+        let invoker = MockInvoker::new(vec![
+            ok(json!({ "en": "destino" })),
+            ok(json!({ "en": "despues" })),
+        ]);
+        let executor = Executor::new(invoker);
+
+        let outcome = executor.run(run(&definition)).await;
+
+        assert!(outcome.is_success(), "{:?}", outcome.error);
+        assert_eq!(executor.invoker().calls(), 2, "medio no se invoca");
+        assert_eq!(outcome.steps[1].block_name, "medio");
+        assert_eq!(outcome.steps[1].status, StepStatus::Skipped);
+        assert_eq!(outcome.steps[2].block_name, "destino");
+        assert_eq!(outcome.steps[2].status, StepStatus::Succeeded);
+        // La cadena sigue lineal tras la ruta tomada.
+        assert_eq!(outcome.steps[3].block_name, "despues");
+        assert_eq!(outcome.steps[3].status, StepStatus::Succeeded);
+    }
+
+    #[tokio::test]
+    async fn fail_fast_en_la_ruta_tomada_del_switch() {
+        let switch = switch_block(
+            "switch",
+            json!([{ "when": { "exists": "$.trigger.body.userId" }, "to": "instancia-destino" }]),
+            None,
+        );
+        let definition = definition(vec![
+            switch,
+            block("destino", "throw", json!({}), json!({})),
+            block("despues", "code-despues", json!({}), json!({})),
+        ]);
+        let invoker = MockInvoker::new(vec![
+            Err(SandboxError::JsError { message: "boom".to_string() }),
+            ok(json!({ "nunca": true })),
+        ]);
+        let executor = Executor::new(invoker);
+
+        let outcome = executor.run(run(&definition)).await;
+
+        assert!(!outcome.is_success());
+        assert_eq!(executor.invoker().calls(), 1, "fail-fast: nada tras el error");
+        let error = outcome.error.expect("error estructurado");
+        assert_eq!(error.code, ErrorCode::BlockFailed);
+        assert_eq!(error.block.as_deref(), Some("destino"));
+    }
+
+    #[tokio::test]
+    async fn un_switch_con_condicion_no_resuelta_falla_fast_identificando_la_ruta() {
+        let switch = switch_block(
+            "switch",
+            json!([
+                { "when": { "eq": ["$.trigger.body.cantidad", 999] }, "to": "instancia-vip" },
+                { "when": { "eq": ["$.cliente.pais", "ES"] }, "to": "instancia-normal" }
+            ]),
+            None,
+        );
+        let definition = definition(vec![switch, block("vip", "c", json!({}), json!({}))]);
+        let invoker = MockInvoker::new(vec![ok(json!({}))]);
+        let executor = Executor::new(invoker);
+        let outcome = executor.run(run(&definition)).await;
+
+        assert!(!outcome.is_success());
+        assert_eq!(executor.invoker().calls(), 0);
+        let error = outcome.error.expect("error estructurado");
+        assert_eq!(error.code, ErrorCode::RefUnresolved);
+        assert_eq!(error.block.as_deref(), Some("switch"));
+        assert!(error.message.contains("$.cliente.pais"), "{}", error.message);
+    }
+
+    #[tokio::test]
+    async fn un_when_falso_sobre_el_switch_lo_salta_completo() {
+        let mut switch = switch_block(
+            "switch",
+            json!([{ "when": { "exists": "$.trigger.body.userId" }, "to": "instancia-vip" }]),
+            None,
+        );
+        switch.when = Some(json!({ "eq": ["$.trigger.body.cantidad", 999] }));
+        let definition = definition(vec![
+            switch,
+            block("vip", "code-vip", json!({}), json!({})),
+        ]);
+        let invoker = MockInvoker::new(vec![ok(json!({ "vip": true }))]);
+        let outcome = Executor::new(invoker).run(run(&definition)).await;
+
+        // El switch saltado no decide nada: la cadena fluye lineal.
+        assert!(outcome.is_success(), "{:?}", outcome.error);
+        assert_eq!(outcome.steps[0].status, StepStatus::Skipped);
+        assert_eq!(outcome.steps[1].block_name, "vip");
+        assert_eq!(outcome.steps[1].status, StepStatus::Succeeded);
+    }
+
+    #[tokio::test]
+    async fn un_switch_con_ruta_malformada_falla_cerrado() {
+        let switch = switch_block("switch", json!("no-soy-un-array"), None);
+        let definition = definition(vec![switch]);
+        let outcome = Executor::new(MockInvoker::new(vec![]))
+            .run(run(&definition))
+            .await;
+
+        assert!(!outcome.is_success());
+        let error = outcome.error.expect("error estructurado");
+        assert_eq!(error.code, ErrorCode::ValidationFailed);
+        assert_eq!(error.details.unwrap()["reason"], json!("SWITCH_INVALID"));
+    }
+
+    // ── timeout por instancia ──────────────────────────────────
 
     #[tokio::test]
     async fn usa_el_timeout_de_la_instancia_o_el_default_del_ejecutor() {
