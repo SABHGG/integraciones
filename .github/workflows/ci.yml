@@ -11,6 +11,24 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-latest
+
+    services:
+      # Postgres real, como el dev-postgres.sh local: misma versión y el
+      # mismo puerto 5433 para que DATABASE_URL sea idéntica.
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: integraciones
+          POSTGRES_PASSWORD: integraciones
+          POSTGRES_DB: integraciones
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U integraciones"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +44,22 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Test
+      # El engine usa una BD aparte (integraciones_engine): su cola de
+      # executions es global (SKIP LOCKED) y así no compite con la de la API.
+      - name: Preparar las dos bases de datos
+        run: |
+          psql -h 127.0.0.1 -p 5433 -U integraciones -d integraciones \
+            -c "CREATE DATABASE integraciones_engine;"
+        env:
+          PGPASSWORD: integraciones
+
+      - name: Test (con Postgres real)
         run: cargo test --workspace
-  # TODO: job de integración con Postgres (servicio + migraciones) cuando
-  # existan pruebas de integración (tarea 1.2/1.3 del change add-mvp1-core).
+        env:
+          DATABASE_URL: postgres://integraciones:integraciones@127.0.0.1:5433/integraciones
+          # Clave de bóveda solo para CI (no es un secreto): ejercita el
+          # camino de VAULT_KEY en vez de la clave efímera por proceso.
+          VAULT_KEY: 63692d7661756c742d6b65792d6e6f742d612d7365637265740000000000000000000000
+
+      - name: Test sin base de datos (los suites de integración se omiten)
+        run: cargo test --workspace
