@@ -9,11 +9,11 @@
 
 ## 2. Fase 2 — Enrutado condicional (engine + validación)
 
-- [ ] 2.1 Ejecutor: instancia con `when` falso → paso `skipped` sin invocar sandbox, cadena continúa; tests de trace con `skipped`
-- [ ] 2.2 Ejecutor: bloque built-in `switch` — evalúa rutas en orden, salta a la primera verdadera (o `default`), rutas no tomadas quedan `skipped`, sin evaluar condiciones restantes; tests por ruta
-- [ ] 2.3 Fail-fast preservado en la ruta tomada: error de bloque o de schema corta la ejecución aunque haya `when`/`switch`; tests de regresión MVP1
-- [ ] 2.4 Validador de publicación: `to` de cada ruta apunta a instancia existente y posterior (rechaza salto hacia atrás con 422), `when` conforme a la gramática (rechaza JS arbitrario), trigger cron válido; tests del validador
-- [ ] 2.5 Persistencia: pasos `skipped` grabados en su `seq` original sin IO/duración, misma transacción del trace; test contra Postgres real
+- [x] 2.1 Ejecutor: instancia con `when` falso → paso `skipped` sin invocar sandbox, cadena continúa; tests de trace con `skipped`
+- [x] 2.2 Ejecutor: bloque built-in `switch` — evalúa rutas en orden, salta a la primera verdadera (o `default`), rutas no tomadas quedan `skipped`, sin evaluar condiciones restantes; tests por ruta
+- [x] 2.3 Fail-fast preservado en la ruta tomada: error de bloque o de schema corta la ejecución aunque haya `when`/`switch`; tests de regresión MVP1
+- [x] 2.4 Validador de publicación: `to` de cada ruta apunta a instancia existente y posterior (rechaza salto hacia atrás con 422), `when` conforme a la gramática (rechaza JS arbitrario), trigger cron válido; tests del validador
+- [x] 2.5 Persistencia: pasos `skipped` grabados en su `seq` original sin IO/duración, misma transacción del trace; test contra Postgres real
 
 ## 3. Fase 3 — Disparo asíncrono y polling
 
