@@ -10,6 +10,7 @@ pub mod blocks;
 pub mod bridges;
 pub mod cursor;
 pub mod executions;
+pub mod invoke;
 pub mod problem;
 pub mod rest;
 pub mod state;
@@ -56,11 +57,11 @@ pub fn app(state: AppState) -> Router {
             auth::require_api_key,
         ));
 
-    // Plano de invocación: sin auth en v1; las rutas /x/{slug} llegan en 4.4
-    let invocation = Router::new().route(
-        "/",
-        get(|| async { problem::not_found("Las invocaciones usan /x/{slug} del puente") }),
-    );
+    // Plano de invocación: sin auth de administración en v1 (spec
+    // `bridge-invocation`); la auth por puente queda para una versión futura.
+    let invocation = invoke::router().fallback(|| async {
+        problem::not_found("las invocaciones usan /x/{slug} del puente")
+    });
 
     Router::new()
         .route("/healthz", get(|| async { "ok" }))

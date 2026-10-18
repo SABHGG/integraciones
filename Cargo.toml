@@ -50,6 +50,7 @@ sha2 = "0.10"
 hmac = "0.12"
 base64 = "0.22"
 hex = "0.4"
+serde_urlencoded = "0.7"
 dotenvy = "0.15"
 tower = { version = "0.5", features = ["util"] }
 
