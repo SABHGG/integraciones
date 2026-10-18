@@ -11,12 +11,18 @@ El backend está escrito en **Rust** y ejecuta los bloques (JavaScript/TypeScrip
 
 ## Current State
 
-Fase de diseño completada. **No existe código aún.** Toda la base de conocimiento vive en:
+**MVP1 construido y en producción local** (change `add-mvp1-core` archivado el 2026-10-18, CI verde, repo privado en GitHub): sandbox rquickjs, ejecutor lineal fail-fast, store de ejecuciones, biblioteca de bloques, bóveda mínima, API autodocumentada (OpenAPI 3.1 + Scalar).
 
-- `openspec/changes/add-mvp1-core/` — propuesta, decisiones de diseño y tareas del MVP1
+La base de conocimiento vive en:
+
+- `openspec/specs/` — las 6 capacidades vigentes sincronizadas del MVP1
+- `openspec/changes/archive/2026-10-18-add-mvp1-core/` — propuesta, diseño y tareas del MVP1 (23/23 tareas)
 - Memoria Engram del proyecto (topic_keys `integraciones-*`) — acta de las 9 rondas de decisiones
 
-Próximo hito: MVP1 (ver `changes/add-mvp1-core/tasks.md`).
+Próximos hitos documentados como changes activos:
+
+- **MVP2** → `changes/add-mvp2-async-cron-conditionals/` (async 202 + polling, webhook HMAC, cron, condicionales)
+- **MVP3** → `changes/add-mvp3-events-observability-ui/` (eventos, dry-run, replay, bóveda versionada, mask, consola web; asume MVP2 aplicado)
 
 ## Key Decisions (resumen ejecutivo)
 
@@ -94,6 +100,6 @@ docker compose up -d          # Postgres (cuando exista compose)
 
 ## Roadmap
 
-- **MVP1** — ejecutor + HTTP sync + store de ejecuciones + biblioteca de bloques + bóveda mínima
-- **MVP2** — async 202 + polling + webhook de resultado (HMAC) + cron + **puentes condicionales** (`when` por instancia o bloque `switch` con rutas nombradas; pasos no ejecutados se registran como `skipped`; condiciones deterministas sobre `$.`, sin JS arbitrario; prevención de ciclos — decisión tomada en conversación: el MVP1 permanece estrictamente lineal)
-- **MVP3** — eventos/colas, dry-run con mocks, replay, bóveda completa (rotación), enmascaramiento, UI (formularios + editor de código)
+- **MVP1** ✅ archivado (`2026-10-18-add-mvp1-core`) — ejecutor + HTTP sync + store de ejecuciones + biblioteca de bloques + bóveda mínima
+- **MVP2** → `add-mvp2-async-cron-conditionals` — async 202 + polling + webhook de resultado (HMAC) + cron + **puentes condicionales** (`when` por instancia o bloque `switch` con rutas nombradas; pasos no ejecutados `skipped`; condiciones deterministas sobre `$.`, sin JS arbitrario; prevención de ciclos — el MVP1 permanece estrictamente lineal)
+- **MVP3** → `add-mvp3-events-observability-ui` (asume MVP2) — eventos/colas, dry-run con mocks, replay, bóveda completa (versiones + rotación), enmascaramiento de IO, UI (dashboard, formularios + editor de código)
