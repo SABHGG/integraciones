@@ -69,6 +69,17 @@ fi
 PORT="${PORT:-8080}"
 BASE_URL="http://127.0.0.1:${PORT}"
 
+# Puerto ocupado por otro proceso (p. ej. un binario zombi de una ejecución
+# anterior: matar el wrapper cargo run no siempre mata al binario hijo):
+# fallar temprano con el PID culpable en vez de chocar con AddrInUse a ciegas.
+if command -v ss >/dev/null 2>&1 \
+    && ss -ltn "( sport = :$PORT )" 2>/dev/null | grep -q LISTEN; then
+    echo ">> el puerto $PORT ya está ocupado por otro proceso:" >&2
+    ss -ltnp "( sport = :$PORT )" 2>/dev/null | grep LISTEN >&2 || true
+    echo ">> mátalo (kill <PID>) o pon otro PORT en .env y relanza." >&2
+    exit 1
+fi
+
 # ── 3. Servidor: compila la 1.ª vez (~1 min) y arranca en background ───
 echo ">> compilando y arrancando el servidor en ${BASE_URL}..."
 cargo run -p api &
