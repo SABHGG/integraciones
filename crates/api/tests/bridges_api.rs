@@ -251,6 +251,37 @@ impl Harness {
         )
     }
 
+
+    /// Crea un bloque built-in `http` y publica una versión SIN código
+    /// (schemas solos): es lo que instancia un built-in o un `switch`.
+    async fn published_builtin(&self, slug: &str) -> (Uuid, Uuid) {
+        let response = self
+            .post(
+                "/api/v1/blocks",
+                Some(json!({ "slug": slug, "name": slug, "blockType": "http" })),
+            )
+            .await;
+        assert_eq!(response.status, StatusCode::CREATED, "{}", response.body);
+        let block_id = response.json()["id"].as_str().expect("id del bloque").to_string();
+
+        let published = self
+            .post(
+                &format!("/api/v1/blocks/{block_id}/versions"),
+                Some(json!({ "inputSchema": json!({}), "outputSchema": json!({}) })),
+            )
+            .await;
+        assert_eq!(published.status, StatusCode::CREATED, "{}", published.body);
+        let version_id = published.json()["id"]
+            .as_str()
+            .expect("id de la versión")
+            .to_string();
+
+        (
+            Uuid::parse_str(&block_id).expect("uuid del bloque"),
+            Uuid::parse_str(&version_id).expect("uuid de la versión"),
+        )
+    }
+
     /// Crea un workspace extra con su key; devuelve `(workspace_id, key cruda)`.
     async fn extra_workspace(&self) -> (Uuid, String) {
         let id = Uuid::now_v7();
@@ -587,4 +618,245 @@ async fn el_trigger_incompleto_falla_en_validate_y_se_arregla_con_patch() {
         .await;
     assert_eq!(published.status, StatusCode::CREATED, "{}", published.body);
     assert_eq!(published.json()["definition"]["trigger"]["type"], "http");
+}
+
+// ── enrutado condicional y trigger cron (MVP2) ─────────────────────────
+
+/// Instancia con config y `when` opcionales (para puentes condicionales).
+fn instancia(
+    id: &str,
+    name: &str,
+    block: &(Uuid, Uuid),
+    input: Value,
+    config: Value,
+    when: Value,
+) -> Value {
+    let mut body = json!({
+        "id": id,
+        "name": name,
+        "blockId": block.0.to_string(),
+        "blockVersionId": block.1.to_string(),
+        "input": input,
+        "config": config,
+    });
+    if !when.is_null() {
+        body["when"] = when;
+    }
+    body
+}
+
+#[tokio::test]
+async fn publica_un_puente_condicional_con_switch_valido_y_congela_el_snapshot() {
+    let Some(h) = begin().await else { return };
+
+    let origen = bloque_origen(&h, "cond").await;
+    let builtin = h.published_builtin("decisor-cond").await;
+    let vip = h
+        .published_block(
+            "vip-cond",
+            json!({ "type": "object", "properties": { "total": { "type": "integer" } } }),
+            json!({}),
+        )
+        .await;
+    let normal = bloque_destino(&h, "cond").await;
+
+    let draft = json!({
+        "trigger": { "type": "http", "method": "POST", "path": "/x/condicional" },
+        "blocks": [
+            h.instance("paso-origen", "origen", &origen, json!({})),
+            instancia(
+                "paso-switch",
+                "decisor",
+                &builtin,
+                json!({}),
+                json!({
+                    "routes": [
+                        { "when": { "gte": ["$.origen.total", 10] }, "to": "paso-vip" },
+                        { "when": { "exists": "$.origen.cliente" }, "to": "paso-normal" }
+                    ],
+                    "default": "paso-normal"
+                }),
+                json!(null),
+            ),
+            instancia("paso-vip", "vip", &vip, json!({ "total": "$.origen.total" }), json!({}), json!(null)),
+            instancia("paso-normal", "normal", &normal, json!({ "total": "$.origen.total" }), json!({}), json!(null)),
+        ]
+    });
+    let id = h.create_bridge("condicional-ok").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    h.patch(&format!("/api/v1/bridges/{id}"), draft.clone()).await;
+
+    let validated = h.post(&format!("/api/v1/bridges/{id}/validate"), None).await;
+    assert_eq!(validated.json()["valid"], true, "{}", validated.body);
+
+    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    assert_eq!(published.status, StatusCode::CREATED, "{}", published.body);
+
+    // El snapshot congela `when`, `routes` y `default`.
+    let version = published.json();
+    let blocks = version["definition"]["blocks"].as_array().expect("bloques");
+    assert_eq!(blocks[1]["config"]["default"], json!("paso-normal"));
+    assert_eq!(
+        blocks[1]["config"]["routes"][0],
+        json!({ "when": { "gte": ["$.origen.total", 10] }, "to": "paso-vip" })
+    );
+}
+
+#[tokio::test]
+async fn una_ruta_del_switch_que_salta_hacia_atras_bloquea_la_publicacion() {
+    let Some(h) = begin().await else { return };
+
+    let origen = bloque_origen(&h, "atras").await;
+    let builtin = h.published_builtin("decisor-atras").await;
+
+    let draft = json!({
+        "trigger": { "type": "http", "method": "POST", "path": "/x/ciclo" },
+        "blocks": [
+            h.instance("paso-origen", "origen", &origen, json!({})),
+            instancia(
+                "paso-switch",
+                "decisor",
+                &builtin,
+                json!({}),
+                json!({ "routes": [{ "when": { "exists": "$.origen.total" }, "to": "paso-origen" }] }),
+                json!(null),
+            ),
+        ]
+    });
+    let id = h.create_bridge("condicional-ciclo").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+
+    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
+    let errors = problem["errors"].as_array().expect("errors");
+    assert!(
+        errors.iter().any(|e| {
+            e["field"] == json!("blocks[1].config.routes[0]")
+                && e["message"].as_str().unwrap_or("").contains("salta hacia atrás")
+        }),
+        "{problem:?}"
+    );
+}
+
+#[tokio::test]
+async fn un_when_con_codigo_arbitrario_se_rechaza_como_no_declarativo() {
+    let Some(h) = begin().await else { return };
+
+    let origen = bloque_origen(&h, "js").await;
+    let destino = bloque_destino(&h, "js").await;
+
+    for cuando in [
+        json!("$.origen.total > 10"),
+        json!({ "js": "function (v) { return v > 10 }" }),
+        json!({ "==": ["$.origen.total", 10] }),
+    ] {
+        let draft = json!({
+            "trigger": { "type": "http", "method": "POST", "path": "/x/no-js" },
+            "blocks": [
+                h.instance("paso-origen", "origen", &origen, json!({})),
+                instancia(
+                    "paso-destino",
+                    "destino",
+                    &destino,
+                    json!({ "total": "$.origen.total" }),
+                    json!({}),
+                    cuando.clone(),
+                ),
+            ]
+        });
+        let id = h.create_bridge("condicional-js").await["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+
+        let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+        let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
+        let errors = problem["errors"].as_array().expect("errors");
+        assert!(
+            errors.iter().any(|e| {
+                e["field"] == json!("blocks[1].when")
+                    && e["message"]
+                        .as_str()
+                        .unwrap_or("")
+                        .contains("declarativas")
+            }),
+            "{cuando}: {problem:?}"
+        );
+        // Limpia para el siguiente intento.
+        h.delete(&format!("/api/v1/bridges/{id}")).await;
+    }
+}
+
+#[tokio::test]
+async fn el_trigger_cron_se_valida_al_publicar_y_se_congela_en_el_snapshot() {
+    let Some(h) = begin().await else { return };
+
+    let origen = bloque_origen(&h, "cron").await;
+
+    // Válido: publica y congela schedule + timezone.
+    let draft = json!({
+        "trigger": { "type": "cron", "schedule": "0 9 * * 1-5", "timezone": "Europe/Madrid" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+    });
+    let id = h.create_bridge("cron-ok").await["id"].as_str().unwrap().to_string();
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    assert_eq!(published.status, StatusCode::CREATED, "{}", published.body);
+    let version = published.json();
+    assert_eq!(version["definition"]["trigger"]["schedule"], json!("0 9 * * 1-5"));
+    assert_eq!(version["definition"]["trigger"]["timezone"], json!("Europe/Madrid"));
+    h.delete(&format!("/api/v1/bridges/{id}")).await;
+
+    // Schedule que no es cron de 5 campos.
+    let draft = json!({
+        "trigger": { "type": "cron", "schedule": "no-es-cron", "timezone": "UTC" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+    });
+    let id = h.create_bridge("cron-malo").await["id"].as_str().unwrap().to_string();
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        problem["errors"].as_array().expect("errors").iter().any(|e| e["field"] == json!("trigger.schedule")),
+        "{problem:?}"
+    );
+    h.delete(&format!("/api/v1/bridges/{id}")).await;
+
+    // Timezone IANA desconocida.
+    let draft = json!({
+        "trigger": { "type": "cron", "schedule": "*/5 * * * *", "timezone": "Marte/Olympus" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+    });
+    let id = h.create_bridge("cron-tz").await["id"].as_str().unwrap().to_string();
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        problem["errors"].as_array().expect("errors").iter().any(|e| e["field"] == json!("trigger.timezone")),
+        "{problem:?}"
+    );
+
+    // Cron sin schedule ni timezone.
+    let draft = json!({
+        "trigger": { "type": "cron" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+    });
+    let id = h.create_bridge("cron-vacio").await["id"].as_str().unwrap().to_string();
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
+    let fields: Vec<&str> = problem["errors"]
+        .as_array()
+        .expect("errors")
+        .iter()
+        .filter_map(|e| e["field"].as_str())
+        .collect();
+    assert!(fields.contains(&"trigger.schedule"), "{problem:?}");
+    assert!(fields.contains(&"trigger.timezone"), "{problem:?}");
 }

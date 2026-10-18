@@ -54,6 +54,8 @@ struct Instance {
     input_schema: Value,
     output_schema: Value,
     code: Option<String>,
+    /// Condición declarativa opcional (`domain::conditions`).
+    when: Option<Value>,
     timeout_ms: Option<u64>,
     /// `false` si los schemas no se pudieron resolver contra la biblioteca.
     resolved: bool,
@@ -128,7 +130,38 @@ fn validate_trigger(trigger: Option<&Value>) -> Vec<Issue> {
             )),
             Some(_) => {}
         }
-    } else if kind != "cron" && kind != "event" && kind != "manual" {
+    } else if kind == "cron" {
+        // MVP2: el cron pasa a estar soportado de verdad — schedule y timezone
+        // se validan aquí y quedan congelados en el snapshot.
+        match trigger.get("schedule").and_then(Value::as_str) {
+            None => issues.push(Issue::new(
+                "trigger.schedule",
+                "un disparador cron necesita \"schedule\" (expresión cron de 5 campos)",
+            )),
+            Some(schedule) => {
+                if let Err(error) = domain::cron::validate(schedule) {
+                    issues.push(Issue::new(
+                        "trigger.schedule",
+                        format!("\"{schedule}\" no es un cron de 5 campos válido: {error}"),
+                    ));
+                }
+            }
+        }
+        match trigger.get("timezone").and_then(Value::as_str) {
+            None => issues.push(Issue::new(
+                "trigger.timezone",
+                "un disparador cron necesita \"timezone\" (zona IANA, p. ej. Europe/Madrid)",
+            )),
+            Some(timezone) => {
+                if !domain::cron::validate_timezone(timezone) {
+                    issues.push(Issue::new(
+                        "trigger.timezone",
+                        format!("\"{timezone}\" no es una zona horaria IANA conocida"),
+                    ));
+                }
+            }
+        }
+    } else if kind != "event" && kind != "manual" {
         issues.push(Issue::new(
             "trigger.type",
             format!("\"{kind}\" no es un tipo de disparador soportado (http|cron|event|manual)"),
@@ -414,6 +447,120 @@ fn key_segments(rel: &str) -> Option<Vec<Segment>> {
 ///
 /// La resolución NO valida `id`/`name`: eso lo reporta `validate_chain` (que
 /// conoce posiciones y duplicados), para no duplicar errores.
+/// Valida el enrutado condicional del borrador (MVP2): `when` conforme a la
+/// gramática declarativa y bloques `switch` bien formados.
+///
+/// Contrato del switch: instancia cuya config declara `routes`
+/// (array de `{when, to}`) con `default` opcional. Cada `to` es el id de una
+/// instancia existente y POSTERIOR (un salto hacia atrás formaría un ciclo);
+/// toda condición es de la gramática declarativa — se rechaza JS arbitrario —
+/// y la versión instanciada no puede llevar código (el switch es built-in).
+fn validate_conditional(instances: &[Instance]) -> Vec<Issue> {
+    let mut issues = Vec::new();
+    for (index, instance) in instances.iter().enumerate() {
+        let prefix = format!("blocks[{index}]");
+        if let Some(when) = &instance.when
+            && let Err(error) = domain::conditions::validate(when)
+        {
+            issues.push(Issue::new(
+                format!("{prefix}.when"),
+                format!(
+                    "las condiciones son declarativas (gramática eq/ne/gt/gte/lt/lte/exists/contains + and/or/not): {error}"
+                ),
+            ));
+        }
+
+        let Some(routes) = instance.config.get("routes") else {
+            continue;
+        };
+        if instance.code.is_some() {
+            issues.push(Issue::new(
+                format!("{prefix}.config.routes"),
+                "el switch es un bloque built-in sin código: la versión instanciada no puede declarar código",
+            ));
+            continue;
+        }
+        let Some(items) = routes.as_array() else {
+            issues.push(Issue::new(
+                format!("{prefix}.config.routes"),
+                "\"routes\" debe ser un array de rutas {when, to}",
+            ));
+            continue;
+        };
+        for (route_index, route) in items.iter().enumerate() {
+            let route_field = format!("{prefix}.config.routes[{route_index}]");
+            let Some(when) = route.get("when") else {
+                issues.push(Issue::new(
+                    format!("{route_field}.when"),
+                    "cada ruta necesita \"when\" (condición declarativa)",
+                ));
+                continue;
+            };
+            if let Err(error) = domain::conditions::validate(when) {
+                issues.push(Issue::new(
+                    format!("{route_field}.when"),
+                    format!(
+                        "las condiciones son declarativas (gramática eq/ne/gt/gte/lt/lte/exists/contains + and/or/not): {error}"
+                    ),
+                ));
+            }
+            check_route_target(
+                instances,
+                index,
+                &route_field,
+                route.get("to").and_then(Value::as_str),
+                &mut issues,
+            );
+        }
+        if let Some(default_to) = instance.config.get("default").and_then(Value::as_str) {
+            check_route_target(
+                instances,
+                index,
+                &format!("{prefix}.config.default"),
+                Some(default_to),
+                &mut issues,
+            );
+        } else if items.is_empty() {
+            issues.push(Issue::new(
+                format!("{prefix}.config.routes"),
+                "un switch sin rutas necesita \"default\" (si no, nunca decide nada)",
+            ));
+        }
+    }
+    issues
+}
+
+/// Comprueba que el `to` de una ruta apunta a una instancia existente y
+/// posterior al switch (un salto hacia atrás formaría un ciclo).
+fn check_route_target(
+    instances: &[Instance],
+    switch_index: usize,
+    field: &str,
+    target: Option<&str>,
+    issues: &mut Vec<Issue>,
+) {
+    let Some(target_id) = target else {
+        issues.push(Issue::new(
+            field.to_string(),
+            "la ruta necesita \"to\": el id de la instancia destino",
+        ));
+        return;
+    };
+    match instances.iter().position(|candidate| candidate.id == target_id) {
+        Some(at) if at > switch_index => {}
+        Some(at) => issues.push(Issue::new(
+            field.to_string(),
+            format!(
+                "la ruta salta hacia atrás: \"{target_id}\" es blocks[{at}] y el switch es blocks[{switch_index}] (formaría un ciclo)"
+            ),
+        )),
+        None => issues.push(Issue::new(
+            field.to_string(),
+            format!("la ruta apunta a \"{target_id}\", que no existe en la cadena"),
+        )),
+    }
+}
+
 async fn resolve_instances(
     conn: &mut sqlx::PgConnection,
     workspace_id: Uuid,
@@ -461,6 +608,7 @@ async fn resolve_instances(
             input_schema: json!({}),
             output_schema: json!({}),
             code: None,
+            when: entry.get("when").filter(|value| !value.is_null()).cloned(),
             timeout_ms: entry
                 .get("timeoutMs")
                 .filter(|value| !value.is_null())
@@ -977,6 +1125,7 @@ async fn validar_borrador(
     let (instances, resolve_issues) = resolve_instances(conn, workspace_id, draft).await;
     issues.extend(resolve_issues);
     issues.extend(validate_chain(&instances));
+    issues.extend(validate_conditional(&instances));
     Ok((issues, instances))
 }
 
@@ -1075,6 +1224,7 @@ async fn publish_version(
             config: instance.config.clone(),
             input_schema: instance.input_schema.clone(),
             output_schema: instance.output_schema.clone(),
+            when: instance.when.clone(),
             timeout_ms: instance.timeout_ms,
         })
         .collect();
@@ -1222,6 +1372,7 @@ mod tests {
             input_schema: json!({}),
             output_schema,
             code: Some("export default (input) => input".to_string()),
+            when: None,
             timeout_ms: None,
             resolved: true,
         }
@@ -1302,11 +1453,29 @@ mod tests {
     #[test]
     fn los_disparadores_no_http_solo_exigen_el_tipo() {
         for trigger in [
-            json!({ "type": "cron" }),
             json!({ "type": "event" }),
             json!({ "type": "manual" }),
         ] {
             assert_sin_errores(&validate_trigger(Some(&trigger)));
+        }
+    }
+
+    #[test]
+    fn el_disparador_cron_exige_schedule_y_timezone_validos() {
+        assert_sin_errores(&validate_trigger(Some(&json!({
+            "type": "cron",
+            "schedule": "*/5 * * * *",
+            "timezone": "Europe/Madrid"
+        }))));
+
+        // Sin schedule/timezone, o con valores que no son cron/IANA.
+        for trigger in [
+            json!({ "type": "cron" }),
+            json!({ "type": "cron", "schedule": "no-es-cron", "timezone": "UTC" }),
+            json!({ "type": "cron", "schedule": "*/5 * * * *", "timezone": "Marte/Olympus" }),
+        ] {
+            let issues = validate_trigger(Some(&trigger));
+            assert!(!issues.is_empty(), "{trigger}");
         }
     }
 
