@@ -157,8 +157,9 @@ impl Resp {
 /// Aplicación + pool + key vinculada a un workspace de test.
 struct Harness {
     app: Router,
-    pool: PgPool,
-    workspace_id: Uuid,
+    /// Pool retenido para futuras aserciones SQL; hoy no se consulta.
+    _pool: PgPool,
+    _workspace_id: Uuid,
     key: String,
     /// Turno de base de datos, vivo mientras dura el test.
     _turno: MutexGuard<'static, ()>,
@@ -200,8 +201,8 @@ async fn begin() -> Option<Harness> {
 
     Some(Harness {
         app,
-        pool,
-        workspace_id,
+        _pool: pool,
+        _workspace_id: workspace_id,
         key,
         _turno: turno,
     })

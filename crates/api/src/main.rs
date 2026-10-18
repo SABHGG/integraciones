@@ -34,6 +34,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     api::migrate(&pool).await?;
     tracing::info!(migraciones = "ok", "esquema verificado");
 
+    // Job de retención: purga IO de executions (>30 días por defecto) y
+    // resúmenes (>1 año), con ventanas e intervalo configurables por entorno.
+    let retention = api::retention::Config::from_env();
+    api::retention::spawn(pool.clone(), retention.clone());
+    tracing::info!(
+        steps_days = retention.steps_days,
+        executions_days = retention.executions_days,
+        interval_secs = retention.interval_secs,
+        "job de retención activo"
+    );
+
     let app = api::app(AppState { pool });
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
