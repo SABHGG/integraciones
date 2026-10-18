@@ -65,7 +65,11 @@ pub fn page_limit(raw: Option<&str>) -> Result<i64, Problem> {
 
 /// Recorta la página a `limit` y calcula el cursor de la siguiente si sobró
 /// exactamente la fila de sondeo.
-pub fn next_cursor<T>(items: &mut Vec<T>, limit: i64, encode: impl Fn(&T) -> String) -> Option<String> {
+pub fn next_cursor<T>(
+    items: &mut Vec<T>,
+    limit: i64,
+    encode: impl Fn(&T) -> String,
+) -> Option<String> {
     if items.len() as i64 <= limit {
         return None;
     }

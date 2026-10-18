@@ -124,16 +124,14 @@ async fn seed_workspace(pool: &PgPool, workspace_id: Uuid) -> (String, Uuid) {
         .await
         .expect("workspace");
 
-    sqlx::query(
-        "INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(key_id)
-    .bind(workspace_id)
-    .bind(format!("inv-test-{raw_key}"))
-    .bind(hash_key(&raw_key))
-    .execute(pool)
-    .await
-    .expect("api key");
+    sqlx::query("INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)")
+        .bind(key_id)
+        .bind(workspace_id)
+        .bind(format!("inv-test-{raw_key}"))
+        .bind(hash_key(&raw_key))
+        .execute(pool)
+        .await
+        .expect("api key");
 
     (raw_key, key_id)
 }
@@ -147,9 +145,7 @@ impl Harness {
         body: Option<(&str, Value)>,
         idempotency_key: Option<&str>,
     ) -> Resp {
-        let mut builder = Request::builder()
-            .method(method)
-            .uri(format!("/x/{slug}"));
+        let mut builder = Request::builder().method(method).uri(format!("/x/{slug}"));
         if let Some((content_type, _)) = &body {
             builder = builder.header(header::CONTENT_TYPE, content_type.to_string());
         }
@@ -314,7 +310,12 @@ async fn invoca_un_puente_publicado_con_sobre_200_y_ejecucion_persistida() {
 
     // Ejecución exitosa: 200 con sobre {success, data, executionId}.
     let respuesta = h
-        .x(Method::POST, "eco", Some(("application/json", json!({ "total": 3 }))), None)
+        .x(
+            Method::POST,
+            "eco",
+            Some(("application/json", json!({ "total": 3 }))),
+            None,
+        )
         .await;
     assert_eq!(respuesta.status, StatusCode::OK, "{}", respuesta.body);
     let sobre = respuesta.json();
@@ -325,7 +326,10 @@ async fn invoca_un_puente_publicado_con_sobre_200_y_ejecucion_persistida() {
         "data = salida del último bloque"
     );
     assert!(sobre["error"].is_null());
-    let execution_id = sobre["executionId"].as_str().expect("executionId").to_string();
+    let execution_id = sobre["executionId"]
+        .as_str()
+        .expect("executionId")
+        .to_string();
 
     // La ejecución queda persistida: visible por el plano de administración con
     // trigger HTTP normalizado ({body, query}) y trace completo en orden.
@@ -336,7 +340,10 @@ async fn invoca_un_puente_publicado_con_sobre_200_y_ejecucion_persistida() {
     let fila = detalle.json();
     assert_eq!(fila["status"], "succeeded");
     assert_eq!(fila["triggerType"], "http");
-    assert_eq!(fila["triggerData"]["body"]["total"], 3, "entrada del trigger");
+    assert_eq!(
+        fila["triggerData"]["body"]["total"], 3,
+        "entrada del trigger"
+    );
     assert!(fila["bridgeVersionId"].as_str().is_some());
 
     let trace = h
@@ -358,21 +365,35 @@ async fn invoca_un_puente_publicado_con_sobre_200_y_ejecucion_persistida() {
         .problem(StatusCode::METHOD_NOT_ALLOWED);
 
     // Slug inexistente → 404 Problem Details, sin sobre de ejecución.
-    h.x(Method::POST, "no-existe", Some(("application/json", json!({}))), None)
-        .await
-        .problem(StatusCode::NOT_FOUND);
+    h.x(
+        Method::POST,
+        "no-existe",
+        Some(("application/json", json!({}))),
+        None,
+    )
+    .await
+    .problem(StatusCode::NOT_FOUND);
 
     // Content-Type no soportado → 415 Problem Details.
-    h.x(Method::POST, "eco", Some(("text/plain", json!({ "total": 1 }))), None)
-        .await
-        .problem(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    h.x(
+        Method::POST,
+        "eco",
+        Some(("text/plain", json!({ "total": 1 }))),
+        None,
+    )
+    .await
+    .problem(StatusCode::UNSUPPORTED_MEDIA_TYPE);
 
     // Body por encima del límite → 413 Problem Details.
     let enorme = json!({ "blob": "x".repeat(1_100_000) });
-    h.x(Method::POST, "eco", Some(("application/json", enorme)), None)
-        .await
-        .problem(StatusCode::PAYLOAD_TOO_LARGE);
-
+    h.x(
+        Method::POST,
+        "eco",
+        Some(("application/json", enorme)),
+        None,
+    )
+    .await
+    .problem(StatusCode::PAYLOAD_TOO_LARGE);
 }
 
 #[tokio::test]
@@ -380,7 +401,12 @@ async fn body_malformado_responde_400_problem() {
     let Some(h) = begin().await else { return };
 
     let js_echo = "export default function(input, ctx) {\n    return input;\n}";
-    h.bridge("echo", "POST", json!([{ "id": "b1", "name": "echo", "code": js_echo, "input": {}, "config": {} }])).await;
+    h.bridge(
+        "echo",
+        "POST",
+        json!([{ "id": "b1", "name": "echo", "code": js_echo, "input": {}, "config": {} }]),
+    )
+    .await;
 
     let response = h
         .app
@@ -436,7 +462,12 @@ async fn sobre_200_con_block_failed_y_error_estructurado() {
 
     // El fallo de ejecución NO es error de transporte: 200 con success=false.
     let respuesta = h
-        .x(Method::POST, "rompe", Some(("application/json", json!({}))), None)
+        .x(
+            Method::POST,
+            "rompe",
+            Some(("application/json", json!({}))),
+            None,
+        )
         .await;
     assert_eq!(respuesta.status, StatusCode::OK, "{}", respuesta.body);
     let sobre = respuesta.json();
@@ -445,7 +476,10 @@ async fn sobre_200_con_block_failed_y_error_estructurado() {
     assert_eq!(sobre["error"]["block"], "explota", "el bloque culpable");
     assert!(sobre["error"]["message"].as_str().is_some());
     assert!(sobre["data"].is_null());
-    let execution_id = sobre["executionId"].as_str().expect("executionId").to_string();
+    let execution_id = sobre["executionId"]
+        .as_str()
+        .expect("executionId")
+        .to_string();
 
     // La ejecución queda como failed con error estructurado.
     let detalle = h
@@ -475,26 +509,24 @@ async fn get_acepta_query_params_y_el_trigger_los_expone() {
     )
     .await;
 
-    let respuesta = h
-        .x(Method::GET, "consulta?q=hola", None, None)
-        .await;
+    let respuesta = h.x(Method::GET, "consulta?q=hola", None, None).await;
     // GET con query: el sobre viaja en el cuerpo (el plano no define redirect).
     assert_eq!(respuesta.status, StatusCode::OK, "{}", respuesta.body);
     let sobre = respuesta.json();
     assert_eq!(sobre["success"], true);
-    assert_eq!(sobre["data"], json!({ "q": "hola" }), "query → $.trigger.query");
+    assert_eq!(
+        sobre["data"],
+        json!({ "q": "hola" }),
+        "query → $.trigger.query"
+    );
 }
 
 #[tokio::test]
 async fn idempotency_key_repetida_devuelve_la_ejecucion_previa() {
     let Some(h) = begin().await else { return };
 
-    h.bridge(
-        "eco",
-        "POST",
-        json!([bloque_duplicar("b1", "duplicar")]),
-    )
-    .await;
+    h.bridge("eco", "POST", json!([bloque_duplicar("b1", "duplicar")]))
+        .await;
 
     // Primera invocación: ejecuta de verdad.
     let primera = h
@@ -613,11 +645,17 @@ async fn inputschema_invalido_da_validacion_failed_sin_gastar_isolate() {
     assert_eq!(respuesta.status, StatusCode::OK, "{}", respuesta.body);
     let sobre = respuesta.json();
     assert_eq!(sobre["success"], false, "{}", sobre);
-    assert_eq!(sobre["error"]["code"], "VALIDATION_FAILED", "código estable");
+    assert_eq!(
+        sobre["error"]["code"], "VALIDATION_FAILED",
+        "código estable"
+    );
     let mensaje = sobre["error"]["message"].as_str().expect("mensaje");
     assert!(mensaje.contains("total"), "mensaje quirúrgico: {mensaje}");
     assert!(sobre["data"].is_null());
-    let execution_id = sobre["executionId"].as_str().expect("executionId").to_string();
+    let execution_id = sobre["executionId"]
+        .as_str()
+        .expect("executionId")
+        .to_string();
 
     // La ejecución queda failed con el error estructurado y SIN pasos: no se
     // gastó isolate (la cadena ni arrancó).

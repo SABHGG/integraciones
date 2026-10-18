@@ -73,18 +73,26 @@ pub struct PurgeReport {
 /// El orden importa: primero el IO (ventana corta) y después los resúmenes
 /// (ventana larga), de modo que un resumen nunca queda sin sus pasos dentro
 /// de la ventana de 30 días.
-pub async fn purge(pool: &PgPool, steps_days: i64, executions_days: i64) -> Result<PurgeReport, sqlx::Error> {
-    let steps = sqlx::query("DELETE FROM execution_steps WHERE created_at < now() - make_interval(days => $1::int)")
-        .bind(steps_days)
-        .execute(pool)
-        .await?
-        .rows_affected();
+pub async fn purge(
+    pool: &PgPool,
+    steps_days: i64,
+    executions_days: i64,
+) -> Result<PurgeReport, sqlx::Error> {
+    let steps = sqlx::query(
+        "DELETE FROM execution_steps WHERE created_at < now() - make_interval(days => $1::int)",
+    )
+    .bind(steps_days)
+    .execute(pool)
+    .await?
+    .rows_affected();
 
-    let executions = sqlx::query("DELETE FROM executions WHERE created_at < now() - make_interval(days => $1::int)")
-        .bind(executions_days)
-        .execute(pool)
-        .await?
-        .rows_affected();
+    let executions = sqlx::query(
+        "DELETE FROM executions WHERE created_at < now() - make_interval(days => $1::int)",
+    )
+    .bind(executions_days)
+    .execute(pool)
+    .await?
+    .rows_affected();
 
     Ok(PurgeReport { steps, executions })
 }

@@ -79,13 +79,16 @@ impl IntoResponse for Problem {
 // ── Constructores de los problemas comunes ─────────────────────────────
 
 pub fn unauthorized(detail: impl Into<String>) -> Problem {
-    Problem::new(StatusCode::UNAUTHORIZED, "unauthorized", "Unauthorized")
-        .with_detail(detail)
+    Problem::new(StatusCode::UNAUTHORIZED, "unauthorized", "Unauthorized").with_detail(detail)
 }
 
 pub fn internal(detail: impl Into<String>) -> Problem {
-    Problem::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", "Internal Server Error")
-        .with_detail(detail)
+    Problem::new(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "internal",
+        "Internal Server Error",
+    )
+    .with_detail(detail)
 }
 
 pub fn forbidden(detail: impl Into<String>) -> Problem {
@@ -117,8 +120,12 @@ pub fn unprocessable_entity(detail: impl Into<String>) -> Problem {
 }
 
 pub fn not_implemented(detail: impl Into<String>) -> Problem {
-    Problem::new(StatusCode::NOT_IMPLEMENTED, "not-implemented", "Not Implemented")
-        .with_detail(detail)
+    Problem::new(
+        StatusCode::NOT_IMPLEMENTED,
+        "not-implemented",
+        "Not Implemented",
+    )
+    .with_detail(detail)
 }
 
 #[cfg(test)]
@@ -137,10 +144,12 @@ mod tests {
         assert_eq!(body["detail"], "bloque referenciado");
         assert_eq!(body["bridgeSlug"], "demo");
         assert_eq!(body["instance"], "/api/v1/blocks/x");
-        assert!(body["type"]
-            .as_str()
-            .unwrap()
-            .ends_with("/problems/conflict"));
+        assert!(
+            body["type"]
+                .as_str()
+                .unwrap()
+                .ends_with("/problems/conflict")
+        );
     }
 
     #[test]
@@ -164,13 +173,15 @@ mod tests {
     fn constructores_de_conflicto_prohibido_y_validacion() {
         assert_eq!(conflict("slug duplicado").status, StatusCode::CONFLICT);
         assert_eq!(forbidden("sin workspace").status, StatusCode::FORBIDDEN);
-        assert_eq!(bad_request("cursor inválido").status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            bad_request("cursor inválido").status,
+            StatusCode::BAD_REQUEST
+        );
         let unprocessable = unprocessable_entity("código no compila");
         assert_eq!(unprocessable.status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(unprocessable.type_slug, "unprocessable-entity");
         assert!(
-            unprocessable
-                .to_json(None)["type"]
+            unprocessable.to_json(None)["type"]
                 .as_str()
                 .unwrap()
                 .ends_with("/problems/unprocessable-entity")

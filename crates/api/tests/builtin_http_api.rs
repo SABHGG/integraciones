@@ -19,9 +19,9 @@ use std::sync::{Arc, Mutex};
 
 use api::auth::hash_key;
 use api::state::AppState;
+use axum::Json;
 use axum::Router;
 use axum::body::Body;
-use axum::Json;
 use axum::extract::State;
 use axum::http::{Method, Request, StatusCode, header};
 use axum::routing::{get, post};
@@ -91,7 +91,9 @@ async fn mock_server() -> (String, Registro) {
         .expect("puerto efímero");
     let addr = listener.local_addr().expect("dirección local");
     tokio::spawn(async move {
-        axum::serve(listener, app).await.expect("servidor de mentira");
+        axum::serve(listener, app)
+            .await
+            .expect("servidor de mentira");
     });
 
     (format!("http://{addr}"), registro)
@@ -177,16 +179,14 @@ async fn seed_workspace(pool: &PgPool, workspace_id: Uuid) -> (String, Uuid) {
         .await
         .expect("workspace");
 
-    sqlx::query(
-        "INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(key_id)
-    .bind(workspace_id)
-    .bind(format!("builtin-test-{raw_key}"))
-    .bind(hash_key(&raw_key))
-    .execute(pool)
-    .await
-    .expect("api key");
+    sqlx::query("INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)")
+        .bind(key_id)
+        .bind(workspace_id)
+        .bind(format!("builtin-test-{raw_key}"))
+        .bind(hash_key(&raw_key))
+        .execute(pool)
+        .await
+        .expect("api key");
 
     (raw_key, key_id)
 }
@@ -316,7 +316,9 @@ async fn bloque_http_get_resuelve_config_y_devuelve_el_cuerpo() {
     )
     .await;
 
-    let respuesta = h.x(Method::POST, "trae-usuario", Some(json!({ "id": 7 }))).await;
+    let respuesta = h
+        .x(Method::POST, "trae-usuario", Some(json!({ "id": 7 })))
+        .await;
     assert_eq!(respuesta.status, StatusCode::OK, "{}", respuesta.body);
     let sobre = respuesta.json();
     assert_eq!(sobre["success"], true, "{}", sobre);
@@ -401,7 +403,9 @@ async fn bloque_http_post_envia_body_json_interpolado() {
 
     // El secreto tampoco vive en el detalle de la ejecución.
     let execution_id = sobre["executionId"].as_str().expect("executionId");
-    let detalle = h.admin_get(&format!("/api/v1/executions/{execution_id}")).await;
+    let detalle = h
+        .admin_get(&format!("/api/v1/executions/{execution_id}"))
+        .await;
     assert!(
         !detalle.body.contains(SECRETO),
         "el secreto no puede aparecer en el detalle: {}",
@@ -445,7 +449,10 @@ async fn credencial_inexistente_falla_el_bloque_sin_salir_a_la_red() {
 
     // La petición nunca salió al host remoto.
     let recibidas = registro.lock().unwrap().clone();
-    assert!(recibidas.is_empty(), "no debió salir a la red: {recibidas:?}");
+    assert!(
+        recibidas.is_empty(),
+        "no debió salir a la red: {recibidas:?}"
+    );
 
     // La ejecución quedó failed y el paso registra el fallo.
     let execution_id = sobre["executionId"].as_str().expect("executionId");
@@ -473,9 +480,7 @@ async fn ctx_credential_resuelve_desde_la_boveda_en_custom_logic() {
     )
     .await;
 
-    let respuesta = h
-        .x(Method::POST, "usa-credencial", Some(json!({})))
-        .await;
+    let respuesta = h.x(Method::POST, "usa-credencial", Some(json!({}))).await;
     assert_eq!(respuesta.status, StatusCode::OK, "{}", respuesta.body);
     let sobre = respuesta.json();
     assert_eq!(sobre["success"], true, "{}", sobre);

@@ -170,9 +170,7 @@ impl SandboxInvoker {
                 .map(Json::Array),
             Json::Object(map) => map
                 .iter()
-                .map(|(key, value)| {
-                    Ok((key.clone(), self.resolver_credenciales_en_valor(value)?))
-                })
+                .map(|(key, value)| Ok((key.clone(), self.resolver_credenciales_en_valor(value)?)))
                 .collect::<Result<serde_json::Map<String, Json>, _>>()
                 .map(Json::Object),
             otro => Ok(otro.clone()),

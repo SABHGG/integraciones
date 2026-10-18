@@ -72,7 +72,10 @@ fn check_title(value: &Value) -> Result<(), UiError> {
         Value::String(_) => Err(invalid("$.title", "el title no puede estar vacío")),
         other => Err(invalid(
             "$.title",
-            format!("el title debe ser un string (se encontró {})", describe(other)),
+            format!(
+                "el title debe ser un string (se encontró {})",
+                describe(other)
+            ),
         )),
     }
 }
@@ -97,7 +100,10 @@ fn check_order(value: &Value) -> Result<(), UiError> {
         let Value::String(name) = item else {
             return Err(invalid(
                 &format!("$.order.{index}"),
-                format!("cada entrada de order debe ser un string (se encontró {})", describe(item)),
+                format!(
+                    "cada entrada de order debe ser un string (se encontró {})",
+                    describe(item)
+                ),
             ));
         };
         if name.trim().is_empty() {
@@ -138,7 +144,10 @@ fn check_widget_map(value: &Value) -> Result<(), UiError> {
         let Some(id) = widget.as_str() else {
             return Err(invalid(
                 &path,
-                format!("el id de widget debe ser un string (se encontró {})", describe(widget)),
+                format!(
+                    "el id de widget debe ser un string (se encontró {})",
+                    describe(widget)
+                ),
             ));
         };
         if !is_widget_id(id) {
@@ -177,7 +186,10 @@ fn check_help_map(value: &Value) -> Result<(), UiError> {
             other => {
                 return Err(invalid(
                     &path,
-                    format!("el texto de ayuda debe ser un string (se encontró {})", describe(other)),
+                    format!(
+                        "el texto de ayuda debe ser un string (se encontró {})",
+                        describe(other)
+                    ),
                 ));
             }
         }
@@ -285,7 +297,10 @@ mod tests {
         assert_invalid(&json!({ "widget": [] }), "objeto");
         assert_invalid(&json!({ "widget": { "url": 7 } }), "string");
         assert_invalid(&json!({ "widget": { "url": "" } }), "no es válido");
-        assert_invalid(&json!({ "widget": { "url": "Ref-Template" } }), "no es válido");
+        assert_invalid(
+            &json!({ "widget": { "url": "Ref-Template" } }),
+            "no es válido",
+        );
         assert_invalid(&json!({ "widget": { "url": "-text" } }), "no es válido");
     }
 
@@ -300,6 +315,9 @@ mod tests {
     fn el_error_reporta_la_ruta_exacta() {
         let err = validate(&json!({ "widget": { "url": "Ref" } })).expect_err("inválido");
         assert_eq!(err.path, "$.widget.url");
-        assert_eq!(err.to_string(), format!("ui inválido en $.widget.url: {}", err.message));
+        assert_eq!(
+            err.to_string(),
+            format!("ui inválido en $.widget.url: {}", err.message)
+        );
     }
 }

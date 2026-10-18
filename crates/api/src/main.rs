@@ -23,8 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    let database_url = std::env::var("DATABASE_URL")
-        .map_err(|_| "DATABASE_URL no definida (ver README.md)")?;
+    let database_url =
+        std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL no definida (ver README.md)")?;
     let port: u16 = std::env::var("PORT")
         .ok()
         .and_then(|p| p.parse().ok())

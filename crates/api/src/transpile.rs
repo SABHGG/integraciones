@@ -13,7 +13,7 @@
 //! y columna, para que el 422 del handler sea accionable.
 
 use swc_core::common::sync::Lrc;
-use swc_core::common::{FileName, Globals, Mark, SourceMap, Spanned, GLOBALS};
+use swc_core::common::{FileName, GLOBALS, Globals, Mark, SourceMap, Spanned};
 use swc_core::ecma::ast::{EsVersion, ModuleDecl, ModuleItem, Program};
 use swc_core::ecma::codegen::text_writer::JsWriter;
 use swc_core::ecma::codegen::{Config as CodegenConfig, Emitter, Node};
@@ -146,8 +146,7 @@ fn emit(cm: &Lrc<SourceMap>, program: &Program) -> Result<String, std::io::Error
         };
         program.emit_with(&mut emitter)?;
     }
-    String::from_utf8(buf)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    String::from_utf8(buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
 #[cfg(test)]
@@ -176,7 +175,10 @@ export default function (input: Entrada, ctx: any) {
     fn transpila_typescript_valido_y_borra_los_tipos() {
         let js = transpile_typescript(BLOQUE_TS).expect("bloque válido");
 
-        assert!(js.contains("export default"), "se pierde el export default: {js}");
+        assert!(
+            js.contains("export default"),
+            "se pierde el export default: {js}"
+        );
         assert!(!js.contains("type Entrada"), "quedaron tipos: {js}");
         assert!(!js.contains(": string"), "quedaron anotaciones: {js}");
         assert!(!js.contains(": Entrada"), "quedaron anotaciones: {js}");
@@ -213,8 +215,9 @@ export default async function (input: { userId: string }, ctx: any) {
 
     #[tokio::test]
     async fn acepta_un_export_default_de_expresion_flecha() {
-        let js = transpile_typescript("export default (input: any) => ({ ok: true, id: input.id });")
-            .expect("export default válido");
+        let js =
+            transpile_typescript("export default (input: any) => ({ ok: true, id: input.id });")
+                .expect("export default válido");
 
         let salida = ejecutar_js(&js, json!({ "id": 7 })).await;
         assert_eq!(salida, json!({ "ok": true, "id": 7 }));
@@ -225,7 +228,10 @@ export default async function (input: { userId: string }, ctx: any) {
         let source = "export default function () {\n  const roto: = ;\n}\n";
         match transpile_typescript(source) {
             Err(TranspileError::Syntax {
-                line, column, message, ..
+                line,
+                column,
+                message,
+                ..
             }) => {
                 assert_eq!(line, 2, "la línea del fallo debe ser la 2: {message}");
                 assert!(column > 0, "la columna debe ser 1-indexada: {column}");
@@ -284,7 +290,10 @@ export default async function (input: { userId: string }, ctx: any) {
         // publicar JS que el sandbox cargaría pero rompería al ejecutar.
         match transpile_typescript("export default () => { break; };") {
             Err(TranspileError::Syntax {
-                line, column, message, ..
+                line,
+                column,
+                message,
+                ..
             }) => {
                 assert_eq!(line, 1);
                 assert!(column > 0);
@@ -301,4 +310,3 @@ export default async function (input: { userId: string }, ctx: any) {
         assert_eq!(primera, segunda);
     }
 }
-

@@ -271,7 +271,8 @@ fn check_schema(schema: &Value, path: &str) -> Result<(), SchemaError> {
                 if value.is_array() {
                     return Err(unsupported(
                         path,
-                        "\"items\" con lista de schemas (forma tupla) no está soportado".to_string(),
+                        "\"items\" con lista de schemas (forma tupla) no está soportado"
+                            .to_string(),
                     ));
                 }
                 check_schema(value, &format!("{path}.items"))?;
@@ -447,7 +448,9 @@ fn matches_type(name: &str, instance: &Value) -> bool {
         "number" => instance.is_number(),
         "integer" => match instance {
             Value::Number(number) => {
-                number.is_i64() || number.is_u64() || number.as_f64().is_some_and(|f| f.fract() == 0.0)
+                number.is_i64()
+                    || number.is_u64()
+                    || number.as_f64().is_some_and(|f| f.fract() == 0.0)
             }
             _ => false,
         },
@@ -525,9 +528,7 @@ fn is_hostname(text: &str) -> bool {
 fn is_dns_label(label: &str) -> bool {
     !label.is_empty()
         && label.len() <= 63
-        && label
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
         && !label.starts_with('-')
         && !label.ends_with('-')
 }
@@ -608,7 +609,13 @@ mod tests {
 
     #[test]
     fn schema_vacio_acepta_cualquier_valor() {
-        for instance in [json!(1), json!("x"), json!(null), json!([1]), json!({"a": 1})] {
+        for instance in [
+            json!(1),
+            json!("x"),
+            json!(null),
+            json!([1]),
+            json!({"a": 1}),
+        ] {
             assert!(validate(&json!({}), &instance).is_ok(), "{instance}");
         }
     }
@@ -626,10 +633,7 @@ mod tests {
         ];
         for (ty, ok, bad) in cases {
             let schema = json!({ "type": ty });
-            assert!(
-                validate(&schema, &ok).is_ok(),
-                "{ty} debería aceptar {ok}"
-            );
+            assert!(validate(&schema, &ok).is_ok(), "{ty} debería aceptar {ok}");
             assert_invalid(&schema, &bad);
         }
     }
@@ -778,7 +782,10 @@ mod tests {
 
     #[test]
     fn format_desconocido_es_error_explicito() {
-        assert_unsupported(&json!({ "type": "string", "format": "password" }), "password");
+        assert_unsupported(
+            &json!({ "type": "string", "format": "password" }),
+            "password",
+        );
         assert_unsupported(&json!({ "type": "string", "format": 7 }), "format");
     }
 
@@ -790,7 +797,10 @@ mod tests {
         assert_unsupported(&json!({ "anyOf": [{ "type": "string" }] }), "anyOf");
         assert_unsupported(&json!({ "$ref": "#/defs/x" }), "$ref");
         assert_unsupported(&json!({ "minimum": 1 }), "minimum");
-        assert_unsupported(&json!({ "additionalProperties": false }), "additionalProperties");
+        assert_unsupported(
+            &json!({ "additionalProperties": false }),
+            "additionalProperties",
+        );
         assert_unsupported(&json!({ "pattern": "^a" }), "pattern");
     }
 
@@ -838,7 +848,10 @@ mod tests {
         ];
         for schema in rechazados {
             assert!(
-                matches!(validate_schema_doc(&schema), Err(SchemaError::Unsupported { .. })),
+                matches!(
+                    validate_schema_doc(&schema),
+                    Err(SchemaError::Unsupported { .. })
+                ),
                 "debería rechazarse: {schema}"
             );
         }
@@ -857,7 +870,10 @@ mod tests {
             "properties": { "x": { "minimum": 1 } }
         }))
         .expect_err("minimum no está soportado");
-        assert_eq!(err.to_string(), "schema no soportado en $.properties.x: la keyword \"minimum\" no pertenece al subconjunto soportado");
+        assert_eq!(
+            err.to_string(),
+            "schema no soportado en $.properties.x: la keyword \"minimum\" no pertenece al subconjunto soportado"
+        );
     }
 
     #[test]
@@ -934,7 +950,11 @@ mod tests {
 
     #[test]
     fn un_schema_suelto_no_permite_verificar_ninguna_ruta() {
-        for schema in [json!({}), json!({ "type": "object" }), json!({ "title": "x" })] {
+        for schema in [
+            json!({}),
+            json!({ "type": "object" }),
+            json!({ "title": "x" }),
+        ] {
             assert_unknown(&schema, "$.a");
             assert_unknown(&schema, "$.a.b.0");
         }
@@ -950,7 +970,10 @@ mod tests {
                 } } }
             } }
         } });
-        assert_eq!(found(&schema, "$.cliente.email"), &json!({ "type": "string" }));
+        assert_eq!(
+            found(&schema, "$.cliente.email"),
+            &json!({ "type": "string" })
+        );
         assert_eq!(
             found(&schema, "$.cliente.pedidos.0.total"),
             &json!({ "type": "number" })

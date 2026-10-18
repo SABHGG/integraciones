@@ -9,10 +9,10 @@
 
 use axum::Extension;
 use axum::Json;
+use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
-use axum::Router;
 use serde::Deserialize;
 use serde_json::Value;
 use sqlx::PgPool;
@@ -26,10 +26,7 @@ use crate::vault;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route(
-            "/credentials",
-            post(crear).get(listar),
-        )
+        .route("/credentials", post(crear).get(listar))
         .route(
             "/credentials/{id}",
             get(obtener).patch(rotar).delete(eliminar),
@@ -71,7 +68,9 @@ struct PatchCredencial {
 fn validar_name(name: &str) -> Result<(), Problem> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(problem::bad_request("el nombre de la credencial no puede estar vacío"));
+        return Err(problem::bad_request(
+            "el nombre de la credencial no puede estar vacío",
+        ));
     }
     if name.len() > 128 {
         return Err(problem::bad_request(
@@ -82,7 +81,11 @@ fn validar_name(name: &str) -> Result<(), Problem> {
 }
 
 /// La clave de la fila tras un INSERT o UPDATE, para responder 409/404.
-async fn fila_por_id(pool: &PgPool, workspace_id: Uuid, id: Uuid) -> Result<CredencialMeta, Problem> {
+async fn fila_por_id(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    id: Uuid,
+) -> Result<CredencialMeta, Problem> {
     sqlx::query_as::<_, CredencialMeta>(
         "SELECT id, name, description, created_at, updated_at \
          FROM credentials WHERE workspace_id = $1 AND id = $2",
@@ -121,7 +124,9 @@ async fn crear(
     .await
     .map_err(|error| {
         if is_unique_violation(&error) {
-            problem::conflict(format!("ya existe una credencial llamada \"{name}\" en este workspace"))
+            problem::conflict(format!(
+                "ya existe una credencial llamada \"{name}\" en este workspace"
+            ))
         } else {
             problem::internal(format!("crear la credencial: {error}"))
         }
@@ -206,7 +211,9 @@ async fn rotar(
     })?;
 
     if resultado.rows_affected() == 0 {
-        return Err(problem::not_found("la credencial no existe en este workspace"));
+        return Err(problem::not_found(
+            "la credencial no existe en este workspace",
+        ));
     }
 
     let fila = fila_por_id(&state.pool, workspace_id, id).await?;
@@ -228,7 +235,9 @@ async fn eliminar(
         .map_err(|error| problem::internal(format!("eliminar la credencial: {error}")))?;
 
     if resultado.rows_affected() == 0 {
-        return Err(problem::not_found("la credencial no existe en este workspace"));
+        return Err(problem::not_found(
+            "la credencial no existe en este workspace",
+        ));
     }
     Ok(StatusCode::NO_CONTENT)
 }

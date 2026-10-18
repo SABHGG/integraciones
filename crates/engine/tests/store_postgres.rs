@@ -165,7 +165,15 @@ async fn execution_state(pool: &PgPool, id: Uuid) -> (String, Option<Value>, boo
 async fn persisted_steps(
     pool: &PgPool,
     id: Uuid,
-) -> Vec<(i32, String, String, Value, Option<Value>, Option<Value>, Option<i32>)> {
+) -> Vec<(
+    i32,
+    String,
+    String,
+    Value,
+    Option<Value>,
+    Option<Value>,
+    Option<i32>,
+)> {
     sqlx::query_as(
         "SELECT seq, block_instance_id, block_name, input, output, error, duration_ms
            FROM execution_steps
@@ -198,7 +206,10 @@ async fn create_deja_la_ejecucion_pending_con_uuid_v7_y_sin_pasos() {
     assert_eq!(row.id.get_version_num(), 7, "el id debe ser UUID v7");
     assert_eq!(row.trigger_type, "http");
     assert_eq!(row.bridge_version_id, fixture.bridge_version_id);
-    assert_eq!(row.trigger_data, json!({ "body": { "userId": "u-1" }, "query": {} }));
+    assert_eq!(
+        row.trigger_data,
+        json!({ "body": { "userId": "u-1" }, "query": {} })
+    );
     assert!(row.started_at.is_none());
     assert!(row.finished_at.is_none());
     assert!(row.error.is_none());
@@ -242,7 +253,10 @@ async fn dos_workers_concurrentes_no_reciben_la_misma_ejecucion() {
     let store_a = ExecutionStore::new(pool.clone());
     let store_b = ExecutionStore::new(pool.clone());
 
-    let created = store_a.create(new_execution(&fixture)).await.expect("crear");
+    let created = store_a
+        .create(new_execution(&fixture))
+        .await
+        .expect("crear");
 
     let (first, second) = tokio::join!(store_a.claim_next(), store_b.claim_next());
     let claimed: Vec<Uuid> = [first, second]
@@ -251,7 +265,11 @@ async fn dos_workers_concurrentes_no_reciben_la_misma_ejecucion() {
         .map(|row| row.id)
         .collect();
 
-    assert_eq!(claimed, vec![created.id], "exactamente un worker la reclama");
+    assert_eq!(
+        claimed,
+        vec![created.id],
+        "exactamente un worker la reclama"
+    );
     assert!(store_a.claim_next().await.expect("cola vacía").is_none());
 }
 
@@ -307,9 +325,12 @@ async fn finish_con_error_persiste_el_detalle_en_la_ejecucion_y_en_el_paso() {
     let created = store.create(new_execution(&fixture)).await.expect("crear");
     store.claim_next().await.expect("claim").expect("reclamada");
 
-    let error = ErrorPayload::new(ErrorCode::BlockFailed, "el bloque \"rompe\" lanzó un error: boom")
-        .with_block("rompe")
-        .with_details(json!({ "reason": "JS_ERROR", "message": "boom" }));
+    let error = ErrorPayload::new(
+        ErrorCode::BlockFailed,
+        "el bloque \"rompe\" lanzó un error: boom",
+    )
+    .with_block("rompe")
+    .with_details(json!({ "reason": "JS_ERROR", "message": "boom" }));
     let failed_step = ExecutionStep {
         seq: 2,
         block_instance_id: "instancia-rompe".to_string(),
@@ -393,9 +414,7 @@ async fn finish_de_una_ejecucion_no_reclamada_es_un_error_explicito() {
 
     let created = store.create(new_execution(&fixture)).await.expect("crear");
 
-    let result = store
-        .finish(created.id, &succeeded_outcome(vec![]))
-        .await;
+    let result = store.finish(created.id, &succeeded_outcome(vec![])).await;
 
     match result {
         Err(StoreError::NotRunning { id }) => assert_eq!(id, created.id),

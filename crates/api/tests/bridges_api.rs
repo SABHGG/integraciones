@@ -70,7 +70,9 @@ async fn begin() -> Option<Harness> {
     let url = match std::env::var("DATABASE_URL") {
         Ok(url) => url,
         Err(_) => {
-            eprintln!("DATABASE_URL no está definida: se omiten los tests de integración de la API");
+            eprintln!(
+                "DATABASE_URL no está definida: se omiten los tests de integración de la API"
+            );
             return None;
         }
     };
@@ -121,16 +123,14 @@ async fn seed_workspace(pool: &PgPool, workspace_id: Uuid) -> (String, Uuid) {
         .await
         .expect("workspace");
 
-    sqlx::query(
-        "INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(key_id)
-    .bind(workspace_id)
-    .bind(format!("bridge-test-{raw_key}"))
-    .bind(hash_key(&raw_key))
-    .execute(pool)
-    .await
-    .expect("api key");
+    sqlx::query("INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)")
+        .bind(key_id)
+        .bind(workspace_id)
+        .bind(format!("bridge-test-{raw_key}"))
+        .bind(hash_key(&raw_key))
+        .execute(pool)
+        .await
+        .expect("api key");
 
     (raw_key, key_id)
 }
@@ -189,7 +189,8 @@ impl Harness {
     }
 
     async fn patch(&self, uri: &str, body: Value) -> Resp {
-        self.send(Method::PATCH, uri, Some(&self.key), Some(body)).await
+        self.send(Method::PATCH, uri, Some(&self.key), Some(body))
+            .await
     }
 
     async fn delete(&self, uri: &str) -> Resp {
@@ -210,7 +211,12 @@ impl Harness {
 
     /// Crea un bloque `custom_logic` y publica una versión con schemas dados;
     /// devuelve `(blockId, blockVersionId)`.
-    async fn published_block(&self, slug: &str, input_schema: Value, output_schema: Value) -> (Uuid, Uuid) {
+    async fn published_block(
+        &self,
+        slug: &str,
+        input_schema: Value,
+        output_schema: Value,
+    ) -> (Uuid, Uuid) {
         let response = self
             .post(
                 "/api/v1/blocks",
@@ -302,10 +308,11 @@ async fn el_flujo_completo_crea_valida_publica_y_versiona() {
     let id = bridge["id"].as_str().unwrap().to_string();
     assert_eq!(bridge["slug"], "flujo-completo");
     assert!(bridge["latestVersion"].is_null());
-    assert!(bridge["draft"].is_object(), "el borrador nace como objeto vacío");
-    let location = h
-        .get(&format!("/api/v1/bridges/{id}"))
-        .await;
+    assert!(
+        bridge["draft"].is_object(),
+        "el borrador nace como objeto vacío"
+    );
+    let location = h.get(&format!("/api/v1/bridges/{id}")).await;
     assert_eq!(location.status, StatusCode::OK);
 
     // Editar el borrador: trigger http + cadena de dos bloques.
@@ -321,7 +328,12 @@ async fn el_flujo_completo_crea_valida_publica_y_versiona() {
         .patch(&format!("/api/v1/bridges/{id}"), json!({ "draft": draft }))
         .await;
     // `draft` no es un campo del PATCH: las secciones van sueltas.
-    assert_eq!(patched.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", patched.body);
+    assert_eq!(
+        patched.status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "{}",
+        patched.body
+    );
 
     let patched = h
         .patch(&format!("/api/v1/bridges/{id}"), draft.clone())
@@ -370,7 +382,10 @@ async fn el_flujo_completo_crea_valida_publica_y_versiona() {
         .await;
     assert_eq!(second.status, StatusCode::CREATED, "{}", second.body);
     assert_eq!(second.json()["version"], 2);
-    assert_eq!(h.get(&format!("/api/v1/bridges/{id}")).await.json()["latestVersion"], 2);
+    assert_eq!(
+        h.get(&format!("/api/v1/bridges/{id}")).await.json()["latestVersion"],
+        2
+    );
 
     // El listado de versiones va más nueva primero.
     let versions = h.get(&format!("/api/v1/bridges/{id}/versions")).await;
@@ -393,7 +408,12 @@ async fn el_slug_duplicado_en_el_mismo_workspace_es_409() {
         )
         .await;
     let problem = response.problem(StatusCode::CONFLICT);
-    assert!(problem["detail"].as_str().unwrap().contains("slug-repetido"));
+    assert!(
+        problem["detail"]
+            .as_str()
+            .unwrap()
+            .contains("slug-repetido")
+    );
 }
 
 #[tokio::test]
@@ -425,12 +445,12 @@ async fn validate_acumula_todos_los_errores_del_borrador() {
     let body = validated.json();
     assert_eq!(body["valid"], false, "{}", validated.body);
     let errors = body["errors"].as_array().expect("lista de errores");
-    assert!(errors.len() >= 5, "acumula errores, no reporta solo el primero: {body:?}");
+    assert!(
+        errors.len() >= 5,
+        "acumula errores, no reporta solo el primero: {body:?}"
+    );
 
-    let fields: Vec<&str> = errors
-        .iter()
-        .filter_map(|e| e["field"].as_str())
-        .collect();
+    let fields: Vec<&str> = errors.iter().filter_map(|e| e["field"].as_str()).collect();
     for esperado in [
         "blocks[0].input.a",
         "blocks[1].id",
@@ -440,7 +460,8 @@ async fn validate_acumula_todos_los_errores_del_borrador() {
     ] {
         assert!(
             fields.contains(&esperado),
-            "falta {esperado} en {fields:?} — cuerpo: {}", validated.body
+            "falta {esperado} en {fields:?} — cuerpo: {}",
+            validated.body
         );
     }
 }
@@ -463,16 +484,19 @@ async fn publicar_con_borrador_invalido_es_422_y_no_crea_version() {
         .await;
     let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
     let errors = problem["errors"].as_array().expect("extensión errors");
-    let fields: Vec<&str> = errors
-        .iter()
-        .filter_map(|e| e["field"].as_str())
-        .collect();
-    assert!(fields.contains(&"trigger"), "el trigger faltante se reporta: {problem:?}");
+    let fields: Vec<&str> = errors.iter().filter_map(|e| e["field"].as_str()).collect();
+    assert!(
+        fields.contains(&"trigger"),
+        "el trigger faltante se reporta: {problem:?}"
+    );
 
     // Nada se publicó.
     let bridge = h.get(&format!("/api/v1/bridges/{id}")).await.json();
     assert!(bridge["latestVersion"].is_null());
-    let versions = h.get(&format!("/api/v1/bridges/{id}/versions")).await.json();
+    let versions = h
+        .get(&format!("/api/v1/bridges/{id}/versions"))
+        .await
+        .json();
     assert_eq!(versions["items"], json!([]));
 }
 
@@ -487,7 +511,12 @@ async fn un_puente_de_otro_workspace_es_404() {
     assert_ne!(workspace_id, h.workspace_id);
 
     let response = h
-        .send(Method::GET, &format!("/api/v1/bridges/{id}"), Some(&other_key), None)
+        .send(
+            Method::GET,
+            &format!("/api/v1/bridges/{id}"),
+            Some(&other_key),
+            None,
+        )
         .await;
     response.problem(StatusCode::NOT_FOUND);
 

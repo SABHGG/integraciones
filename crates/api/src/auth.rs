@@ -48,7 +48,6 @@ pub fn hash_key(raw: &str) -> String {
     hex::encode(Sha256::digest(raw.as_bytes()))
 }
 
-
 /// Middleware del plano `/api/v1`: exige Bearer válido y no revocado.
 // axum idiomático: el middleware devuelve Response tanto en éxito como en error;
 // Response supera los 128 bytes, así que silenciamos el lint en lugar de boxear.
@@ -58,7 +57,10 @@ pub async fn require_api_key(
     mut req: Request,
     next: Next,
 ) -> Result<Response, Response> {
-    let header = req.headers().get(AUTHORIZATION).and_then(|v| v.to_str().ok());
+    let header = req
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok());
     let token = header
         .and_then(|h| h.strip_prefix("Bearer "))
         .map(str::trim)
@@ -67,10 +69,10 @@ pub async fn require_api_key(
     let token = match token {
         Some(t) => t,
         None => {
-            return Err(problem::unauthorized(
-                "Falta el header Authorization: Bearer <api key>",
-            )
-            .into_response());
+            return Err(
+                problem::unauthorized("Falta el header Authorization: Bearer <api key>")
+                    .into_response(),
+            );
         }
     };
 
@@ -84,7 +86,9 @@ pub async fn require_api_key(
 
     let row = match row {
         Ok(Some(row)) => row,
-        Ok(None) => return Err(problem::unauthorized("API key inválida o revocada").into_response()),
+        Ok(None) => {
+            return Err(problem::unauthorized("API key inválida o revocada").into_response());
+        }
         Err(e) => {
             tracing::error!(error = %e, "fallo al validar api key");
             return Err(problem::internal("fallo al validar la api key").into_response());
@@ -148,6 +152,9 @@ mod tests {
     #[test]
     fn una_key_vinculada_devuelve_su_workspace() {
         let workspace_id = Uuid::now_v7();
-        assert_eq!(authed(Some(workspace_id)).workspace().unwrap(), workspace_id);
+        assert_eq!(
+            authed(Some(workspace_id)).workspace().unwrap(),
+            workspace_id
+        );
     }
 }

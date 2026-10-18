@@ -131,9 +131,7 @@ fn validate_trigger(trigger: Option<&Value>) -> Vec<Issue> {
     } else if kind != "cron" && kind != "event" && kind != "manual" {
         issues.push(Issue::new(
             "trigger.type",
-            format!(
-                "\"{kind}\" no es un tipo de disparador soportado (http|cron|event|manual)"
-            ),
+            format!("\"{kind}\" no es un tipo de disparador soportado (http|cron|event|manual)"),
         ));
     }
     issues
@@ -147,7 +145,10 @@ fn validate_trigger(trigger: Option<&Value>) -> Vec<Issue> {
 fn validate_chain(instances: &[Instance]) -> Vec<Issue> {
     let mut issues = Vec::new();
     if instances.is_empty() {
-        issues.push(Issue::new("blocks", "la cadena necesita al menos un bloque"));
+        issues.push(Issue::new(
+            "blocks",
+            "la cadena necesita al menos un bloque",
+        ));
         return issues;
     }
     for (index, instance) in instances.iter().enumerate() {
@@ -163,13 +164,18 @@ fn validate_chain(instances: &[Instance]) -> Vec<Issue> {
                 "cada instancia necesita un name (bajo él se registra su salida)",
             ));
         }
-        if let Some(prev) = instances[..index].iter().position(|other| other.id == instance.id) {
+        if let Some(prev) = instances[..index]
+            .iter()
+            .position(|other| other.id == instance.id)
+        {
             issues.push(Issue::new(
                 format!("blocks[{index}].id"),
                 format!("el id \"{}\" ya lo usa blocks[{prev}]", instance.id),
             ));
         }
-        if let Some(prev) = instances[..index].iter().position(|other| other.name == instance.name)
+        if let Some(prev) = instances[..index]
+            .iter()
+            .position(|other| other.name == instance.name)
         {
             issues.push(Issue::new(
                 format!("blocks[{index}].name"),
@@ -189,8 +195,22 @@ fn validate_chain(instances: &[Instance]) -> Vec<Issue> {
                 ),
             ));
         }
-        walk_refs(instances, index, "input", &instance.input, String::new(), &mut issues);
-        walk_refs(instances, index, "config", &instance.config, String::new(), &mut issues);
+        walk_refs(
+            instances,
+            index,
+            "input",
+            &instance.input,
+            String::new(),
+            &mut issues,
+        );
+        walk_refs(
+            instances,
+            index,
+            "config",
+            &instance.config,
+            String::new(),
+            &mut issues,
+        );
     }
     issues
 }
@@ -218,7 +238,9 @@ fn walk_refs(
                 check_ref(instances, index, source, &rel, text, issues);
             } else if source == "config" && text.contains('{') {
                 match domain::refs::template_refs(text) {
-                    Err(error) => issues.push(Issue::new(field(index, source, &rel), format!("{error}"))),
+                    Err(error) => {
+                        issues.push(Issue::new(field(index, source, &rel), format!("{error}")))
+                    }
                     Ok(refs) => {
                         for raw in refs {
                             check_ref(instances, index, source, &rel, raw, issues);
@@ -229,12 +251,26 @@ fn walk_refs(
         }
         Value::Array(items) => {
             for (position, item) in items.iter().enumerate() {
-                walk_refs(instances, index, source, item, format!("{rel}.{position}"), issues);
+                walk_refs(
+                    instances,
+                    index,
+                    source,
+                    item,
+                    format!("{rel}.{position}"),
+                    issues,
+                );
             }
         }
         Value::Object(map) => {
             for (key, nested) in map {
-                walk_refs(instances, index, source, nested, format!("{rel}.{key}"), issues);
+                walk_refs(
+                    instances,
+                    index,
+                    source,
+                    nested,
+                    format!("{rel}.{key}"),
+                    issues,
+                );
             }
         }
         _ => {}
@@ -275,7 +311,10 @@ fn check_ref(
     let origin = match instances[..index].iter().find(|other| other.name == *root) {
         Some(origin) => origin,
         None => {
-            let message = if instances[index + 1..].iter().any(|other| other.name == *root) {
+            let message = if instances[index + 1..]
+                .iter()
+                .any(|other| other.name == *root)
+            {
                 format!(
                     "la referencia \"{raw}\" apunta a \"{root}\", que se ejecuta después: \
                      la cadena es lineal y solo puede referenciar bloques previos"
@@ -295,7 +334,15 @@ fn check_ref(
             issues.push(Issue::new(field(index, source, rel), detail));
         }
         PathResolution::Found(node) => {
-            check_type(instance_of(instances, index), index, source, rel, raw, node, issues);
+            check_type(
+                instance_of(instances, index),
+                index,
+                source,
+                rel,
+                raw,
+                node,
+                issues,
+            );
         }
     }
 }
@@ -379,7 +426,10 @@ async fn resolve_instances(
         return (instances, issues);
     };
     let Some(entries) = entries.as_array() else {
-        issues.push(Issue::new("blocks", "\"blocks\" debe ser un array de instancias"));
+        issues.push(Issue::new(
+            "blocks",
+            "\"blocks\" debe ser un array de instancias",
+        ));
         return (instances, issues);
     };
     // (posición, id de block_version) a resolver contra la librería.
@@ -398,12 +448,23 @@ async fn resolve_instances(
             name: text("name").unwrap_or_default(),
             block_id: text("blockId").unwrap_or_default(),
             block_version_id: text("blockVersionId").unwrap_or_default(),
-            input: entry.get("input").filter(|value| !value.is_null()).cloned().unwrap_or_else(|| json!({})),
-            config: entry.get("config").filter(|value| !value.is_null()).cloned().unwrap_or_else(|| json!({})),
+            input: entry
+                .get("input")
+                .filter(|value| !value.is_null())
+                .cloned()
+                .unwrap_or_else(|| json!({})),
+            config: entry
+                .get("config")
+                .filter(|value| !value.is_null())
+                .cloned()
+                .unwrap_or_else(|| json!({})),
             input_schema: json!({}),
             output_schema: json!({}),
             code: None,
-            timeout_ms: entry.get("timeoutMs").filter(|value| !value.is_null()).and_then(Value::as_u64),
+            timeout_ms: entry
+                .get("timeoutMs")
+                .filter(|value| !value.is_null())
+                .and_then(Value::as_u64),
             resolved: false,
         };
         if instance.block_id.is_empty() {
@@ -417,9 +478,10 @@ async fn resolve_instances(
                 format!("blocks[{index}].blockVersionId"),
                 "cada instancia necesita la blockVersionId exacta que usa",
             ));
-        } else if let (Ok(_), Ok(version_id)) =
-            (Uuid::parse_str(&instance.block_id), Uuid::parse_str(&instance.block_version_id))
-        {
+        } else if let (Ok(_), Ok(version_id)) = (
+            Uuid::parse_str(&instance.block_id),
+            Uuid::parse_str(&instance.block_version_id),
+        ) {
             referenced.push((index, version_id));
         } else if !instance.block_id.is_empty() {
             issues.push(Issue::new(
@@ -460,7 +522,9 @@ async fn resolve_instances(
         .map(|(id, code, input_schema, output_schema)| (id, (code, input_schema, output_schema)))
         .collect();
     for (index, version_id) in referenced {
-        let Some(instance) = instances.get_mut(index) else { continue };
+        let Some(instance) = instances.get_mut(index) else {
+            continue;
+        };
         match by_id.get(&version_id) {
             Some((code, input_schema, output_schema)) => {
                 instance.code = code.clone();
@@ -552,7 +616,11 @@ fn draft_from_parts(
     blocks: Option<Value>,
 ) -> Value {
     let mut draft = serde_json::Map::new();
-    for (key, value) in [("trigger", trigger), ("inputSchema", input_schema), ("blocks", blocks)] {
+    for (key, value) in [
+        ("trigger", trigger),
+        ("inputSchema", input_schema),
+        ("blocks", blocks),
+    ] {
         if let Some(value) = value.filter(|value| !value.is_null()) {
             draft.insert(key.to_string(), value);
         }
@@ -568,16 +636,25 @@ fn draft_shape_issues(draft: &Value) -> Vec<(String, String)> {
     if let Some(trigger) = draft.get("trigger").filter(|value| !value.is_null())
         && !trigger.is_object()
     {
-        issues.push(("trigger".to_string(), "\"trigger\" debe ser un objeto".to_string()));
+        issues.push((
+            "trigger".to_string(),
+            "\"trigger\" debe ser un objeto".to_string(),
+        ));
     }
     if let Some(schema) = draft.get("inputSchema").filter(|value| !value.is_null())
         && !schema.is_object()
     {
-        issues.push(("inputSchema".to_string(), "\"inputSchema\" debe ser un objeto".to_string()));
+        issues.push((
+            "inputSchema".to_string(),
+            "\"inputSchema\" debe ser un objeto".to_string(),
+        ));
     }
     if let Some(blocks) = draft.get("blocks").filter(|value| !value.is_null()) {
         let Some(entries) = blocks.as_array() else {
-            issues.push(("blocks".to_string(), "\"blocks\" debe ser un array".to_string()));
+            issues.push((
+                "blocks".to_string(),
+                "\"blocks\" debe ser un array".to_string(),
+            ));
             return issues;
         };
         for (index, entry) in entries.iter().enumerate() {
@@ -657,12 +734,10 @@ async fn create_bridge(
         ));
     }
     let id = Uuid::now_v7();
-    let row = sqlx::query_as::<_, BridgeDto>(
-        &format!(
-            "INSERT INTO bridges (id, workspace_id, slug, name, description, draft) \
+    let row = sqlx::query_as::<_, BridgeDto>(&format!(
+        "INSERT INTO bridges (id, workspace_id, slug, name, description, draft) \
              VALUES ($1, $2, $3, $4, $5, $6) RETURNING {BRIDGE_COLUMNS}"
-        ),
-    )
+    ))
     .bind(id)
     .bind(workspace_id)
     .bind(&request.slug)
@@ -729,15 +804,14 @@ async fn list_bridges(
     let next_cursor = rest::next_cursor(&mut rows, limit, |bridge| {
         cursor::encode_bridge_cursor(bridge.created_at, bridge.id)
     });
-    Ok(Json(Page { items: rows, next_cursor }))
+    Ok(Json(Page {
+        items: rows,
+        next_cursor,
+    }))
 }
 
 /// Carga un puente scoped al workspace (404 si no existe o es de otro).
-async fn load_bridge(
-    state: &AppState,
-    workspace_id: Uuid,
-    id: Uuid,
-) -> Result<BridgeDto, Problem> {
+async fn load_bridge(state: &AppState, workspace_id: Uuid, id: Uuid) -> Result<BridgeDto, Problem> {
     sqlx::query_as::<_, BridgeDto>(&format!(
         "SELECT {BRIDGE_COLUMNS} FROM bridges WHERE id = $1 AND workspace_id = $2"
     ))
@@ -799,7 +873,9 @@ async fn patch_bridge(
             vec![rest::field_error("name", message)],
         ));
     }
-    if let Some(description) = &request.description && description.chars().count() > 2000 {
+    if let Some(description) = &request.description
+        && description.chars().count() > 2000
+    {
         return Err(rest::invalid_body(
             "el body no es un puente válido",
             vec![rest::field_error("description", "supera 2000 caracteres")],
@@ -962,7 +1038,8 @@ async fn publish_version(
     .await
     .map_err(|error| rest::db_error("cargar el puente", error))?
     .ok_or_else(not_found)?;
-    let (issues, instances) = validar_borrador(&mut tx, workspace_id, bridge.draft.as_ref()).await?;
+    let (issues, instances) =
+        validar_borrador(&mut tx, workspace_id, bridge.draft.as_ref()).await?;
     if !issues.is_empty() {
         return Err(rest::invalid_body(
             "el borrador no pasa la validación",
@@ -971,9 +1048,14 @@ async fn publish_version(
     }
     // El snapshot: trigger tipado, inputSchema y las instancias RESUELTAS
     // (code copiado de la block_version y schemas propios).
-    let draft = bridge.draft.expect("validar_borrador ya garantiza el borrador");
+    let draft = bridge
+        .draft
+        .expect("validar_borrador ya garantiza el borrador");
     let trigger: TriggerDefinition = serde_json::from_value(
-        draft.get("trigger").cloned().expect("validate_trigger garantiza el trigger"),
+        draft
+            .get("trigger")
+            .cloned()
+            .expect("validate_trigger garantiza el trigger"),
     )
     .map_err(|error| {
         rest::invalid_body(
@@ -998,27 +1080,33 @@ async fn publish_version(
         .collect();
     let definition = BridgeDefinition {
         trigger,
-        input_schema: draft.get("inputSchema").filter(|value| !value.is_null()).cloned(),
+        input_schema: draft
+            .get("inputSchema")
+            .filter(|value| !value.is_null())
+            .cloned(),
         blocks,
     };
     let definition = serde_json::to_value(&definition)
         .map_err(|error| problem::internal(format!("snapshot no serializable: {error}")))?;
     // Versión siguiente atómica: el lock del puente serializa publicaciones.
-    let version: i32 =
-        sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) + 1 FROM bridge_versions WHERE bridge_id = $1")
-            .bind(id)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(|error| rest::db_error("calcular la versión siguiente", error))?;
+    let version: i32 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(version), 0) + 1 FROM bridge_versions WHERE bridge_id = $1",
+    )
+    .bind(id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|error| rest::db_error("calcular la versión siguiente", error))?;
     let version_id = Uuid::now_v7();
-    sqlx::query("INSERT INTO bridge_versions (id, bridge_id, version, definition) VALUES ($1, $2, $3, $4)")
-        .bind(version_id)
-        .bind(id)
-        .bind(version)
-        .bind(&definition)
-        .execute(&mut *tx)
-        .await
-        .map_err(|error| rest::db_error("guardar la versión", error))?;
+    sqlx::query(
+        "INSERT INTO bridge_versions (id, bridge_id, version, definition) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(version_id)
+    .bind(id)
+    .bind(version)
+    .bind(&definition)
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| rest::db_error("guardar la versión", error))?;
     sqlx::query("UPDATE bridges SET latest_version = $2, updated_at = now() WHERE id = $1")
         .bind(id)
         .bind(version)
@@ -1091,7 +1179,10 @@ async fn list_versions(
     let next_cursor = rest::next_cursor(&mut rows, limit, |version| {
         cursor::encode_version_cursor(version.version)
     });
-    Ok(Json(Page { items: rows, next_cursor }))
+    Ok(Json(Page {
+        items: rows,
+        next_cursor,
+    }))
 }
 
 #[cfg(test)]
@@ -1168,7 +1259,11 @@ mod tests {
     }
 
     fn assert_sin_errores(issues: &[Issue]) {
-        assert!(issues.is_empty(), "se esperaba válido: {}", mensajes(issues));
+        assert!(
+            issues.is_empty(),
+            "se esperaba válido: {}",
+            mensajes(issues)
+        );
     }
 
     // ── trigger ────────────────────────────────────────────────────────
@@ -1252,7 +1347,11 @@ mod tests {
         rota.id = String::new();
         rota.name = String::new();
         let issues = validate_chain(&[rota]);
-        assert!(campos(&issues).contains(&"blocks[0].id"), "{}", mensajes(&issues));
+        assert!(
+            campos(&issues).contains(&"blocks[0].id"),
+            "{}",
+            mensajes(&issues)
+        );
         assert!(
             campos(&issues).contains(&"blocks[0].name"),
             "{}",
@@ -1295,7 +1394,9 @@ mod tests {
                 mensajes(&issues)
             );
             assert!(
-                issues.iter().any(|issue| issue.message.contains("reservado")),
+                issues
+                    .iter()
+                    .any(|issue| issue.message.contains("reservado")),
                 "{reservado}: {}",
                 mensajes(&issues)
             );
@@ -1323,7 +1424,11 @@ mod tests {
             "{}",
             mensajes(&issues)
         );
-        assert!(issues[0].message.contains("referencia"), "{}", mensajes(&issues));
+        assert!(
+            issues[0].message.contains("referencia"),
+            "{}",
+            mensajes(&issues)
+        );
     }
 
     #[test]
@@ -1361,7 +1466,12 @@ mod tests {
             (json!({ "x": "$.origen.items.sku" }), "sku"),
         ] {
             let issues = validate_chain(&[origen(json!({})), destino(input, json!({}))]);
-            assert_eq!(campos(&issues), vec!["blocks[1].input.x"], "{}", mensajes(&issues));
+            assert_eq!(
+                campos(&issues),
+                vec!["blocks[1].input.x"],
+                "{}",
+                mensajes(&issues)
+            );
             assert!(
                 issues[0].message.contains(needle),
                 "el mensaje nombra la ruta imposible ({needle}): {}",
@@ -1410,7 +1520,10 @@ mod tests {
         // Interpolación sin cerrar: error de sintaxis.
         let rota = validate_chain(&[
             origen(json!({})),
-            con_config(destino(json!({}), json!({})), json!({ "url": "https://x/{$.origen.id" })),
+            con_config(
+                destino(json!({}), json!({})),
+                json!({ "url": "https://x/{$.origen.id" }),
+            ),
         ]);
         assert_eq!(campos(&rota), vec!["blocks[1].config.url"]);
 
@@ -1453,7 +1566,12 @@ mod tests {
                 json!({ "type": "object", "properties": { "total": { "type": "integer" } } }),
             ),
         ]);
-        assert_eq!(campos(&roto), vec!["blocks[1].input.total"], "{}", mensajes(&roto));
+        assert_eq!(
+            campos(&roto),
+            vec!["blocks[1].input.total"],
+            "{}",
+            mensajes(&roto)
+        );
         assert!(
             roto[0].message.contains("string") && roto[0].message.contains("integer"),
             "el mensaje nombra ambos tipos: {}",
@@ -1472,7 +1590,11 @@ mod tests {
 
         // Un tipo ausente en el origen tampoco bloquea.
         let sin_tipo = validate_chain(&[
-            instancia("origen", json!({}), json!({ "properties": { "campo": {} } })),
+            instancia(
+                "origen",
+                json!({}),
+                json!({ "properties": { "campo": {} } }),
+            ),
             destino(
                 json!({ "n": "$.origen.campo" }),
                 json!({ "type": "object", "properties": { "n": { "type": "integer" } } }),
@@ -1524,6 +1646,10 @@ mod tests {
                 mensajes(&issues)
             );
         }
-        assert!(issues.len() >= 6, "se acumulan todos: {}", mensajes(&issues));
+        assert!(
+            issues.len() >= 6,
+            "se acumulan todos: {}",
+            mensajes(&issues)
+        );
     }
 }

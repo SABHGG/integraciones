@@ -37,10 +37,9 @@ impl HttpFailure {
     pub fn message(&self) -> String {
         match self {
             HttpFailure::Denied(domain) => format!("{}{domain}", super::MARKER_HTTP_DENIED),
-            HttpFailure::Timeout(url) => format!(
-                "{}http request timed out: {url}",
-                super::MARKER_HOST_ERROR
-            ),
+            HttpFailure::Timeout(url) => {
+                format!("{}http request timed out: {url}", super::MARKER_HOST_ERROR)
+            }
             HttpFailure::Transport(detail) => {
                 format!("{}http request failed: {detail}", super::MARKER_HOST_ERROR)
             }
@@ -67,7 +66,8 @@ pub(crate) fn parse_request<'js>(options: &Object<'js>) -> Result<HttpRequest, S
         .map_err(|_| "ctx.http.request: 'headers' debe ser un objeto".to_string())?
     {
         for entry in header_object.props::<String, Value>() {
-            let (key, value) = entry.map_err(|e| format!("ctx.http.request: headers inválidos: {e}"))?;
+            let (key, value) =
+                entry.map_err(|e| format!("ctx.http.request: headers inválidos: {e}"))?;
             let value = value
                 .as_string()
                 .and_then(|s| s.to_string().ok())
@@ -77,9 +77,10 @@ pub(crate) fn parse_request<'js>(options: &Object<'js>) -> Result<HttpRequest, S
     }
 
     let body = match options.get::<_, Option<Value<'js>>>("body") {
-        Ok(Some(value)) if !value.is_null() && !value.is_undefined() => {
-            Some(super::convert::js_to_json(&value).map_err(|e| format!("ctx.http.request: body inválido: {e}"))?)
-        }
+        Ok(Some(value)) if !value.is_null() && !value.is_undefined() => Some(
+            super::convert::js_to_json(&value)
+                .map_err(|e| format!("ctx.http.request: body inválido: {e}"))?,
+        ),
         _ => None,
     };
 
@@ -119,8 +120,10 @@ pub async fn execute(
         return Err(HttpFailure::Denied(host));
     }
 
-    let method = reqwest::Method::from_bytes(request.method.to_uppercase().as_bytes())
-        .map_err(|e| HttpFailure::Transport(format!("método inválido '{}': {e}", request.method)))?;
+    let method =
+        reqwest::Method::from_bytes(request.method.to_uppercase().as_bytes()).map_err(|e| {
+            HttpFailure::Transport(format!("método inválido '{}': {e}", request.method))
+        })?;
 
     let mut builder = client.request(method, url).timeout(timeout);
     for (key, value) in &request.headers {

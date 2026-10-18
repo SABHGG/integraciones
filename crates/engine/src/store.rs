@@ -188,11 +188,7 @@ impl ExecutionStore {
         }
 
         for step in &outcome.steps {
-            let step_error = step
-                .error
-                .as_ref()
-                .map(serde_json::to_value)
-                .transpose()?;
+            let step_error = step.error.as_ref().map(serde_json::to_value).transpose()?;
 
             sqlx::query(
                 "INSERT INTO execution_steps

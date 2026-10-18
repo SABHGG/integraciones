@@ -31,7 +31,11 @@ fn base_cfg(timeout_ms: u64) -> SandboxConfig {
 ///
 /// `delay` retrasa la respuesta para simular un servidor lento. Devuelve la URL
 /// base (`http://127.0.0.1:puerto`) y el join handle del hilo.
-fn spawn_http_server(content_type: &str, body: &str, delay: Duration) -> (String, thread::JoinHandle<()>) {
+fn spawn_http_server(
+    content_type: &str,
+    body: &str,
+    delay: Duration,
+) -> (String, thread::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
     let addr = listener.local_addr().expect("local addr");
     let content_type = content_type.to_string();

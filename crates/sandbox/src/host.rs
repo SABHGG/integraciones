@@ -41,10 +41,7 @@ fn log_message(level: &str, message: &str) {
 }
 
 /// Construye el objeto `ctx` con las capacidades del host.
-pub(crate) fn build_ctx_object<'js>(
-    ctx: &Ctx<'js>,
-    state: Arc<HostState>,
-) -> Result<Object<'js>> {
+pub(crate) fn build_ctx_object<'js>(ctx: &Ctx<'js>, state: Arc<HostState>) -> Result<Object<'js>> {
     let object = Object::new(ctx.clone())?;
 
     // ctx.log(level, message)
@@ -103,8 +100,8 @@ pub(crate) fn build_ctx_object<'js>(
     json_object.set(
         "parse",
         Function::new(ctx.clone(), move |text: String| -> Result<Value<'js>> {
-            let parsed: serde_json::Value = serde_json::from_str(&text)
-                .map_err(|e| host_error(format!("json.parse: {e}")))?;
+            let parsed: serde_json::Value =
+                serde_json::from_str(&text).map_err(|e| host_error(format!("json.parse: {e}")))?;
             json_to_js(&parse_ctx, &parsed)
         }),
     )?;

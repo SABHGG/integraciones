@@ -20,9 +20,9 @@
 // tamaño se autoriza a nivel de módulo igual que en blocks.rs.
 #![allow(clippy::result_large_err)]
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::collections::BTreeMap;
 
 use axum::Router;
 use axum::body::{Body, to_bytes};
@@ -80,7 +80,9 @@ fn payload_to_large() -> Problem {
         "payload-too-large",
         "Payload Too Large",
     )
-    .with_detail(format!("el body excede el límite de {MAX_BODY_BYTES} bytes"))
+    .with_detail(format!(
+        "el body excede el límite de {MAX_BODY_BYTES} bytes"
+    ))
 }
 
 fn unsupported_media_type(media_type: &str) -> Problem {
@@ -126,17 +128,14 @@ async fn invoke_slug(
     .await
     .map_err(|error| problem::internal(format!("cargar el puente: {error}")))?
     .ok_or_else(|| {
-        problem::not_found(format!(
-            "no existe un puente publicado con slug {slug:?}"
-        ))
+        problem::not_found(format!("no existe un puente publicado con slug {slug:?}"))
     })?;
-    let definition: BridgeDefinition = serde_json::from_value(published.definition).map_err(
-        |error| {
+    let definition: BridgeDefinition =
+        serde_json::from_value(published.definition).map_err(|error| {
             problem::internal(format!(
                 "la versión publicada no es un snapshot válido: {error}"
             ))
-        },
-    )?;
+        })?;
 
     // 2. Matching del method del trigger (insensible a mayúsculas).
     let allowed = definition.trigger.method.as_deref().unwrap_or("GET");
@@ -155,8 +154,7 @@ async fn invoke_slug(
     let body_value = read_body(&method, &parts.headers, body).await?;
 
     // 5. Trigger normalizado por el tipo del disparo: HTTP = `{body, query}`.
-    let query: BTreeMap<String, String> =
-        serde_urlencoded::from_str(raw_query).unwrap_or_default();
+    let query: BTreeMap<String, String> = serde_urlencoded::from_str(raw_query).unwrap_or_default();
     let trigger_data = json!({ "body": body_value, "query": query });
 
     // 6. La fila nace `pending` antes de correr: el executionId ya es válido
@@ -184,17 +182,14 @@ async fn invoke_slug(
             return Ok(envelope_response(envelope));
         }
     }
-    inserted
-        .map_err(|error| problem::internal(format!("crear la ejecución: {error}")))?;
+    inserted.map_err(|error| problem::internal(format!("crear la ejecución: {error}")))?;
 
     // 7. Claim propia de la corrida sync: `pending` → `running`.
-    sqlx::query(
-        "UPDATE executions SET status = 'running', started_at = now() WHERE id = $1",
-    )
-    .bind(execution_id)
-    .execute(&state.pool)
-    .await
-    .map_err(|error| problem::internal(format!("marcar la ejecución running: {error}")))?;
+    sqlx::query("UPDATE executions SET status = 'running', started_at = now() WHERE id = $1")
+        .bind(execution_id)
+        .execute(&state.pool)
+        .await
+        .map_err(|error| problem::internal(format!("marcar la ejecución running: {error}")))?;
 
     // 8. Validación de entrada (task 4.5): si el puente declara inputSchema,
     // el body debe cumplirlo ANTES de gastar isolate. Inválido → la ejecución
@@ -253,9 +248,8 @@ async fn invoke_slug(
             .expect("runtime current-thread para el ejecutor");
         let local = tokio::task::LocalSet::new();
         local.block_on(&runtime, async {
-            let invoker = SandboxInvoker::new().with_credential_resolver(Arc::new(
-                move |name: String| boveda.get(&name).cloned(),
-            ));
+            let invoker = SandboxInvoker::new()
+                .with_credential_resolver(Arc::new(move |name: String| boveda.get(&name).cloned()));
             let executor = Executor::new(invoker);
             executor.run(ChainRun::new(&definition, trigger_data)).await
         })
@@ -406,10 +400,11 @@ async fn cargar_boveda(
             .await?;
     let mut boveda = HashMap::with_capacity(filas.len());
     for (name, bytes) in filas {
-        let secreto = crate::vault::decrypt(&bytes)
-            .map_err(|error| sqlx::Error::Configuration(
+        let secreto = crate::vault::decrypt(&bytes).map_err(|error| {
+            sqlx::Error::Configuration(
                 format!("descifrar la credencial \"{name}\": {error}").into(),
-            ))?;
+            )
+        })?;
         boveda.insert(name, secreto);
     }
     Ok(boveda)
@@ -422,9 +417,8 @@ async fn finish_failed(
     execution_id: Uuid,
     error: &ErrorPayload,
 ) -> Result<(), sqlx::Error> {
-    let error = serde_json::to_value(error).map_err(|error| {
-        sqlx::Error::Configuration(error.into())
-    })?;
+    let error =
+        serde_json::to_value(error).map_err(|error| sqlx::Error::Configuration(error.into()))?;
     sqlx::query(
         "UPDATE executions SET status = 'failed', error = $2, finished_at = now() WHERE id = $1",
     )
@@ -451,8 +445,8 @@ async fn persist_outcome(
         .map_err(|error| sqlx::Error::Configuration(error.into()))?;
     let mut tx = pool.begin().await?;
     for step in &outcome.steps {
-        let step_input =
-            serde_json::to_value(&step.input).map_err(|error| sqlx::Error::Configuration(error.into()))?;
+        let step_input = serde_json::to_value(&step.input)
+            .map_err(|error| sqlx::Error::Configuration(error.into()))?;
         let step_output = step
             .output
             .as_ref()
@@ -482,14 +476,12 @@ async fn persist_outcome(
         .execute(&mut *tx)
         .await?;
     }
-    sqlx::query(
-        "UPDATE executions SET status = $2, error = $3, finished_at = now() WHERE id = $1",
-    )
-    .bind(execution_id)
-    .bind(status_final)
-    .bind(execution_error)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("UPDATE executions SET status = $2, error = $3, finished_at = now() WHERE id = $1")
+        .bind(execution_id)
+        .bind(status_final)
+        .bind(execution_error)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok(())
 }

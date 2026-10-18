@@ -61,12 +61,22 @@ async fn encadena_dos_bloques_reales_con_salida_nombrada() {
 
     let outcome = executor.run(run(&definition)).await;
 
-    assert_eq!(outcome.status, ExecutionStatus::Succeeded, "{:?}", outcome.error);
+    assert_eq!(
+        outcome.status,
+        ExecutionStatus::Succeeded,
+        "{:?}",
+        outcome.error
+    );
     assert_eq!(outcome.output, Some(json!({ "resultado": 11 })));
     assert_eq!(outcome.steps.len(), 2);
     assert_eq!(outcome.steps[0].output, Some(json!({ "doubled": 10 })));
     assert_eq!(outcome.steps[1].output, Some(json!({ "resultado": 11 })));
-    assert!(outcome.steps.iter().all(|s| s.status == StepStatus::Succeeded));
+    assert!(
+        outcome
+            .steps
+            .iter()
+            .all(|s| s.status == StepStatus::Succeeded)
+    );
 }
 
 #[tokio::test]

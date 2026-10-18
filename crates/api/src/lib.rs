@@ -17,14 +17,14 @@ pub mod rest;
 pub mod retention;
 pub mod state;
 pub mod transpile;
-pub mod vault;
 pub mod ui;
+pub mod vault;
 
 use axum::Json;
+use axum::Router;
 use axum::extract::Extension;
 use axum::middleware;
 use axum::routing::get;
-use axum::Router;
 use serde_json::json;
 use sqlx::PgPool;
 
@@ -63,9 +63,8 @@ pub fn app(state: AppState) -> Router {
 
     // Plano de invocación: sin auth de administración en v1 (spec
     // `bridge-invocation`); la auth por puente queda para una versión futura.
-    let invocation = invoke::router().fallback(|| async {
-        problem::not_found("las invocaciones usan /x/{slug} del puente")
-    });
+    let invocation = invoke::router()
+        .fallback(|| async { problem::not_found("las invocaciones usan /x/{slug} del puente") });
 
     Router::new()
         .route("/healthz", get(|| async { "ok" }))

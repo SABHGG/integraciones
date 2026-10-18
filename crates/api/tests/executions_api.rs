@@ -74,7 +74,9 @@ async fn begin() -> Option<Harness> {
     let url = match std::env::var("DATABASE_URL") {
         Ok(url) => url,
         Err(_) => {
-            eprintln!("DATABASE_URL no está definida: se omiten los tests de integración de la API");
+            eprintln!(
+                "DATABASE_URL no está definida: se omiten los tests de integración de la API"
+            );
             return None;
         }
     };
@@ -125,16 +127,14 @@ async fn seed_workspace(pool: &PgPool, workspace_id: Uuid) -> (String, Uuid) {
         .await
         .expect("workspace");
 
-    sqlx::query(
-        "INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(key_id)
-    .bind(workspace_id)
-    .bind(format!("exec-test-{raw_key}"))
-    .bind(hash_key(&raw_key))
-    .execute(pool)
-    .await
-    .expect("api key");
+    sqlx::query("INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)")
+        .bind(key_id)
+        .bind(workspace_id)
+        .bind(format!("exec-test-{raw_key}"))
+        .bind(hash_key(&raw_key))
+        .execute(pool)
+        .await
+        .expect("api key");
 
     (raw_key, key_id)
 }
@@ -274,7 +274,8 @@ impl Harness {
     async fn step(&self, execution_id: Uuid, seq: i32, status: &str, second: u32) {
         let created_at = ts(second);
         let output = matches!(status, "succeeded").then(|| json!({ "eco": seq }));
-        let error = matches!(status, "failed").then(|| json!({ "code": "SANDBOX_ERROR", "message": "boom" }));
+        let error = matches!(status, "failed")
+            .then(|| json!({ "code": "SANDBOX_ERROR", "message": "boom" }));
 
         sqlx::query(
             "INSERT INTO execution_steps (execution_id, seq, block_instance_id, block_name, \
@@ -337,7 +338,9 @@ async fn lista_con_filtros_y_cursor() {
     assert_eq!(page["items"][2]["id"], failed.to_string());
 
     // Filtro por puente.
-    let lista = h.get(&format!("/api/v1/executions?bridgeId={}", bridge_a.0)).await;
+    let lista = h
+        .get(&format!("/api/v1/executions?bridgeId={}", bridge_a.0))
+        .await;
     let page = lista.json();
     assert_eq!(page["items"].as_array().unwrap().len(), 2);
     assert!(page["items"][0]["status"].is_string());
@@ -351,9 +354,7 @@ async fn lista_con_filtros_y_cursor() {
     assert_eq!(lista.json()["items"].as_array().unwrap().len(), 2);
 
     // Filtro por fecha: desde 00:00:15, quedan las dos del bridge A.
-    let lista = h
-        .get("/api/v1/executions?from=2026-01-01T00:00:15Z")
-        .await;
+    let lista = h.get("/api/v1/executions?from=2026-01-01T00:00:15Z").await;
     assert_eq!(lista.json()["items"].as_array().unwrap().len(), 2);
     let lista = h
         .get("/api/v1/executions?from=2026-01-01T00:00:15Z&to=2026-01-01T00:00:25Z")
@@ -363,11 +364,14 @@ async fn lista_con_filtros_y_cursor() {
     assert_eq!(page["items"][0]["id"], ok_2.to_string());
 
     // Filtro inválido → Problem Details 400.
-    h.get("/api/v1/executions?status=rara").await
+    h.get("/api/v1/executions?status=rara")
+        .await
         .problem(StatusCode::BAD_REQUEST);
-    h.get("/api/v1/executions?bridgeId=no-es-uuid").await
+    h.get("/api/v1/executions?bridgeId=no-es-uuid")
+        .await
         .problem(StatusCode::BAD_REQUEST);
-    h.get("/api/v1/executions?from=no-es-fecha").await
+    h.get("/api/v1/executions?from=no-es-fecha")
+        .await
         .problem(StatusCode::BAD_REQUEST);
 
     // Cursor con limit=1: tres páginas encadenadas.
@@ -402,7 +406,11 @@ async fn lista_con_filtros_y_cursor() {
         ))
         .await
         .json();
-    assert_eq!(con_cursor["items"][0]["id"], ok_2.to_string(), "{con_cursor:?}");
+    assert_eq!(
+        con_cursor["items"][0]["id"],
+        ok_2.to_string(),
+        "{con_cursor:?}"
+    );
 }
 
 #[tokio::test]
@@ -427,10 +435,16 @@ async fn obtiene_el_detalle_con_entrada_del_trigger_y_version() {
     let detalle = respuesta.json();
     assert_eq!(detalle["id"], id.to_string());
     assert_eq!(detalle["bridgeId"], bridge.to_string());
-    assert!(detalle["bridgeVersionId"].as_str().is_some(), "la versión exacta está");
+    assert!(
+        detalle["bridgeVersionId"].as_str().is_some(),
+        "la versión exacta está"
+    );
     assert_eq!(detalle["triggerType"], "http");
     assert_eq!(detalle["status"], "succeeded");
-    assert_eq!(detalle["triggerData"]["body"]["total"], 3, "entrada del trigger");
+    assert_eq!(
+        detalle["triggerData"]["body"]["total"], 3,
+        "entrada del trigger"
+    );
     assert!(detalle["startedAt"].is_string());
     assert!(detalle["finishedAt"].is_string());
     assert!(detalle["error"].is_null());
@@ -439,7 +453,12 @@ async fn obtiene_el_detalle_con_entrada_del_trigger_y_version() {
     let (workspace_id, other_key) = h.extra_workspace().await;
     assert_ne!(workspace_id, h.workspace_id);
     let respuesta = h
-        .send(Method::GET, &format!("/api/v1/executions/{id}"), Some(&other_key), None)
+        .send(
+            Method::GET,
+            &format!("/api/v1/executions/{id}"),
+            Some(&other_key),
+            None,
+        )
         .await;
     respuesta.problem(StatusCode::NOT_FOUND);
 
@@ -487,7 +506,10 @@ async fn el_trace_devuelve_los_pasos_en_orden_con_io_duracion_y_fallo() {
     // El punto exacto del fallo: paso 2 con error estructurado y output null.
     assert_eq!(steps[1]["seq"], 2);
     assert_eq!(steps[1]["status"], "failed");
-    assert!(steps[1]["error"]["code"].as_str().is_some(), "error del paso");
+    assert!(
+        steps[1]["error"]["code"].as_str().is_some(),
+        "error del paso"
+    );
     let detalle = h.get(&format!("/api/v1/executions/{id}")).await.json();
     assert!(
         detalle["error"]["code"].as_str().is_some(),
@@ -499,7 +521,9 @@ async fn el_trace_devuelve_los_pasos_en_orden_con_io_duracion_y_fallo() {
     let pendiente = h
         .execution(h.workspace_id, bridge_vacia, "pending", json!({}), None, 9)
         .await;
-    let respuesta = h.get(&format!("/api/v1/executions/{pendiente}/trace")).await;
+    let respuesta = h
+        .get(&format!("/api/v1/executions/{pendiente}/trace"))
+        .await;
     assert_eq!(respuesta.status, StatusCode::OK);
     let pendiente_json = respuesta.json();
     assert_eq!(pendiente_json["steps"], json!([]), "sin pasos, sin panic");

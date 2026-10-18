@@ -77,7 +77,9 @@ async fn begin() -> Option<Harness> {
     let url = match std::env::var("DATABASE_URL") {
         Ok(url) => url,
         Err(_) => {
-            eprintln!("DATABASE_URL no está definida: se omiten los tests de integración de la API");
+            eprintln!(
+                "DATABASE_URL no está definida: se omiten los tests de integración de la API"
+            );
             return None;
         }
     };
@@ -128,16 +130,14 @@ async fn seed_workspace(pool: &PgPool, workspace_id: Uuid) -> (String, Uuid) {
         .await
         .expect("workspace");
 
-    sqlx::query(
-        "INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(key_id)
-    .bind(workspace_id)
-    .bind(format!("api-test-{raw_key}"))
-    .bind(hash_key(&raw_key))
-    .execute(pool)
-    .await
-    .expect("api key");
+    sqlx::query("INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)")
+        .bind(key_id)
+        .bind(workspace_id)
+        .bind(format!("api-test-{raw_key}"))
+        .bind(hash_key(&raw_key))
+        .execute(pool)
+        .await
+        .expect("api key");
 
     (raw_key, key_id)
 }
@@ -192,7 +192,8 @@ impl Harness {
     }
 
     async fn post(&self, uri: &str, body: Value) -> Resp {
-        self.send(Method::POST, uri, Some(&self.key), Some(body)).await
+        self.send(Method::POST, uri, Some(&self.key), Some(body))
+            .await
     }
 
     async fn delete(&self, uri: &str) -> Resp {
@@ -304,9 +305,7 @@ fn ts(second: u32) -> DateTime<Utc> {
 async fn sin_bearer_la_biblioteca_responde_401_problem() {
     let Some(h) = begin().await else { return };
 
-    let response = h
-        .send(Method::GET, "/api/v1/blocks", None, None)
-        .await;
+    let response = h.send(Method::GET, "/api/v1/blocks", None, None).await;
     response.problem(StatusCode::UNAUTHORIZED);
 }
 
@@ -384,7 +383,11 @@ async fn crea_un_bloque_y_lo_devuelve_en_el_detalle() {
     let id = created["id"].as_str().unwrap();
     let detail = h.get(&format!("/api/v1/blocks/{id}")).await;
     assert_eq!(detail.status, StatusCode::OK, "{}", detail.body);
-    assert_eq!(detail.json(), created, "el detalle repite el recurso creado");
+    assert_eq!(
+        detail.json(),
+        created,
+        "el detalle repite el recurso creado"
+    );
 
     // Los defaults de la tabla se aplican si el cliente no los manda.
     let minimal = h.create_block("minimo", "custom_logic").await;
@@ -412,7 +415,11 @@ async fn el_slug_es_unico_por_workspace_y_el_duplicado_es_409() {
     );
 
     let list = h.get("/api/v1/blocks").await.json();
-    assert_eq!(list["items"].as_array().unwrap().len(), 1, "no se creó el duplicado");
+    assert_eq!(
+        list["items"].as_array().unwrap().len(),
+        1,
+        "no se creó el duplicado"
+    );
 
     // El mismo slug en otro workspace no es conflicto.
     let (_, other_key) = h.extra_workspace().await;
@@ -486,7 +493,8 @@ async fn el_listado_pagina_por_cursor_opaco_sobre_created_at_e_id() {
     // `created_at` fijo por fixture para que el orden sea determinista.
     for (index, slug) in ["uno", "dos", "tres"].iter().enumerate() {
         let block = h.create_block(slug, "custom_logic").await;
-        h.set_created_at(uuid_of(&block), ts(index as u32 + 1)).await;
+        h.set_created_at(uuid_of(&block), ts(index as u32 + 1))
+            .await;
     }
 
     let first_page = h.get("/api/v1/blocks?limit=2").await;
@@ -532,7 +540,12 @@ async fn los_bloques_de_otro_workspace_no_son_visibles() {
     let (_, other_key) = h.extra_workspace().await;
 
     let detail = h
-        .send(Method::GET, &format!("/api/v1/blocks/{id}"), Some(&other_key), None)
+        .send(
+            Method::GET,
+            &format!("/api/v1/blocks/{id}"),
+            Some(&other_key),
+            None,
+        )
         .await;
     detail.problem(StatusCode::NOT_FOUND);
 
@@ -559,7 +572,9 @@ async fn los_bloques_de_otro_workspace_no_son_visibles() {
     assert!(h.exists(uuid_of(&block)).await, "nada se borró");
 
     // Un id que no es UUID tampoco existe: 404, no 400 de axum.
-    h.get("/api/v1/blocks/no-es-uuid").await.problem(StatusCode::NOT_FOUND);
+    h.get("/api/v1/blocks/no-es-uuid")
+        .await
+        .problem(StatusCode::NOT_FOUND);
     h.get("/api/v1/blocks/00000000-0000-0000-0000-000000000000")
         .await
         .problem(StatusCode::NOT_FOUND);
@@ -584,7 +599,11 @@ async fn borra_un_bloque_sin_referencias_con_204() {
     assert_eq!(response.body, "");
 
     assert!(!h.exists(id).await, "el bloque se fue");
-    assert_eq!(h.count_versions(id).await, 0, "las versiones caen en cascada");
+    assert_eq!(
+        h.count_versions(id).await,
+        0,
+        "las versiones caen en cascada"
+    );
 
     h.get(&format!("/api/v1/blocks/{id}"))
         .await
@@ -682,9 +701,18 @@ async fn publica_la_primera_version_transpilada_y_actualiza_latest_version() {
     assert_eq!(version["ui"]["title"], "Transformar usuario");
     assert!(version["createdAt"].is_string());
     let code = version["code"].as_str().expect("código JS devuelto");
-    assert!(code.contains("export default"), "el export default sobrevive: {code}");
-    assert!(!code.contains(": string"), "el JS guardado no tiene tipos: {code}");
-    assert!(!code.contains("type Entrada"), "el JS guardado no tiene tipos: {code}");
+    assert!(
+        code.contains("export default"),
+        "el export default sobrevive: {code}"
+    );
+    assert!(
+        !code.contains(": string"),
+        "el JS guardado no tiene tipos: {code}"
+    );
+    assert!(
+        !code.contains("type Entrada"),
+        "el JS guardado no tiene tipos: {code}"
+    );
     assert_eq!(h.latest_version(id).await, Some(1));
 
     // Segunda publicación: version=2 y latest_version avanza.
@@ -884,7 +912,10 @@ async fn un_bloque_http_no_publica_codigo() {
     let id = uuid_of(&block);
 
     let response = h
-        .publish(&id.to_string(), json!({ "code": "export default () => 1;" }))
+        .publish(
+            &id.to_string(),
+            json!({ "code": "export default () => 1;" }),
+        )
         .await;
     let problem = response.problem(StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(response.error_field(0), "blockType");
@@ -902,12 +933,9 @@ async fn un_bloque_http_no_publica_codigo() {
 async fn publicar_en_un_bloque_inexistente_es_404() {
     let Some(h) = begin().await else { return };
 
-    h.publish(
-        "no-es-uuid",
-        json!({ "code": "export default () => 1;" }),
-    )
-    .await
-    .problem(StatusCode::NOT_FOUND);
+    h.publish("no-es-uuid", json!({ "code": "export default () => 1;" }))
+        .await
+        .problem(StatusCode::NOT_FOUND);
 
     h.publish(
         &Uuid::now_v7().to_string(),
@@ -929,9 +957,12 @@ async fn el_cuerpo_de_publicacion_se_valida_antes_de_tocar_la_base() {
     h.publish(&id.to_string(), json!({ "configSchema": {} }))
         .await
         .problem(StatusCode::UNPROCESSABLE_ENTITY);
-    h.publish(&id.to_string(), json!({ "code": "export default () => 1;", "extra": 1 }))
-        .await
-        .problem(StatusCode::UNPROCESSABLE_ENTITY);
+    h.publish(
+        &id.to_string(),
+        json!({ "code": "export default () => 1;", "extra": 1 }),
+    )
+    .await
+    .problem(StatusCode::UNPROCESSABLE_ENTITY);
     h.publish(&id.to_string(), json!({ "code": 42 }))
         .await
         .problem(StatusCode::UNPROCESSABLE_ENTITY);
@@ -947,7 +978,10 @@ async fn las_versiones_se_listan_de_mas_nueva_a_mas_vieja_con_cursor() {
     let id = uuid_of(&block);
     for _ in 0..3 {
         let response = h
-            .publish(&id.to_string(), json!({ "code": "export default (input: any) => input;" }))
+            .publish(
+                &id.to_string(),
+                json!({ "code": "export default (input: any) => input;" }),
+            )
             .await;
         assert_eq!(response.status, StatusCode::CREATED, "{}", response.body);
     }
@@ -1012,8 +1046,15 @@ async fn un_bloque_http_publica_versiones_sin_codigo() {
     assert_eq!(response.status, StatusCode::CREATED, "{}", response.body);
     let version = response.json();
     assert_eq!(version["version"], 1);
-    assert!(version["code"].is_null(), "code queda NULL: {}", response.body);
-    assert_eq!(version["configSchema"]["properties"]["url"]["type"], "string");
+    assert!(
+        version["code"].is_null(),
+        "code queda NULL: {}",
+        response.body
+    );
+    assert_eq!(
+        version["configSchema"]["properties"]["url"]["type"],
+        "string"
+    );
 
     // Segunda versión: el contador sigue por bloque.
     let second = h.publish(&id, json!({})).await;

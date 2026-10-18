@@ -119,9 +119,7 @@ const INTERPOLATION: &str = "{$.";
 
 /// `true` si el valor es un string que empieza por `$.` (por tanto, referencia).
 pub fn is_ref(value: &Value) -> bool {
-    value
-        .as_str()
-        .is_some_and(|text| text.starts_with(ROOT))
+    value.as_str().is_some_and(|text| text.starts_with(ROOT))
 }
 
 /// Resuelve una ruta ya parseada contra el contexto de ejecución.
@@ -220,9 +218,7 @@ pub fn resolve_ref<'a>(context: &'a Value, raw: &str) -> Result<&'a Value, RefEr
 /// por el nodo resuelto (conservando su tipo JSON) y el resto es literal.
 pub fn resolve_input(context: &Value, spec: &Value) -> Result<Value, RefError> {
     match spec {
-        Value::String(text) if text.starts_with(ROOT) => {
-            Ok(resolve_ref(context, text)?.clone())
-        }
+        Value::String(text) if text.starts_with(ROOT) => Ok(resolve_ref(context, text)?.clone()),
         Value::Array(items) => items
             .iter()
             .map(|item| resolve_input(context, item))
@@ -445,7 +441,15 @@ mod tests {
 
     #[test]
     fn rechaza_rutas_malformadas_con_mensaje_quirurgico() {
-        for raw in ["$.", "$..body", "$.a..b", "$.a b", "$.a[b]", "$.a.", "$.a-b.c d"] {
+        for raw in [
+            "$.",
+            "$..body",
+            "$.a..b",
+            "$.a b",
+            "$.a[b]",
+            "$.a.",
+            "$.a-b.c d",
+        ] {
             let err = RefPath::parse(raw).expect_err(raw);
             match err {
                 RefError::Syntax { raw: got, reason } => {
@@ -543,7 +547,11 @@ mod tests {
     #[test]
     fn navegar_dentro_de_un_escalar_es_un_error_sin_panico() {
         let ctx = context();
-        for raw in ["$.trigger.body.userId.length", "$.now.x", "$.trigger.body.items.userId"] {
+        for raw in [
+            "$.trigger.body.userId.length",
+            "$.now.x",
+            "$.trigger.body.items.userId",
+        ] {
             let err = resolve_ref(&ctx, raw).expect_err(raw);
             assert!(matches!(err, RefError::Unresolved { .. }), "{raw}: {err:?}");
         }

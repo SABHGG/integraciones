@@ -242,7 +242,11 @@ impl<I: BlockInvoker> Executor<I> {
 }
 
 /// Construye el outcome fallido a partir del paso culpable.
-fn failed_outcome(steps: Vec<ExecutionStep>, step: ExecutionStep, context: Json) -> ExecutionOutcome {
+fn failed_outcome(
+    steps: Vec<ExecutionStep>,
+    step: ExecutionStep,
+    context: Json,
+) -> ExecutionOutcome {
     let error = step
         .error
         .clone()
@@ -319,8 +323,7 @@ fn definition_error(definition: &BridgeDefinition) -> Option<ErrorPayload> {
 
 /// Traduce un fallo de resolución de referencias al contrato de error.
 fn ref_error(block: &BlockInstance, error: refs::RefError) -> ErrorPayload {
-    ErrorPayload::new(ErrorCode::RefUnresolved, error.to_string())
-        .with_block(block.name.clone())
+    ErrorPayload::new(ErrorCode::RefUnresolved, error.to_string()).with_block(block.name.clone())
 }
 
 /// Traduce un fallo de validación de schema al contrato de error.
@@ -551,10 +554,8 @@ mod tests {
                 json!({ "type": "object", "required": ["cantidad", "id"] }),
             ),
         ]);
-        let invoker = MockInvoker::new(vec![
-            ok(json!({ "id": "u-1" })),
-            ok(json!({ "total": 20 })),
-        ]);
+        let invoker =
+            MockInvoker::new(vec![ok(json!({ "id": "u-1" })), ok(json!({ "total": 20 }))]);
         let executor = Executor::new(invoker);
 
         let outcome = executor.run(run(&definition)).await;
@@ -622,7 +623,11 @@ mod tests {
 
         assert!(!outcome.is_success());
         assert_eq!(outcome.status, ExecutionStatus::Failed);
-        assert_eq!(executor.invoker().calls(), 2, "el tercer bloque no se invoca");
+        assert_eq!(
+            executor.invoker().calls(),
+            2,
+            "el tercer bloque no se invoca"
+        );
         assert_eq!(outcome.steps.len(), 2);
         assert_eq!(outcome.steps[0].status, StepStatus::Succeeded);
         assert_eq!(outcome.steps[0].output, Some(json!({ "paso": 1 })));
@@ -670,12 +675,7 @@ mod tests {
     #[tokio::test]
     async fn violacion_de_input_schema_falla_antes_de_invocar_el_sandbox() {
         let definition = definition(vec![
-            block(
-                "origen",
-                "code-1",
-                json!({}),
-                json!({}),
-            ),
+            block("origen", "code-1", json!({}), json!({})),
             block(
                 "destino",
                 "code-2",
@@ -728,7 +728,10 @@ mod tests {
         assert_eq!(executor.invoker().calls(), 0);
         let error = outcome.error.expect("error estructurado");
         assert_eq!(error.code, ErrorCode::ValidationFailed);
-        assert_eq!(error.details.unwrap()["reason"], json!("UNSUPPORTED_SCHEMA"));
+        assert_eq!(
+            error.details.unwrap()["reason"],
+            json!("UNSUPPORTED_SCHEMA")
+        );
     }
 
     // ── referencias no resueltas ───────────────────────────────────────
@@ -740,7 +743,11 @@ mod tests {
             block("dos", "code-2", json!({ "x": "$.uno.noExiste" }), json!({})),
             block("tres", "code-3", json!({}), json!({})),
         ]);
-        let invoker = MockInvoker::new(vec![ok(json!({ "ok": true })), ok(json!({})), ok(json!({}))]);
+        let invoker = MockInvoker::new(vec![
+            ok(json!({ "ok": true })),
+            ok(json!({})),
+            ok(json!({})),
+        ]);
         let executor = Executor::new(invoker);
 
         let outcome = executor.run(run(&definition)).await;
@@ -749,7 +756,11 @@ mod tests {
         assert_eq!(error.code, ErrorCode::RefUnresolved);
         assert_eq!(error.code.as_str(), "REF_UNRESOLVED");
         assert_eq!(error.block.as_deref(), Some("dos"));
-        assert!(error.message.contains("$.uno.noExiste"), "{}", error.message);
+        assert!(
+            error.message.contains("$.uno.noExiste"),
+            "{}",
+            error.message
+        );
         assert!(error.message.contains("noExiste"), "{}", error.message);
         assert_eq!(executor.invoker().calls(), 1);
         assert_eq!(outcome.steps.len(), 2);

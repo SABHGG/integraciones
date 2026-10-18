@@ -17,9 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use rquickjs::promise::MaybePromise;
-use rquickjs::{
-    AsyncContext, AsyncRuntime, Ctx, Error, Function, Module, Value, async_with,
-};
+use rquickjs::{AsyncContext, AsyncRuntime, Ctx, Error, Function, Module, Value, async_with};
 use serde_json::Value as Json;
 
 use convert::{js_to_json, json_to_js};
@@ -90,11 +88,7 @@ pub enum SandboxError {
 ///
 /// Devuelve la salida del bloque como JSON o un [`SandboxError`]. Acepta tanto
 /// retornos síncronos como promises (resueltas o rechazadas).
-pub async fn run_block(
-    code: &str,
-    input: Json,
-    cfg: SandboxConfig,
-) -> Result<Json, SandboxError> {
+pub async fn run_block(code: &str, input: Json, cfg: SandboxConfig) -> Result<Json, SandboxError> {
     let timeout = Duration::from_millis(cfg.timeout_ms.max(1));
 
     let runtime = AsyncRuntime::new().map_err(|e| SandboxError::HostError {

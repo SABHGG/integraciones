@@ -132,9 +132,10 @@ async fn list_executions(
         None => None,
     };
     let bridge_id = match &query.bridge_id {
-        Some(raw) => Some(Uuid::parse_str(raw).map_err(|_| {
-            problem::bad_request(format!("bridgeId \"{raw}\" no es un UUID"))
-        })?),
+        Some(raw) => Some(
+            Uuid::parse_str(raw)
+                .map_err(|_| problem::bad_request(format!("bridgeId \"{raw}\" no es un UUID")))?,
+        ),
         None => None,
     };
     let status = match &query.status {
@@ -149,11 +150,22 @@ async fn list_executions(
     let parse_date = |raw: &str, field: &str| -> Result<DateTime<Utc>, Problem> {
         DateTime::parse_from_rfc3339(raw)
             .map(|dt| dt.with_timezone(&Utc))
-            .map_err(|_| problem::bad_request(format!("{field} \"{raw}\" no es una fecha RFC 3339")))
+            .map_err(|_| {
+                problem::bad_request(format!("{field} \"{raw}\" no es una fecha RFC 3339"))
+            })
     };
-    let from = query.from.as_deref().map(|raw| parse_date(raw, "from")).transpose()?;
-    let to = query.to.as_deref().map(|raw| parse_date(raw, "to")).transpose()?;
-    let (cursor_created_at, cursor_id) = after.map_or((None, None), |(ts, id)| (Some(ts), Some(id)));
+    let from = query
+        .from
+        .as_deref()
+        .map(|raw| parse_date(raw, "from"))
+        .transpose()?;
+    let to = query
+        .to
+        .as_deref()
+        .map(|raw| parse_date(raw, "to"))
+        .transpose()?;
+    let (cursor_created_at, cursor_id) =
+        after.map_or((None, None), |(ts, id)| (Some(ts), Some(id)));
 
     // Filtros opcionales con guardas `IS NULL`: una sola consulta para las
     // combinaciones, con binds tipados.
@@ -186,7 +198,10 @@ async fn list_executions(
     let next_cursor = rest::next_cursor(&mut rows, limit, |execution| {
         cursor::encode_execution_cursor(execution.created_at, execution.id)
     });
-    Ok(Json(Page { items: rows, next_cursor }))
+    Ok(Json(Page {
+        items: rows,
+        next_cursor,
+    }))
 }
 
 /// `GET /api/v1/executions/{id}`: detalle completo de la ejecución.

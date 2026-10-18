@@ -16,8 +16,8 @@ use std::sync::{Arc, Mutex};
 
 use api::auth::hash_key;
 use api::state::AppState;
-use axum::Router;
 use axum::Json;
+use axum::Router;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::{Method, Request, StatusCode, header};
@@ -76,7 +76,9 @@ async fn mock_server() -> (String, Registro) {
         .expect("puerto efímero");
     let addr = listener.local_addr().expect("dirección local");
     tokio::spawn(async move {
-        axum::serve(listener, app).await.expect("servidor de mentira");
+        axum::serve(listener, app)
+            .await
+            .expect("servidor de mentira");
     });
 
     (format!("http://{addr}"), registro)
@@ -176,28 +178,21 @@ async fn seed_workspace(pool: &PgPool, workspace_id: Uuid) -> (String, Uuid) {
         .await
         .expect("workspace");
 
-    sqlx::query(
-        "INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(key_id)
-    .bind(workspace_id)
-    .bind(format!("cred-test-{raw_key}"))
-    .bind(hash_key(&raw_key))
-    .execute(pool)
-    .await
-    .expect("api key");
+    sqlx::query("INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)")
+        .bind(key_id)
+        .bind(workspace_id)
+        .bind(format!("cred-test-{raw_key}"))
+        .bind(hash_key(&raw_key))
+        .execute(pool)
+        .await
+        .expect("api key");
 
     (raw_key, key_id)
 }
 
 impl Harness {
     /// Petición al plano de administración (con auth Bearer).
-    async fn admin(
-        &self,
-        method: Method,
-        uri: &str,
-        body: Option<Value>,
-    ) -> Resp {
+    async fn admin(&self, method: Method, uri: &str, body: Option<Value>) -> Resp {
         let mut builder = Request::builder()
             .method(method)
             .uri(uri)
@@ -235,10 +230,15 @@ impl Harness {
 
     /// Crea una credencial por la API y devuelve el id.
     async fn post_credencial(&self, name: &str, secret: &str) -> Resp {
-        self.admin(Method::POST, "/api/v1/credentials", Some(json!({
-            "name": name,
-            "secret": secret,
-        }))).await
+        self.admin(
+            Method::POST,
+            "/api/v1/credentials",
+            Some(json!({
+                "name": name,
+                "secret": secret,
+            })),
+        )
+        .await
     }
 
     /// Lee los bytes crudos de la bóveda.
@@ -329,7 +329,11 @@ async fn crea_credencial_y_nunca_devuelve_el_secreto() {
     let creacion = h.post_credencial("stripe", SECRETO).await;
     assert_eq!(creacion.status, StatusCode::CREATED, "{}", creacion.body);
     let credencial = creacion.json();
-    assert!(!credencial["id"].as_str().unwrap_or_default().is_empty(), "id: {}", creacion.body);
+    assert!(
+        !credencial["id"].as_str().unwrap_or_default().is_empty(),
+        "id: {}",
+        creacion.body
+    );
     assert_eq!(credencial["name"], "stripe");
     assert!(
         !creacion.body.contains(SECRETO),
@@ -346,7 +350,9 @@ async fn crea_credencial_y_nunca_devuelve_el_secreto() {
     );
 
     let id = credencial["id"].as_str().expect("id");
-    let detalle = h.admin(Method::GET, &format!("/api/v1/credentials/{id}"), None).await;
+    let detalle = h
+        .admin(Method::GET, &format!("/api/v1/credentials/{id}"), None)
+        .await;
     assert_eq!(detalle.status, StatusCode::OK, "{}", detalle.body);
     assert_eq!(detalle.json()["name"], "stripe");
     assert!(
@@ -415,9 +421,15 @@ async fn rotacion_basica_los_puentes_usan_el_nuevo_valor() {
         .as_str()
         .expect("id del listado")
         .to_string();
-    let rotacion = h.admin(Method::PATCH, &format!("/api/v1/credentials/{id}"), Some(json!({
-        "secret": SECRETO_NUEVO,
-    }))).await;
+    let rotacion = h
+        .admin(
+            Method::PATCH,
+            &format!("/api/v1/credentials/{id}"),
+            Some(json!({
+                "secret": SECRETO_NUEVO,
+            })),
+        )
+        .await;
     assert_eq!(rotacion.status, StatusCode::OK, "{}", rotacion.body);
     assert!(
         !rotacion.body.contains(SECRETO_NUEVO),
@@ -436,7 +448,10 @@ async fn rotacion_basica_los_puentes_usan_el_nuevo_valor() {
         .find(|(k, _)| k.eq_ignore_ascii_case("x-api-key"))
         .map(|(_, v)| v.as_str())
         .unwrap_or_default();
-    assert_eq!(header_v2, SECRETO_NUEVO, "los puentes usan el secreto rotado");
+    assert_eq!(
+        header_v2, SECRETO_NUEVO,
+        "los puentes usan el secreto rotado"
+    );
 }
 
 // ── errores del plano admin: siempre Problem Details ─────────────────────
@@ -449,7 +464,10 @@ async fn post_con_nombre_duplicado_responde_409_problem() {
     let duplicado = h.post_credencial("stripe", SECRETO).await;
     let problema = duplicado.problem(StatusCode::CONFLICT);
     assert!(
-        problema["detail"].as_str().unwrap_or_default().contains("stripe"),
+        problema["detail"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("stripe"),
         "el detalle menciona el nombre: {}",
         duplicado.body
     );
@@ -475,9 +493,13 @@ async fn delete_elimina_la_credencial_y_luega_404() {
         .expect("id del listado")
         .to_string();
 
-    let borrado = h.admin(Method::DELETE, &format!("/api/v1/credentials/{id}"), None).await;
+    let borrado = h
+        .admin(Method::DELETE, &format!("/api/v1/credentials/{id}"), None)
+        .await;
     assert_eq!(borrado.status, StatusCode::NO_CONTENT, "{}", borrado.body);
 
-    let detalle = h.admin(Method::GET, &format!("/api/v1/credentials/{id}"), None).await;
+    let detalle = h
+        .admin(Method::GET, &format!("/api/v1/credentials/{id}"), None)
+        .await;
     detalle.problem(StatusCode::NOT_FOUND);
 }

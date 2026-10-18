@@ -363,9 +363,7 @@ async fn publish_version(
     .map_err(|error| db_error("buscar el bloque a publicar", error))?;
 
     let Some(block_type) = block_type else {
-        return Err(problem::not_found(
-            "el bloque no existe en este workspace",
-        ));
+        return Err(problem::not_found("el bloque no existe en este workspace"));
     };
 
     // El código depende del tipo: custom_logic lo exige (el JS es su
@@ -382,28 +380,30 @@ async fn publish_version(
             ));
         };
         // TypeScript → JavaScript: un error de compilación no crea versión.
-        Some(transpile::transpile_typescript(code).map_err(|error| match error {
-            TranspileError::Syntax {
-                line,
-                column,
-                message,
-            } => invalid_body(
-                "el código del bloque no compila",
-                vec![json!({
-                    "field": "code",
-                    "message": message,
-                    "line": line,
-                    "column": column,
-                })],
-            ),
-            TranspileError::MissingDefaultExport => invalid_body(
-                "el código del bloque no cumple el contrato",
-                vec![field_error("code", error.to_string())],
-            ),
-            TranspileError::Codegen(message) => problem::internal(format!(
-                "no se pudo generar el JavaScript del bloque: {message}"
-            )),
-        })?)
+        Some(
+            transpile::transpile_typescript(code).map_err(|error| match error {
+                TranspileError::Syntax {
+                    line,
+                    column,
+                    message,
+                } => invalid_body(
+                    "el código del bloque no compila",
+                    vec![json!({
+                        "field": "code",
+                        "message": message,
+                        "line": line,
+                        "column": column,
+                    })],
+                ),
+                TranspileError::MissingDefaultExport => invalid_body(
+                    "el código del bloque no cumple el contrato",
+                    vec![field_error("code", error.to_string())],
+                ),
+                TranspileError::Codegen(message) => problem::internal(format!(
+                    "no se pudo generar el JavaScript del bloque: {message}"
+                )),
+            })?,
+        )
     } else {
         if request.code.is_some() {
             return Err(invalid_body(

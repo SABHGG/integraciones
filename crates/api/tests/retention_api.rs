@@ -62,7 +62,13 @@ async fn begin() -> Option<(PgPool, MutexGuard<'static, ()>, Uuid)> {
 
 /// Siembra puente v1 + una ejecución con `edad_dias` y `pasos` steps de la
 /// misma antigüedad; devuelve el id de la ejecución.
-async fn siembra(pool: &PgPool, workspace_id: Uuid, suffix: &str, edad_dias: i64, pasos: usize) -> Uuid {
+async fn siembra(
+    pool: &PgPool,
+    workspace_id: Uuid,
+    suffix: &str,
+    edad_dias: i64,
+    pasos: usize,
+) -> Uuid {
     let bridge_id = Uuid::now_v7();
     let version_id = Uuid::now_v7();
     let execution_id = Uuid::now_v7();
@@ -130,16 +136,19 @@ async fn contar(pool: &PgPool, sql: &str, execution_id: Uuid) -> i64 {
 
 #[tokio::test]
 async fn purga_el_io_viejo_y_mantiene_el_resumen_hasta_su_ventana() {
-    let Some((pool, _turno, workspace_id)) = begin().await else { return };
+    let Some((pool, _turno, workspace_id)) = begin().await else {
+        return;
+    };
 
     let vieja = siembra(&pool, workspace_id, "vieja", 40, 2).await;
     let reciente = siembra(&pool, workspace_id, "reciente", 0, 1).await;
 
-    let reporte = api::retention::purge(&pool, 30, 365)
-        .await
-        .expect("purga");
+    let reporte = api::retention::purge(&pool, 30, 365).await.expect("purga");
     assert_eq!(reporte.steps, 2, "solo el IO de la vieja");
-    assert_eq!(reporte.executions, 0, "el resumen de la vieja sigue en su ventana");
+    assert_eq!(
+        reporte.executions, 0,
+        "el resumen de la vieja sigue en su ventana"
+    );
 
     assert_eq!(
         contar(
@@ -162,7 +171,12 @@ async fn purga_el_io_viejo_y_mantiene_el_resumen_hasta_su_ventana() {
         "el IO reciente se conserva"
     );
     assert_eq!(
-        contar(&pool, "SELECT count(*) FROM executions WHERE id = $1", vieja).await,
+        contar(
+            &pool,
+            "SELECT count(*) FROM executions WHERE id = $1",
+            vieja
+        )
+        .await,
         1,
         "el resumen viejo sigue consultable"
     );
@@ -177,18 +191,23 @@ async fn purga_el_io_viejo_y_mantiene_el_resumen_hasta_su_ventana() {
 
 #[tokio::test]
 async fn purga_los_resumenes_pasada_su_ventana_anual() {
-    let Some((pool, _turno, workspace_id)) = begin().await else { return };
+    let Some((pool, _turno, workspace_id)) = begin().await else {
+        return;
+    };
 
     let viejisima = siembra(&pool, workspace_id, "anual", 400, 3).await;
 
-    let reporte = api::retention::purge(&pool, 30, 365)
-        .await
-        .expect("purga");
+    let reporte = api::retention::purge(&pool, 30, 365).await.expect("purga");
     assert_eq!(reporte.steps, 3, "los pasos de la viejísima también salen");
     assert_eq!(reporte.executions, 1, "el resumen sale al cumplir el año");
 
     assert_eq!(
-        contar(&pool, "SELECT count(*) FROM executions WHERE id = $1", viejisima).await,
+        contar(
+            &pool,
+            "SELECT count(*) FROM executions WHERE id = $1",
+            viejisima
+        )
+        .await,
         0
     );
 }

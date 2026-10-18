@@ -26,8 +26,8 @@ use std::sync::{Arc, Mutex};
 
 use api::auth::hash_key;
 use api::state::AppState;
-use axum::Router;
 use axum::Json;
+use axum::Router;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::{Method, Request, StatusCode, header};
@@ -75,7 +75,13 @@ type Registro = Arc<Mutex<Vec<Recorded>>>;
 
 /// GET /users/{id} devuelve un usuario fijo; POST /orders devuelve un pedido.
 async fn usuarios(State(registro): State<Registro>, req: Request<Body>) -> Json<Value> {
-    let id = req.uri().path().rsplit('/').next().unwrap_or("0").to_string();
+    let id = req
+        .uri()
+        .path()
+        .rsplit('/')
+        .next()
+        .unwrap_or("0")
+        .to_string();
     let bytes = tomar_y_registrar(&registro, req).await;
     let _ = bytes;
     Json(json!({
@@ -88,7 +94,10 @@ async fn usuarios(State(registro): State<Registro>, req: Request<Body>) -> Json<
 async fn ordenes(State(registro): State<Registro>, req: Request<Body>) -> Json<Value> {
     let bytes = tomar_y_registrar(&registro, req).await;
     let body: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
-    assert_eq!(body["cliente"], "ANA", "el puente manda el nombre enriquecido");
+    assert_eq!(
+        body["cliente"], "ANA",
+        "el puente manda el nombre enriquecido"
+    );
     Json(json!({ "orderId": 42, "estado": "creada" }))
 }
 
@@ -133,7 +142,9 @@ async fn mock_server() -> (String, Registro) {
         .expect("puerto efímero");
     let addr = listener.local_addr().expect("dirección local");
     tokio::spawn(async move {
-        axum::serve(listener, app).await.expect("servidor de mentira");
+        axum::serve(listener, app)
+            .await
+            .expect("servidor de mentira");
     });
 
     (format!("http://{addr}"), registro)
@@ -222,28 +233,21 @@ async fn seed_workspace(pool: &PgPool, workspace_id: Uuid) -> (String, Uuid) {
         .await
         .expect("workspace");
 
-    sqlx::query(
-        "INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)",
-    )
-    .bind(key_id)
-    .bind(workspace_id)
-    .bind(format!("e2e-test-{raw_key}"))
-    .bind(hash_key(&raw_key))
-    .execute(pool)
-    .await
-    .expect("api key");
+    sqlx::query("INSERT INTO api_keys (id, workspace_id, name, key_hash) VALUES ($1, $2, $3, $4)")
+        .bind(key_id)
+        .bind(workspace_id)
+        .bind(format!("e2e-test-{raw_key}"))
+        .bind(hash_key(&raw_key))
+        .execute(pool)
+        .await
+        .expect("api key");
 
     (raw_key, key_id)
 }
 
 impl Harness {
     /// Petición autenticada al plano de administración.
-    async fn admin(
-        &self,
-        method: Method,
-        uri: &str,
-        body: Option<Value>,
-    ) -> Resp {
+    async fn admin(&self, method: Method, uri: &str, body: Option<Value>) -> Resp {
         let builder = Request::builder()
             .method(method)
             .uri(uri)
@@ -307,7 +311,12 @@ async fn el_puente_demo_recorre_biblioteca_publicacion_invocacion_y_trace() {
             json!({ "name": "pago-api", "secret": SECRETO, "description": "key del proveedor" }),
         )
         .await;
-    assert_eq!(credencial.status, StatusCode::CREATED, "{}", credencial.body);
+    assert_eq!(
+        credencial.status,
+        StatusCode::CREATED,
+        "{}",
+        credencial.body
+    );
 
     // ── 2. Biblioteca: tres bloques, tres versiones publicadas ────────
     let bloque_get = h
@@ -323,7 +332,12 @@ async fn el_puente_demo_recorre_biblioteca_publicacion_invocacion_y_trace() {
             }),
         )
         .await;
-    assert_eq!(bloque_get.status, StatusCode::CREATED, "{}", bloque_get.body);
+    assert_eq!(
+        bloque_get.status,
+        StatusCode::CREATED,
+        "{}",
+        bloque_get.body
+    );
     let get_id = bloque_get.json()["id"].as_str().unwrap().to_string();
 
     let bloque_post = h
@@ -339,7 +353,12 @@ async fn el_puente_demo_recorre_biblioteca_publicacion_invocacion_y_trace() {
             }),
         )
         .await;
-    assert_eq!(bloque_post.status, StatusCode::CREATED, "{}", bloque_post.body);
+    assert_eq!(
+        bloque_post.status,
+        StatusCode::CREATED,
+        "{}",
+        bloque_post.body
+    );
     let post_id = bloque_post.json()["id"].as_str().unwrap().to_string();
 
     let bloque_custom = h
@@ -355,7 +374,12 @@ async fn el_puente_demo_recorre_biblioteca_publicacion_invocacion_y_trace() {
             }),
         )
         .await;
-    assert_eq!(bloque_custom.status, StatusCode::CREATED, "{}", bloque_custom.body);
+    assert_eq!(
+        bloque_custom.status,
+        StatusCode::CREATED,
+        "{}",
+        bloque_custom.body
+    );
     let custom_id = bloque_custom.json()["id"].as_str().unwrap().to_string();
 
     // Los built-in publican sin código (solo schemas); el custom_logic, con él.
@@ -365,7 +389,12 @@ async fn el_puente_demo_recorre_biblioteca_publicacion_invocacion_y_trace() {
             json!({ "outputSchema": { "type": "object" } }),
         )
         .await;
-    assert_eq!(version_get.status, StatusCode::CREATED, "{}", version_get.body);
+    assert_eq!(
+        version_get.status,
+        StatusCode::CREATED,
+        "{}",
+        version_get.body
+    );
     assert!(version_get.json()["code"].is_null());
     let version_get_id = version_get.json()["id"].as_str().unwrap().to_string();
 
@@ -375,7 +404,12 @@ async fn el_puente_demo_recorre_biblioteca_publicacion_invocacion_y_trace() {
             json!({ "outputSchema": { "type": "object" } }),
         )
         .await;
-    assert_eq!(version_post.status, StatusCode::CREATED, "{}", version_post.body);
+    assert_eq!(
+        version_post.status,
+        StatusCode::CREATED,
+        "{}",
+        version_post.body
+    );
     let version_post_id = version_post.json()["id"].as_str().unwrap().to_string();
 
     let version_custom = h
@@ -399,8 +433,18 @@ async fn el_puente_demo_recorre_biblioteca_publicacion_invocacion_y_trace() {
             }),
         )
         .await;
-    assert_eq!(version_custom.status, StatusCode::CREATED, "{}", version_custom.body);
-    assert!(version_custom.json()["code"].as_str().unwrap().contains("export default"));
+    assert_eq!(
+        version_custom.status,
+        StatusCode::CREATED,
+        "{}",
+        version_custom.body
+    );
+    assert!(
+        version_custom.json()["code"]
+            .as_str()
+            .unwrap()
+            .contains("export default")
+    );
     let version_custom_id = version_custom.json()["id"].as_str().unwrap().to_string();
 
     // ── 3. Puente: borrador → trigger + cadena → validar → publicar ───
@@ -459,28 +503,46 @@ async fn el_puente_demo_recorre_biblioteca_publicacion_invocacion_y_trace() {
         ]
     });
     let editado = h
-        .admin(Method::PATCH, &format!("/api/v1/bridges/{puente_id}"), Some(borrador.clone()))
+        .admin(
+            Method::PATCH,
+            &format!("/api/v1/bridges/{puente_id}"),
+            Some(borrador.clone()),
+        )
         .await;
     assert_eq!(editado.status, StatusCode::OK, "{}", editado.body);
 
     let validado = h
-        .admin(Method::POST, &format!("/api/v1/bridges/{puente_id}/validate"), None)
+        .admin(
+            Method::POST,
+            &format!("/api/v1/bridges/{puente_id}/validate"),
+            None,
+        )
         .await;
     assert_eq!(validado.status, StatusCode::OK, "{}", validado.body);
     assert_eq!(validado.json()["valid"], true, "{}", validado.body);
     assert_eq!(validado.json()["errors"], json!([]));
 
     let publicado = h
-        .admin(Method::POST, &format!("/api/v1/bridges/{puente_id}/versions"), None)
+        .admin(
+            Method::POST,
+            &format!("/api/v1/bridges/{puente_id}/versions"),
+            None,
+        )
         .await;
     assert_eq!(publicado.status, StatusCode::CREATED, "{}", publicado.body);
     let snapshot = publicado.json();
     assert_eq!(snapshot["version"], 1);
     let bloques = snapshot["definition"]["blocks"].as_array().expect("cadena");
     assert_eq!(bloques.len(), 3);
-    assert!(bloques[0]["code"].is_null(), "el built-in http no lleva code");
     assert!(
-        bloques[1]["code"].as_str().unwrap().contains("export default"),
+        bloques[0]["code"].is_null(),
+        "el built-in http no lleva code"
+    );
+    assert!(
+        bloques[1]["code"]
+            .as_str()
+            .unwrap()
+            .contains("export default"),
         "el custom_logic lleva su JS en el snapshot"
     );
 
@@ -492,13 +554,22 @@ async fn el_puente_demo_recorre_biblioteca_publicacion_invocacion_y_trace() {
     let sobre = respuesta.json();
     assert_eq!(sobre["success"], true, "{}", sobre);
     assert_eq!(sobre["data"], json!({ "orderId": 42, "estado": "creada" }));
-    let execution_id = sobre["executionId"].as_str().expect("executionId").to_string();
+    let execution_id = sobre["executionId"]
+        .as_str()
+        .expect("executionId")
+        .to_string();
 
     // ── 5. La ejecución y su trace cuentan todo el viaje ──────────────
-    let detalle = h.get(&format!("/api/v1/executions/{execution_id}")).await.json();
+    let detalle = h
+        .get(&format!("/api/v1/executions/{execution_id}"))
+        .await
+        .json();
     assert_eq!(detalle["status"], "succeeded", "{}", detalle);
     assert_eq!(detalle["triggerType"], "http");
-    assert_eq!(detalle["triggerData"]["body"], json!({ "id": 7, "items": [1, 2, 3] }));
+    assert_eq!(
+        detalle["triggerData"]["body"],
+        json!({ "id": 7, "items": [1, 2, 3] })
+    );
     assert_eq!(detalle["bridgeId"], puente_id);
     assert!(detalle["bridgeVersionId"].as_str().is_some());
 
@@ -524,7 +595,10 @@ async fn el_puente_demo_recorre_biblioteca_publicacion_invocacion_y_trace() {
     );
 
     // Trace: tres pasos succeeded con IO completo y duración.
-    let trace = h.get(&format!("/api/v1/executions/{execution_id}/trace")).await.json();
+    let trace = h
+        .get(&format!("/api/v1/executions/{execution_id}/trace"))
+        .await
+        .json();
     let steps = trace["steps"].as_array().expect("pasos");
     assert_eq!(steps.len(), 3, "{}", trace);
 
@@ -535,14 +609,27 @@ async fn el_puente_demo_recorre_biblioteca_publicacion_invocacion_y_trace() {
 
     assert_eq!(steps[1]["blockName"], "enriquece");
     assert_eq!(steps[1]["status"], "succeeded");
-    assert_eq!(steps[1]["input"]["usuario"]["nombre"], "ana", "entrada resuelta del paso previo");
-    assert_eq!(steps[1]["output"]["cliente"], "ANA", "el custom_logic transformó");
+    assert_eq!(
+        steps[1]["input"]["usuario"]["nombre"], "ana",
+        "entrada resuelta del paso previo"
+    );
+    assert_eq!(
+        steps[1]["output"]["cliente"], "ANA",
+        "el custom_logic transformó"
+    );
     assert!(steps[1]["output"]["procesadoEn"].is_string());
 
     assert_eq!(steps[2]["blockName"], "creaOrden");
     assert_eq!(steps[2]["status"], "succeeded");
-    assert_eq!(steps[2]["input"], json!({}), "el built-in no pide input de instancia");
-    assert_eq!(steps[2]["output"], json!({ "orderId": 42, "estado": "creada" }));
+    assert_eq!(
+        steps[2]["input"],
+        json!({}),
+        "el built-in no pide input de instancia"
+    );
+    assert_eq!(
+        steps[2]["output"],
+        json!({ "orderId": 42, "estado": "creada" })
+    );
 
     // El secreto jamás queda en el IO persistido.
     let trace_text = trace.to_string();

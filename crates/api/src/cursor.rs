@@ -123,10 +123,12 @@ pub fn decode_execution_cursor(raw: &str) -> Result<(DateTime<Utc>, Uuid), Curso
 /// Decodifica el cursor del listado de versiones.
 pub fn decode_version_cursor(raw: &str) -> Result<i32, CursorError> {
     let parts = decode(raw, 1)?;
-    parts[0].parse::<i32>().map_err(|e| CursorError::InvalidPart {
-        part: "version",
-        reason: e.to_string(),
-    })
+    parts[0]
+        .parse::<i32>()
+        .map_err(|e| CursorError::InvalidPart {
+            part: "version",
+            reason: e.to_string(),
+        })
 }
 
 #[cfg(test)]
