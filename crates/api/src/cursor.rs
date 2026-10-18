@@ -109,6 +109,17 @@ pub fn encode_version_cursor(version: i32) -> String {
     encode(&[&version.to_string()])
 }
 
+/// Cursor del listado de ejecuciones: `created_at | id` (el UUID v7 ya es
+/// ordenable, pero el cursor mantiene el mismo criterio que bloques/puentes).
+pub fn encode_execution_cursor(created_at: DateTime<Utc>, id: Uuid) -> String {
+    encode_row_cursor(created_at, id)
+}
+
+/// Decodifica el cursor del listado de ejecuciones.
+pub fn decode_execution_cursor(raw: &str) -> Result<(DateTime<Utc>, Uuid), CursorError> {
+    decode_row_cursor(raw)
+}
+
 /// Decodifica el cursor del listado de versiones.
 pub fn decode_version_cursor(raw: &str) -> Result<i32, CursorError> {
     let parts = decode(raw, 1)?;

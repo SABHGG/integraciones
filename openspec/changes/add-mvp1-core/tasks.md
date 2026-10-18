@@ -27,7 +27,7 @@
 
 - [x] 4.1 API de blocks: CRUD + `POST /blocks/{id}/versions` (publicar: transpilar TS con swc, validar sintaxis, schemas+ui contra el subconjunto, guardar JS) + listado de versiones; DELETE bloqueado (409) si un puente lo referencia
 - [x] 4.2 API de bridges: CRUD de borrador + `POST /bridges/{id}/validate` (estructura: cadena lineal, entrada única, sin huérfanos; compatibilidad de schemas campo a campo; validación de refs) + `POST /bridges/{id}/versions` (publicar versión inmutable con snapshot JSONB)
-- [ ] 4.3 API de executions: `GET /executions` (filtros bridge/status/fechas + paginación por cursor), `GET /executions/{id}`, `GET /executions/{id}/trace`
+- [x] 4.3 API de executions: `GET /executions` (filtros bridge/status/fechas + paginación por cursor), `GET /executions/{id}`, `GET /executions/{id}/trace`
 - [ ] 4.4 Plano de invocación `/x/{slug}`: matching de method del trigger del puente, errores de transporte (404/405/413/415 con Problem Details), ejecución sync y respuesta 200 con sobre `{success, data, error?, executionId}`, códigos de error estables
 - [ ] 4.5 Validación de entrada: si el puente declara inputSchema, validar `$.trigger.body` antes de ejecutar; inválido → 200 con `VALIDATION_FAILED` sin gastar isolate
 - [ ] 4.6 Bloques built-in de la biblioteca base: `http-get`/`http-post` con config (url con interpolación `{$.ref}`, headers, body) y resolución de `ctx.credential(name)`
