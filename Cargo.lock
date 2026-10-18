@@ -398,10 +398,15 @@ dependencies = [
 name = "engine"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "domain",
+ "reqwest",
  "sandbox",
  "serde_json",
+ "sqlx",
  "thiserror",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

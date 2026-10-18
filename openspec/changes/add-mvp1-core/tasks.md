@@ -18,10 +18,10 @@
 
 ## 3. Fase 2 — Ejecutor
 
-- [ ] 3.1 Resolución de referencias `$.`: parser de rutas de puntos (segmentos alfanuméricos y numéricos), raíces `$.trigger` y `$.now`, refs a nodo completo; ref no resuelta = fail-fast con mensaje quirúrgico
-- [ ] 3.2 Máquina de ejecución de cadena lineal: iterar bloques instanciados desde `bridge_versions.definition`, resolver inputs (mapeo + interpolación de config), validar contra inputSchema del bloque, invocar sandbox, registrar salida nombrada en el contexto, fail-fast en primer error
-- [ ] 3.3 Persistencia atómica de `executions` + `execution_steps` (input/output/error/duration_ms por bloque) en la misma transacción; máquina de estados pending → running → succeeded|failed
-- [ ] 3.4 Validador JSON Schema en Rust para el subconjunto estricto (types básicos, properties, required, enum, items, format) — usado por validación de entrada, publicación y dry-run futuro
+- [x] 3.1 Resolución de referencias `$.`: parser de rutas de puntos (segmentos alfanuméricos y numéricos), raíces `$.trigger` y `$.now`, refs a nodo completo; ref no resuelta = fail-fast con mensaje quirúrgico
+- [x] 3.2 Máquina de ejecución de cadena lineal: iterar bloques instanciados desde `bridge_versions.definition`, resolver inputs (mapeo + interpolación de config), validar contra inputSchema del bloque, invocar sandbox, registrar salida nombrada en el contexto, fail-fast en primer error
+- [x] 3.3 Persistencia atómica de `executions` + `execution_steps` (input/output/error/duration_ms por bloque) en la misma transacción; máquina de estados pending → running → succeeded|failed
+- [x] 3.4 Validador JSON Schema en Rust para el subconjunto estricto (types básicos, properties, required, enum, items, format) — usado por validación de entrada, publicación y dry-run futuro
 
 ## 4. Fase 3 — API
 

@@ -8,3 +8,10 @@ domain.workspace = true
 sandbox.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+reqwest.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+sqlx.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
