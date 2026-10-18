@@ -29,7 +29,7 @@ use axum::body::{Body, to_bytes};
 use axum::extract::{Path, Request, State};
 use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::response::Response;
-use axum::routing::any;
+use axum::routing::{any, get};
 use domain::definition::BridgeDefinition;
 use domain::execution::ErrorPayload;
 use engine::executor::{ChainRun, ExecutionOutcome, Executor};
@@ -38,6 +38,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::problem::{self, Problem};
+use crate::rest;
 use crate::state::AppState;
 
 /// Límite del body del disparo HTTP (1 MB): por encima → 413 Problem Details.
@@ -46,9 +47,15 @@ pub const MAX_BODY_BYTES: usize = 1_000_000;
 /// Header de idempotencia del disparo HTTP.
 const IDEMPOTENCY_HEADER: &str = "idempotency-key";
 
+/// Header `Prefer` (RFC 7240) y token que pide disparo asíncrono (MVP2).
+const PREFER_HEADER: &str = "prefer";
+const PREFER_RESPOND_ASYNC: &str = "respond-async";
+
 /// Rutas del plano de invocación (se anidan bajo `/x` en `lib.rs`).
 pub fn router() -> Router<AppState> {
-    Router::new().route("/{slug}", any(invoke_slug))
+    Router::new()
+        .route("/{slug}", any(invoke_slug))
+        .route("/{slug}/executions/{execution_id}", get(poll_result))
 }
 
 /// Puente publicado: la resolución del JOIN con su versión snapshot.
@@ -112,6 +119,20 @@ async fn invoke_slug(
         .get(IDEMPOTENCY_HEADER)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
+    // `Prefer: respond-async` (RFC 7240): el disparo encola y responde 202 en
+    // cuanto la fila queda pendiente; el resultado se consulta por polling.
+    // El resto de la lista de `Prefer` se ignora (solo el token importa).
+    let respond_async = parts
+        .headers
+        .get(PREFER_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            value.split(',').any(|part| {
+                let token = part.trim().split(';').next().unwrap_or("").trim();
+                token.eq_ignore_ascii_case(PREFER_RESPOND_ASYNC)
+            })
+        })
+        .unwrap_or(false);
 
     // 1. Puente publicado por slug: el más reciente con versión publicada. El
     // plano no usa auth de administración; MVP1 no declara auth por puente.
@@ -144,10 +165,16 @@ async fn invoke_slug(
     }
 
     // 3. Idempotencia: la key repetida devuelve el resultado previo sin correr.
-    if let Some(envelope) =
+    // En async la repetida es un 202 con el executionId original y su Location
+    // (spec `async-invocation`), sin crear una nueva ejecución.
+    if let Some((original_id, envelope)) =
         replay_if_keyed(&state, published.workspace_id, idempotency_key.as_deref()).await?
     {
-        return Ok(envelope_response(envelope));
+        return Ok(if respond_async {
+            accepted_response(&slug, original_id)
+        } else {
+            envelope_response(envelope)
+        });
     }
 
     // 4. Body según el method (GET/DELETE no lo consumen).
@@ -157,9 +184,16 @@ async fn invoke_slug(
     let query: BTreeMap<String, String> = serde_urlencoded::from_str(raw_query).unwrap_or_default();
     let trigger_data = json!({ "body": body_value, "query": query });
 
-    // 6. La fila nace `pending` antes de correr: el executionId ya es válido
-    // para el sobre aunque el proceso caiga a mitad de la corrida.
+    // 6. La fila nace `pending`. En el camino síncrono el claim va en LA MISMA
+    // transacción (un worker del binario jamás ve esta fila `pending`: la
+    // corrida no puede duplicarse). En async el commit confirma solo el
+    // encolado y responde 202: el worker la reclamará después.
     let execution_id = Uuid::now_v7();
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|error| problem::internal(format!("abrir la transacción: {error}")))?;
     let inserted = sqlx::query(
         "INSERT INTO executions (id, workspace_id, bridge_id, bridge_version_id, \
          trigger_type, trigger_data, status, idempotency_key, run_at) \
@@ -171,31 +205,189 @@ async fn invoke_slug(
     .bind(published.bridge_version_id)
     .bind(&trigger_data)
     .bind(&idempotency_key)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await;
-    if let Err(sqlx::Error::Database(db)) = &inserted {
-        // Carrera de idempotencia (unique parcial): otra petición ganó el INSERT.
-        if db.constraint() == Some("uq_executions_idempotency")
-            && let Some(envelope) =
-                replay_if_keyed(&state, published.workspace_id, idempotency_key.as_deref()).await?
+    if let Err(sqlx::Error::Database(db)) = &inserted
+        && db.constraint() == Some("uq_executions_idempotency")
+    {
+        // Carrera de idempotencia (unique parcial): otra petición ganó el
+        // INSERT; el drop del tx hace rollback de la fila perdedora.
+        drop(tx);
+        if let Some((original_id, envelope)) =
+            replay_if_keyed(&state, published.workspace_id, idempotency_key.as_deref()).await?
         {
-            return Ok(envelope_response(envelope));
+            return Ok(if respond_async {
+                accepted_response(&slug, original_id)
+            } else {
+                envelope_response(envelope)
+            });
         }
+        return Err(problem::internal(
+            "la carrera de idempotencia no dejó ejecución previa",
+        ));
     }
     inserted.map_err(|error| problem::internal(format!("crear la ejecución: {error}")))?;
 
-    // 7. Claim propia de la corrida sync: `pending` → `running`.
+    if respond_async {
+        tx.commit()
+            .await
+            .map_err(|error| problem::internal(format!("encolar la ejecución: {error}")))?;
+        return Ok(accepted_response(&slug, execution_id));
+    }
+
+    // 7. Claim atómico de la corrida sync: `pending` → `running`.
     sqlx::query("UPDATE executions SET status = 'running', started_at = now() WHERE id = $1")
         .bind(execution_id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|error| problem::internal(format!("marcar la ejecución running: {error}")))?;
+    tx.commit()
+        .await
+        .map_err(|error| problem::internal(format!("crear la ejecución: {error}")))?;
 
-    // 8. Validación de entrada (task 4.5): si el puente declara inputSchema,
-    // el body debe cumplirlo ANTES de gastar isolate. Inválido → la ejecución
+    // 8-10. La corrida compartida (el worker de la cola usa el mismo camino).
+    match ejecutar_encolada(
+        &state,
+        execution_id,
+        published.workspace_id,
+        definition,
+        trigger_data,
+        true,
+    )
+    .await?
+    {
+        RunOutcome::InputInvalid(error) => Ok(envelope_response(json!({
+            "success": false,
+            "error": error,
+            "executionId": execution_id,
+        }))),
+        RunOutcome::Finished(outcome) => {
+            // 11. Sobre único 200 con códigos de error estables.
+            if outcome.is_success() {
+                Ok(envelope_response(json!({
+                    "success": true,
+                    "data": outcome.output.unwrap_or(Value::Null),
+                    "executionId": execution_id,
+                })))
+            } else {
+                let error = outcome.error.unwrap_or_else(|| {
+                    ErrorPayload::new(
+                        domain::execution::ErrorCode::BlockFailed,
+                        "la ejecución falló sin error estructurado",
+                    )
+                });
+                Ok(envelope_response(json!({
+                    "success": false,
+                    "error": error,
+                    "executionId": execution_id,
+                })))
+            }
+        }
+    }
+}
+
+/// `GET /x/{slug}/executions/{executionId}`: polling del resultado (MVP2).
+///
+/// Mientras la ejecución está `pending | running` responde `{success,
+/// executionId, status}` sin `data`; al terminar responde el sobre final
+/// idéntico al síncrono. El recurso queda acotado al slug: un executionId de
+/// otro puente responde 404 sin filtrar nada.
+async fn poll_result(
+    State(state): State<AppState>,
+    Path((slug, raw_execution_id)): Path<(String, String)>,
+) -> Result<Response, Problem> {
+    let execution_id =
+        rest::parse_id(&raw_execution_id, "la ejecución no existe en este slug")?;
+    let Some((status, error)): Option<(String, Option<Value>)> = sqlx::query_as(
+        "SELECT e.status, e.error FROM executions e \
+         JOIN bridges b ON b.id = e.bridge_id \
+         WHERE e.id = $1 AND b.slug = $2",
+    )
+    .bind(execution_id)
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|error| problem::internal(format!("cargar la ejecución: {error}")))?
+    else {
+        return Err(problem::not_found(format!(
+            "no existe la ejecución {execution_id} en el puente {slug:?}"
+        )));
+    };
+
+    match status.as_str() {
+        "pending" | "running" => Ok(json_response(json!({
+            "success": true,
+            "executionId": execution_id,
+            "status": status,
+        }))),
+        "succeeded" => {
+            let data: Option<Value> = sqlx::query_scalar(
+                "SELECT output FROM execution_steps \
+                 WHERE execution_id = $1 AND status = 'succeeded' \
+                 ORDER BY seq DESC LIMIT 1",
+            )
+            .bind(execution_id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|error| problem::internal(format!("cargar la salida: {error}")))?
+            .flatten();
+            Ok(json_response(json!({
+                "success": true,
+                "data": data.unwrap_or(Value::Null),
+                "executionId": execution_id,
+            })))
+        }
+        _ => {
+            // failed: sobre de fallo idéntico al síncrono.
+            let error = error
+                .filter(|e| e.as_object().is_some_and(|e| !e.is_empty()))
+                .unwrap_or_else(|| {
+                    json!({
+                        "code": "BLOCK_FAILED",
+                        "message": "la ejecución falló sin error estructurado",
+                    })
+                });
+            Ok(json_response(json!({
+                "success": false,
+                "error": error,
+                "executionId": execution_id,
+            })))
+        }
+    }
+}
+
+/// Resultado de correr una ejecución ya encolada (compartido por el plano
+/// síncrono y el worker de la cola).
+pub(crate) enum RunOutcome {
+    /// La cadena corrió y el resultado está persistido.
+    Finished(ExecutionOutcome),
+    /// La entrada violó el inputSchema: la ejecución ya está cerrada `failed`
+    /// sin pasos y el error está listo para el sobre.
+    InputInvalid(ErrorPayload),
+}
+
+/// Corre una ejecución ya creada (y reclamada, o reclamable): validación de
+/// entrada, bóveda, sandbox y persistencia del trace + cierre.
+///
+/// Es el camino compartido del disparo síncrono (que ya reclamó la fila en su
+/// transacción) y del worker de la cola (que la reclamó con SKIP LOCKED).
+pub(crate) async fn ejecutar_encolada(
+    state: &AppState,
+    execution_id: Uuid,
+    workspace_id: Uuid,
+    definition: BridgeDefinition,
+    trigger_data: Value,
+    validar_input: bool,
+) -> Result<RunOutcome, Problem> {
+    // Validación de entrada (task 4.5): si el puente declara inputSchema, el
+    // body debe cumplirlo ANTES de gastar isolate. Inválido → la ejecución
     // cierra `failed` con VALIDATION_FAILED, sin pasos y sin correr la cadena.
-    if let Some(schema) = &definition.input_schema {
-        match domain::schema::validate(schema, &body_value) {
+    // El worker solo la aplica al disparo http: cron/manual no traen entrada.
+    if validar_input
+        && let Some(schema) = &definition.input_schema
+    {
+        let body = trigger_data.get("body").cloned().unwrap_or(Value::Null);
+        match domain::schema::validate(schema, &body) {
             Ok(()) => {}
             Err(domain::schema::SchemaError::Invalid { errors }) => {
                 let detalles: Vec<Value> = errors
@@ -215,11 +407,7 @@ async fn invoke_slug(
                 finish_failed(&state.pool, execution_id, &error)
                     .await
                     .map_err(|e| problem::internal(format!("persistir la validación: {e}")))?;
-                return Ok(envelope_response(json!({
-                    "success": false,
-                    "error": error,
-                    "executionId": execution_id,
-                })));
+                return Ok(RunOutcome::InputInvalid(error));
             }
             // Un inputSchema con keywords no soportadas no debería haber
             // pasado la publicación; si llega aquí (snapshot manipulado),
@@ -232,14 +420,14 @@ async fn invoke_slug(
         }
     }
 
-    // 9. Bóveda del workspace: los secretos se precargan a memoria del host
+    // Bóveda del workspace: los secretos se precargan a memoria del host
     // ANTES del hilo blocking (el resolutor de ctx.credential es síncrono y no
     // puede tocar la BD desde el isolate). Nunca entran al contexto ni al IO.
-    let boveda = cargar_boveda(&state.pool, published.workspace_id)
+    let boveda = cargar_boveda(&state.pool, workspace_id)
         .await
         .map_err(|error| problem::internal(format!("cargar la bóveda: {error}")))?;
 
-    // 10. La corrida: el futuro del ejecutor no es Send (rquickjs full-async),
+    // La corrida: el futuro del ejecutor no es Send (rquickjs full-async),
     // así que corre en un hilo blocking con runtime current-thread + LocalSet.
     let outcome = tokio::task::spawn_blocking(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -257,35 +445,41 @@ async fn invoke_slug(
     .await
     .expect("hilo blocking de la ejecución");
 
-    // 10. Persistencia: pasos con IO completo + cierre en UNA transacción (spec
+    // Persistencia: pasos con IO completo + cierre en UNA transacción (spec
     // `execution-store`: los pasos se persisten con la avanzación de estado).
     persist_outcome(&state.pool, execution_id, &outcome)
         .await
         .map_err(|error| problem::internal(format!("persistir el resultado: {error}")))?;
 
-    // 11. Sobre único 200 con códigos de error estables.
-    if outcome.is_success() {
-        Ok(envelope_response(json!({
-            "success": true,
-            "data": outcome.output.unwrap_or(Value::Null),
-            "executionId": execution_id,
-        })))
-    } else {
-        let error = outcome.error.unwrap_or_else(|| {
-            ErrorPayload::new(
-                domain::execution::ErrorCode::BlockFailed,
-                "la ejecución falló sin error estructurado",
-            )
-        });
-        Ok(envelope_response(json!({
-            "success": false,
-            "error": error,
-            "executionId": execution_id,
-        })))
-    }
+    Ok(RunOutcome::Finished(outcome))
 }
 
 // --------------------------------------------------------- Interior ---
+
+/// 202 del disparo asíncrono: `{success, executionId}` + `Location` del
+/// recurso de resultado (spec `async-invocation`).
+fn accepted_response(slug: &str, execution_id: Uuid) -> Response {
+    Response::builder()
+        .status(StatusCode::ACCEPTED)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(
+            header::LOCATION,
+            format!("/x/{slug}/executions/{execution_id}"),
+        )
+        .body(Body::from(
+            json!({ "success": true, "executionId": execution_id }).to_string(),
+        ))
+        .expect("202: builder con status válido no puede fallar")
+}
+
+/// Respuesta JSON 200 del plano de invocación.
+fn json_response(envelope: Value) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(envelope.to_string()))
+        .expect("sobre: builder con status válido no puede fallar")
+}
 
 /// Lee y valida el body del disparo: 413 si excede el límite, 415 Content-Type
 /// equivocado, 400 JSON malformado. GET/DELETE: el body simplemente se ignora.
@@ -320,12 +514,13 @@ async fn read_body(method: &Method, headers: &HeaderMap, body: Body) -> Result<V
 }
 
 /// Replay solo si la petición trae key: se usa dos veces (pre-check y tras el
-/// INSERT perdedor de la carrera).
+/// INSERT perdedor de la carrera). Devuelve el id de la ejecución original y
+/// su sobre (para el Location del replay async).
 async fn replay_if_keyed(
     state: &AppState,
     workspace_id: Uuid,
     key: Option<&str>,
-) -> Result<Option<Value>, Problem> {
+) -> Result<Option<(Uuid, Value)>, Problem> {
     match key {
         Some(key) => replay_once(state, workspace_id, key).await,
         None => Ok(None),
@@ -339,7 +534,7 @@ async fn replay_once(
     state: &AppState,
     workspace_id: Uuid,
     key: &str,
-) -> Result<Option<Value>, Problem> {
+) -> Result<Option<(Uuid, Value)>, Problem> {
     let Some((id, status, error)) = sqlx::query_as::<_, (Uuid, String, Option<Value>)>(
         "SELECT id, status, error FROM executions \
          WHERE workspace_id = $1 AND idempotency_key = $2 \
@@ -367,12 +562,15 @@ async fn replay_once(
     .flatten();
     let error = error.filter(|error| error.as_object().is_some_and(|e| !e.is_empty()));
     let success = status == "succeeded";
-    Ok(Some(json!({
-        "success": success,
-        "data": data.unwrap_or(Value::Null),
-        "error": error.unwrap_or(Value::Null),
-        "executionId": id,
-    })))
+    Ok(Some((
+        id,
+        json!({
+            "success": success,
+            "data": data.unwrap_or(Value::Null),
+            "error": error.unwrap_or(Value::Null),
+            "executionId": id,
+        }),
+    )))
 }
 
 /// Fachada del sobre de invocación: 200, `application/json`.

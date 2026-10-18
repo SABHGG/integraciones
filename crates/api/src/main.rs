@@ -45,6 +45,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "job de retención activo"
     );
 
+    // Worker de la cola de ejecuciones (MVP2): reclama y corre las filas
+    // `pending` de disparos asíncronos, cron y manuales con SKIP LOCKED.
+    // MVP2 asume instancia única (design.md D5): con réplicas haría falta
+    // líder; la cola protege al worker, no al scheduler.
+    api::worker::spawn(AppState { pool: pool.clone() });
+    tracing::info!("worker de la cola de ejecuciones activo");
+
     let app = api::app(AppState { pool });
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;

@@ -78,6 +78,15 @@ async fn begin() -> Option<Harness> {
         }
     };
 
+    // La cola de ejecuciones es GLOBAL (el worker reclama con SKIP LOCKED):
+    // estos tests usan una base de datos dedicada para que `procesar_pendiente`
+    // solo vea SUS filas (mismo aislamiento que los tests del store; las otras
+    // suites de API siembran ejecuciones en la BD compartida).
+    let url = url
+        .rsplit_once('/')
+        .map(|(base, _db)| format!("{base}/integraciones_engine"))
+        .expect("DATABASE_URL con nombre de base de datos");
+
     let pool = api::connect(&url)
         .await
         .expect("conexión a Postgres (¿corriste ./scripts/dev-postgres.sh?)");
@@ -698,4 +707,339 @@ async fn inputschema_invalido_da_validacion_failed_sin_gastar_isolate() {
     let sobre = respuesta.json();
     assert_eq!(sobre["success"], true, "{}", sobre);
     assert_eq!(sobre["data"], json!({ "visto": true }));
+}
+
+// ── disparo asíncrono + polling (MVP2, tasks 3.1-3.3) ──────────────────
+
+impl Harness {
+    /// `POST /x/{slug}` con `Prefer` y key de idempotencia opcionales.
+    /// Devuelve (status, Location, cuerpo).
+    async fn x_prefer(
+        &self,
+        slug: &str,
+        prefer: Option<&str>,
+        body: Value,
+        idempotency_key: Option<&str>,
+    ) -> (Resp, String) {
+        let mut builder = Request::builder()
+            .method(Method::POST)
+            .uri(format!("/x/{slug}"))
+            .header(header::CONTENT_TYPE, "application/json");
+        if let Some(prefer) = prefer {
+            builder = builder.header("prefer", prefer);
+        }
+        if let Some(key) = idempotency_key {
+            builder = builder.header("Idempotency-Key", key);
+        }
+        let response = self
+            .app
+            .clone()
+            .oneshot(
+                builder
+                    .body(Body::from(body.to_string()))
+                    .expect("petición válida"),
+            )
+            .await
+            .expect("respuesta del router");
+
+        let status = response.status();
+        let location = response
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 22)
+            .await
+            .expect("cuerpo legible");
+        (
+            Resp {
+                status,
+                content_type,
+                body: String::from_utf8(bytes.to_vec()).expect("cuerpo UTF-8"),
+            },
+            location,
+        )
+    }
+
+    /// GET del plano de invocación (sin auth de administración).
+    async fn x_get(&self, uri: &str) -> Resp {
+        let response = self
+            .app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(uri)
+                    .body(Body::empty())
+                    .expect("petición válida"),
+            )
+            .await
+            .expect("respuesta del router");
+
+        let status = response.status();
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 22)
+            .await
+            .expect("cuerpo legible");
+        Resp {
+            status,
+            content_type,
+            body: String::from_utf8(bytes.to_vec()).expect("cuerpo UTF-8"),
+        }
+    }
+
+    /// Estado de una ejecución del workspace (o `None` si no existe).
+    async fn estado_ejecucion(&self, id: &str) -> Option<String> {
+        let id = id.parse::<Uuid>().expect("uuid de ejecución");
+        sqlx::query_scalar::<_, String>("SELECT status FROM executions WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .expect("estado de la ejecución")
+    }
+}
+
+#[tokio::test]
+async fn el_disparo_async_responde_202_con_location_y_el_worker_lo_corre_paso_a_paso() {
+    let Some(h) = begin().await else { return };
+
+    h.bridge("eco-async", "POST", json!([bloque_duplicar("b1", "duplicar")]))
+        .await;
+
+    // 1. Disparo async: 202 + ack {success, executionId} + Location.
+    let (async_resp, location) = h
+        .x_prefer(
+            "eco-async",
+            Some("respond-async"),
+            json!({ "total": 21 }),
+            None,
+        )
+        .await;
+    assert_eq!(async_resp.status, StatusCode::ACCEPTED, "{}", async_resp.body);
+    let ack = async_resp.json();
+    assert_eq!(ack["success"], json!(true));
+    assert!(
+        ack.get("data").is_none(),
+        "el ack no trae resultado: solo promete la fila: {ack}"
+    );
+    let execution_id = ack["executionId"].as_str().expect("executionId").to_string();
+    assert_eq!(
+        location,
+        format!("/x/eco-async/executions/{execution_id}"),
+        "el 202 lleva el Location del recurso de resultado"
+    );
+
+    // 2. La fila nace `pending`: el llamador no esperó la corrida.
+    assert_eq!(h.estado_ejecucion(&execution_id).await.as_deref(), Some("pending"));
+
+    // 3. Poll antes del worker: pending sin data, en el plano /x (sin auth).
+    let poll = h
+        .x_get(&format!("/x/eco-async/executions/{execution_id}"))
+        .await;
+    assert_eq!(poll.status, StatusCode::OK, "{}", poll.body);
+    assert_eq!(
+        poll.json(),
+        json!({ "success": true, "executionId": execution_id, "status": "pending" })
+    );
+
+    // 4. El worker avanza la cola (tests deterministas: paso a paso, sin loop).
+    let state = AppState { pool: h.pool.clone() };
+    assert!(
+        api::worker::procesar_pendiente(&state)
+            .await
+            .expect("worker: un paso"),
+        "la fila async era reclamable"
+    );
+
+    // 5. Poll del resultado final: sobre idéntico al síncrono.
+    let final_poll = h
+        .x_get(&format!("/x/eco-async/executions/{execution_id}"))
+        .await;
+    assert_eq!(final_poll.status, StatusCode::OK, "{}", final_poll.body);
+    assert_eq!(
+        final_poll.json(),
+        json!({ "success": true, "data": { "total": 42 }, "executionId": execution_id })
+    );
+    assert_eq!(h.estado_ejecucion(&execution_id).await.as_deref(), Some("succeeded"));
+}
+
+#[tokio::test]
+async fn la_idempotencia_async_devuelve_la_ejecucion_original_y_su_location() {
+    let Some(h) = begin().await else { return };
+
+    h.bridge("eco-async-key", "POST", json!([bloque_duplicar("b1", "dup")]))
+        .await;
+
+    let (primera, location1) = h
+        .x_prefer(
+            "eco-async-key",
+            Some("respond-async"),
+            json!({ "total": 5 }),
+            Some("key-async-1"),
+        )
+        .await;
+    assert_eq!(primera.status, StatusCode::ACCEPTED, "{}", primera.body);
+    let id1 = primera.json()["executionId"].as_str().unwrap().to_string();
+
+    // Reintento con la misma key (p. ej. tras un timeout de red): 202 con el
+    // executionId original y su Location, sin una fila nueva.
+    let (repetida, location2) = h
+        .x_prefer(
+            "eco-async-key",
+            Some("respond-async"),
+            json!({ "total": 5 }),
+            Some("key-async-1"),
+        )
+        .await;
+    assert_eq!(repetida.status, StatusCode::ACCEPTED, "{}", repetida.body);
+    assert_eq!(repetida.json()["executionId"], json!(id1));
+    assert_eq!(location2, location1);
+    assert_eq!(h.execution_count().await, 1, "sin fila nueva");
+}
+
+#[tokio::test]
+async fn el_recurso_de_resultado_queda_acotado_al_slug() {
+    let Some(h) = begin().await else { return };
+
+    h.bridge("puente-a", "POST", json!([bloque_duplicar("b1", "dup")]))
+        .await;
+    h.bridge("puente-b", "POST", json!([bloque_duplicar("b1", "dup")]))
+        .await;
+
+    let (invocation, _) = h
+        .x_prefer("puente-a", Some("respond-async"), json!({ "total": 3 }), None)
+        .await;
+    let execution_id = invocation.json()["executionId"].as_str().unwrap().to_string();
+
+    // Otro slug del mismo workspace no puede leer el resultado: 404 Problem.
+    let cruzado = h
+        .x_get(&format!("/x/puente-b/executions/{execution_id}"))
+        .await;
+    cruzado.problem(StatusCode::NOT_FOUND);
+
+    // Un executionId inexistente también es 404 Problem.
+    let inexistente = h
+        .x_get(&format!("/x/puente-a/executions/{}", Uuid::now_v7()))
+        .await;
+    inexistente.problem(StatusCode::NOT_FOUND);
+
+    // Y un executionId que no es UUID, 404 Problem (nunca panic).
+    let basura = h.x_get("/x/puente-a/executions/no-es-uuid").await;
+    basura.problem(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn el_polling_distingue_running_y_entrega_el_fallo_como_el_sincrono() {
+    let Some(h) = begin().await else { return };
+
+    // Ejecución `running` sembrada a mano: el poll responde el estado sin data.
+    let bridge_id = h.bridge("en-curso", "POST", json!([bloque_duplicar("b1", "dup")]))
+        .await;
+    let version_id: Uuid = sqlx::query_scalar(
+        "SELECT bv.id FROM bridge_versions bv WHERE bv.bridge_id = $1",
+    )
+    .bind(bridge_id)
+    .fetch_one(&h.pool)
+    .await
+    .expect("versión del puente");
+    let running_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO executions (id, workspace_id, bridge_id, bridge_version_id, \
+         trigger_type, trigger_data, status, run_at) \
+         VALUES ($1, $2, $3, $4, 'http', $5, 'running', now())",
+    )
+    .bind(running_id)
+    .bind(h.workspace_id)
+    .bind(bridge_id)
+    .bind(version_id)
+    .bind(json!({ "body": { "total": 1 }, "query": {} }))
+    .execute(&h.pool)
+    .await
+    .expect("ejecución running");
+    let poll_running = h
+        .x_get(&format!("/x/en-curso/executions/{running_id}"))
+        .await;
+    assert_eq!(poll_running.status, StatusCode::OK, "{}", poll_running.body);
+    assert_eq!(
+        poll_running.json(),
+        json!({ "success": true, "executionId": running_id.to_string(), "status": "running" })
+    );
+
+    // Una ejecución async que FALLA: el poll entrega el sobre de fallo
+    // idéntico al síncrono (success:false + error.code estable).
+    h.bridge(
+        "async-falla",
+        "POST",
+        json!([{
+            "id": "b1",
+            "name": "romper",
+            "code": "export default function(input, ctx) { throw new Error(\"boom-async\"); }",
+            "input": {},
+            "config": {},
+            "outputSchema": {}
+        }]),
+    )
+    .await;
+    let (disparo, _) = h
+        .x_prefer("async-falla", Some("respond-async"), json!({}), None)
+        .await;
+    assert_eq!(disparo.status, StatusCode::ACCEPTED, "{}", disparo.body);
+    let failed_id = disparo.json()["executionId"].as_str().unwrap().to_string();
+    let state = AppState { pool: h.pool.clone() };
+    assert!(api::worker::procesar_pendiente(&state).await.expect("worker"));
+
+    let poll_fallo = h
+        .x_get(&format!("/x/async-falla/executions/{failed_id}"))
+        .await;
+    assert_eq!(poll_fallo.status, StatusCode::OK, "{}", poll_fallo.body);
+    let sobre = poll_fallo.json();
+    assert_eq!(sobre["success"], json!(false));
+    assert_eq!(sobre["error"]["code"], json!("BLOCK_FAILED"));
+    assert!(sobre["error"]["message"].as_str().unwrap_or("").contains("boom-async"));
+    assert_eq!(sobre["executionId"], json!(failed_id));
+}
+
+#[tokio::test]
+async fn los_errores_de_transporte_no_cambian_en_el_disparo_async() {
+    let Some(h) = begin().await else { return };
+
+    h.bridge("solo-post", "POST", json!([bloque_duplicar("b1", "dup")]))
+        .await;
+
+    // 405: el method no coincide con el trigger, antes de encolar nada.
+    // GET async con Prefer sobre un slug POST-only es 405.
+    let get_405 = h
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/x/solo-post")
+                .header("prefer", "respond-async")
+                .body(Body::empty())
+                .expect("petición válida"),
+        )
+        .await
+        .expect("respuesta del router");
+    assert_eq!(get_405.status(), StatusCode::METHOD_NOT_ALLOWED);
+
+    // 404: slug inexistente, antes de encolar nada.
+    let (resp, _) = h
+        .x_prefer("nunca-publicado", Some("respond-async"), json!({}), None)
+        .await;
+    resp.problem(StatusCode::NOT_FOUND);
+
+    assert_eq!(h.execution_count().await, 0, "nada se encoló");
 }
