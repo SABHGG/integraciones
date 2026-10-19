@@ -20,6 +20,7 @@ pub mod state;
 pub mod transpile;
 pub mod ui;
 pub mod vault;
+pub mod webhooks;
 pub mod worker;
 
 use axum::Json;

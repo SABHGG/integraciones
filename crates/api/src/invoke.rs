@@ -379,6 +379,9 @@ pub(crate) async fn ejecutar_encolada(
     trigger_data: Value,
     validar_input: bool,
 ) -> Result<RunOutcome, Problem> {
+    // La URL del webhook se extrae ANTES de mover la definición al closure
+    // blocking (semántica de snapshot: la versión que corrió es la que entrega).
+    let webhook_url = definition.webhook.as_ref().map(|webhook| webhook.url.clone());
     // Validación de entrada (task 4.5): si el puente declara inputSchema, el
     // body debe cumplirlo ANTES de gastar isolate. Inválido → la ejecución
     // cierra `failed` con VALIDATION_FAILED, sin pasos y sin correr la cadena.
@@ -451,7 +454,43 @@ pub(crate) async fn ejecutar_encolada(
         .await
         .map_err(|error| problem::internal(format!("persistir el resultado: {error}")))?;
 
+    // Webhook de resultado (MVP2): si el puente lo declara, la URL congelada
+    // se copia a la ejecución (semántica de snapshot: la versión que corrió es
+    // la que entrega) y la entrega queda programada `pending` — con éxito o
+    // con fallo; la firma y los reintentos viven en `webhooks`.
+    if let Some(url) = webhook_url.as_deref() {
+        programar_webhook(&state.pool, execution_id, url)
+            .await
+            .map_err(|error| problem::internal(format!("programar el webhook: {error}")))?;
+    }
+
     Ok(RunOutcome::Finished(outcome))
+}
+
+/// Copia la URL del webhook a `executions.webhook_url` y crea la fila de
+/// entrega `pending` (inmediatamente reclamable) en una transacción.
+async fn programar_webhook(
+    pool: &sqlx::PgPool,
+    execution_id: Uuid,
+    url: &str,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("UPDATE executions SET webhook_url = $2 WHERE id = $1")
+        .bind(execution_id)
+        .bind(url)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "INSERT INTO webhook_deliveries (id, execution_id, url, status, next_retry_at) \
+         VALUES ($1, $2, $3, 'pending', now())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(execution_id)
+    .bind(url)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 // --------------------------------------------------------- Interior ---
