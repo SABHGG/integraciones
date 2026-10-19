@@ -117,7 +117,7 @@ jobs:
         run: |
           cargo test -p api --lib --test blocks_api --test bridges_api \
             --test builtin_http_api --test console_api --test credentials_api --test e2e_demo \
-            --test events_api --test executions_api --test retention_api --test webhooks_api
+            --test events_api --test executions_api --test retention_api --test users_api --test webhooks_api
         env:
           DATABASE_URL: postgres://integraciones:integraciones@127.0.0.1:5433/integraciones
           # Clave de bóveda solo para CI (no es un secreto): ejercita el
@@ -209,7 +209,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: E2E punta a punta (worker + webhook + scheduler)
-        run: cargo test -p api --test e2e_mvp2 --test e2e_mvp3
+        run: cargo test -p api --test e2e_mvp2 --test e2e_mvp3 --test e2e_mvp4
         env:
           DATABASE_URL: postgres://integraciones:integraciones@127.0.0.1:5433/integraciones_e2e
           VAULT_KEY: 63692d7661756c742d6b65792d6e6f742d612d7365637265740000000000000000000000
