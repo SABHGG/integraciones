@@ -1456,7 +1456,7 @@ async fn el_rollback_republica_sin_tocar_versiones_ni_ejecuciones_previas() {
         .bind(h.workspace_id)
         .bind("rollback")
         .bind("Puente rollback")
-        .bind(&json!({ "trigger": { "type": "http", "method": "POST", "path": "/x/rollback" }, "blocks": [instancia] }))
+        .bind(json!({ "trigger": { "type": "http", "method": "POST", "path": "/x/rollback" }, "blocks": [instancia] }))
         .execute(&h.pool)
         .await
         .expect("bridge");
@@ -1514,7 +1514,7 @@ async fn el_rollback_republica_sin_tocar_versiones_ni_ejecuciones_previas() {
             let respuesta = h
                 .patch(
                     &format!("/api/v1/bridges/{bridge_id}"),
-                    json!({ clave.clone(): seccion.clone() }),
+                    json!({ clave: seccion.clone() }),
                 )
                 .await;
             assert_eq!(respuesta.status, StatusCode::OK);
