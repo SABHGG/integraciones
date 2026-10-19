@@ -1,0 +1,29 @@
+# Auditoría de dependencias (plan CI 2026-10-19): detecta CVEs del
+# RustSec Advisory Database sobre Cargo.lock. Semanal (lunes 06:00 UTC) y
+# disparable a mano desde la pestaña Actions. Fuera de la PR para no añadir
+# latencia: un advisory nuevo se detecta en la corrida programada, no al
+# abrir el PR.
+
+name: audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-audit:
+    name: dependencias (cargo-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Instalar cargo-audit (binario precompilado)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: Audit
+        run: cargo audit
