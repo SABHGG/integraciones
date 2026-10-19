@@ -1787,16 +1787,19 @@ async fn run_bridge(
     };
 
     let execution_id = Uuid::now_v7();
+    // Auditoría (D7): quién disparó.
+    let disparador = key.trigger_principal();
     sqlx::query(
         "INSERT INTO executions \
              (id, workspace_id, bridge_id, bridge_version_id, trigger_type, trigger_data, \
-              status, run_at) \
-         VALUES ($1, $2, $3, $4, 'manual', '{}', 'pending', now())",
+              trigger_principal, status, run_at) \
+         VALUES ($1, $2, $3, $4, 'manual', '{}', $5, 'pending', now())",
     )
     .bind(execution_id)
     .bind(workspace_id)
     .bind(id)
     .bind(version_id)
+    .bind(&disparador)
     .execute(&state.pool)
     .await
     .map_err(|error| problem::internal(format!("encolar el disparo manual: {error}")))?;

@@ -74,6 +74,8 @@ struct ExecutionDetailDto {
     /// MVP3: ejecuciones derivadas por replay (vacío si no las hay).
     #[sqlx(skip)]
     replays: Vec<ReplayRefDto>,
+    /// MVP4: quién disparó ({type: user|api_key|system, …}); NULL en /x.
+    trigger_principal: Option<Value>,
     run_at: DateTime<Utc>,
     started_at: Option<DateTime<Utc>>,
     finished_at: Option<DateTime<Utc>>,
@@ -221,8 +223,8 @@ async fn get_execution(
     let id = rest::parse_id(&raw_id, "la ejecución no existe en este workspace")?;
     let row = sqlx::query_as::<_, ExecutionDetailDto>(
         "SELECT id, bridge_id, bridge_version_id, trigger_type, trigger_data, status, \
-                idempotency_key, error, credentials_used, run_at, started_at, finished_at, \
-                created_at, updated_at \
+                idempotency_key, error, credentials_used, trigger_principal, run_at, \
+                started_at, finished_at, created_at, updated_at \
          FROM executions WHERE id = $1 AND workspace_id = $2",
     )
     .bind(id)
@@ -287,10 +289,12 @@ async fn replay(
     }
 
     let nuevo_id = Uuid::now_v7();
+    // Auditoría (D7): quién re-ejecuta.
+    let disparador = key.trigger_principal();
     sqlx::query(
         "INSERT INTO executions (id, workspace_id, bridge_id, bridge_version_id, \
-         trigger_type, trigger_data, status, run_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending', now())",
+         trigger_type, trigger_data, trigger_principal, status, run_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', now())",
     )
     .bind(nuevo_id)
     .bind(workspace_id)
@@ -298,6 +302,7 @@ async fn replay(
     .bind(version_id)
     .bind(&trigger_type)
     .bind(&trigger_data)
+    .bind(&disparador)
     .execute(&state.pool)
     .await
     .map_err(|error| rest::db_error("encolar el replay", error))?;

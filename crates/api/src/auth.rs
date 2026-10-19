@@ -85,6 +85,8 @@ pub fn rol_requerido(metodo: &str, ruta: &str) -> Role {
     let segmentos: Vec<&str> = ruta.split('/').filter(|s| !s.is_empty()).collect();
     match segmentos.first().copied() {
         Some("whoami") => Role::Viewer,
+        // La membresía se ve por cualquier identidad; solo el owner muta.
+        Some("members") if metodo == "GET" => Role::Viewer,
         Some("members") => Role::Owner,
         Some("events") => Role::Runner,
         _ if metodo == "GET" => Role::Viewer,
@@ -146,6 +148,19 @@ impl AuthedKey {
         match &self.principal {
             Principal::User { email, .. } => Some(email),
             Principal::ApiKey => None,
+        }
+    }
+
+    /// JSON de auditoría para `executions.trigger_principal` (design D7):
+    /// {"type":"user","email":…} | {"type":"api_key","name":…}.
+    pub fn trigger_principal(&self) -> serde_json::Value {
+        match &self.principal {
+            Principal::User { email, .. } => {
+                serde_json::json!({ "type": "user", "email": email })
+            }
+            Principal::ApiKey => {
+                serde_json::json!({ "type": "api_key", "name": self.name })
+            }
         }
     }
 }
@@ -489,7 +504,7 @@ mod tests {
             ("POST", "/api/v1/bridges", Editor),
             ("DELETE", "/api/v1/bridges/x", Editor),
             // membresía: owner
-            ("GET", "/api/v1/members", Owner),
+            ("GET", "/api/v1/members", Viewer),
             ("POST", "/api/v1/members", Owner),
             ("PATCH", "/api/v1/members/x", Owner),
             ("DELETE", "/api/v1/members/x", Owner),

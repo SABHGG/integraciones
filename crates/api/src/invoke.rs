@@ -879,8 +879,10 @@ async fn persist_outcome(
                     "bridgeSlug": bridge_slug,
                 })
             };
+            let sistema = serde_json::json!({ "type": "system", "motivo": "emit" });
             for topic in topics {
-                crate::events::encolar_fanout(&mut tx, workspace_id, topic, &sobre).await?;
+                crate::events::encolar_fanout(&mut tx, workspace_id, topic, &sobre, Some(&sistema))
+                    .await?;
             }
         }
     }

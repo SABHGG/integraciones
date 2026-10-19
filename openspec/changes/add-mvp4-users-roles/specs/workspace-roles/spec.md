@@ -22,7 +22,7 @@ El plano admin SHALL aplicar la matriz: `viewer` solo lectura (`GET`); `runner` 
 - **THEN** la publicación se crea y el cambio de rol responde `403`
 
 ### Requirement: Gestión de miembros por el owner
-El sistema SHALL exponer la gestión de miembros del workspace restringida a `owner`: listar (con email, rol y fecha de alta), añadir por email de usuario existente, cambiar rol y expulsar. Un workspace SHALL conservar siempre al menos un `owner`; el último `owner` no SHALL poder degradarse ni ser expulsado.
+El sistema SHALL exponer la gestión de miembros del workspace: el listado (email, rol y fecha de alta) SHALL estar disponible para cualquier identidad autenticada del workspace; añadir por email de usuario existente, cambiar rol y expulsar SHALL estar restringidos a `owner`. Un workspace SHALL conservar siempre al menos un `owner`; el último `owner` no SHALL poder degradarse ni ser expulsado.
 
 #### Scenario: Añadir un miembro existente
 - **WHEN** el owner añade por email un usuario registrado con rol `editor`

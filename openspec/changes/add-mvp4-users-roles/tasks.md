@@ -15,9 +15,9 @@
 
 ## 3. Fase 3 — Miembros
 
-- [ ] 3.1 `GET /members`, `POST /members` (por email existente, 404 claro si no hay cuenta), `PATCH /members/{id}` (rol), `DELETE /members/{id}`; solo owner; tests
-- [ ] 3.2 Protección del último owner (409 al degradar o expulsar); tests
-- [ ] 3.3 Auditoría: `executions.trigger_principal` (migración 0006 aditiva) escrito en el plano http/admin; detalle lo expone; cron/fan-out interno = system; tests
+- [x] 3.1 `GET /members`, `POST /members` (por email existente, 404 claro si no hay cuenta), `PATCH /members/{id}` (rol), `DELETE /members/{id}`; solo owner; tests
+- [x] 3.2 Protección del último owner (409 al degradar o expulsar); tests
+- [x] 3.3 Auditoría: `executions.trigger_principal` (migración 0006 aditiva) escrito en el plano http/admin; detalle lo expone; cron/fan-out interno = system; tests
 
 ## 4. Fase 4 — Consola
 

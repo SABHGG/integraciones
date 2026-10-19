@@ -9,6 +9,7 @@
 use crate::auth::{Principal, Role, hash_key};
 use crate::problem::{self, Problem};
 use crate::state::AppState;
+use axum::Extension;
 use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
@@ -315,4 +316,200 @@ pub fn principal_json(principal: &Principal, role: &Role) -> Value {
             "role": role.etiqueta(),
         }),
     }
+}
+
+// ── gestión de miembros (MVP4, spec `workspace-roles`) ─────────────────
+// Rutas AUTENTICADAS: se montan dentro del router admin (con require_auth);
+// la matriz ya garantiza GET=viewer y mutaciones=owner.
+
+/// Un miembro del workspace (email, rol, alta).
+#[derive(serde::Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+struct MiembroDto {
+    user_id: Uuid,
+    email: String,
+    role: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// `GET /api/v1/members`: la membresía del workspace, visible por cualquier
+/// identidad autenticada.
+async fn listar_miembros(
+    State(state): State<AppState>,
+    Extension(key): Extension<crate::auth::AuthedKey>,
+) -> Result<Json<Value>, Problem> {
+    let workspace_id = key.workspace()?;
+    let filas: Vec<MiembroDto> = sqlx::query_as(
+        "SELECT u.id AS user_id, u.email, m.role, m.created_at \
+         FROM workspace_members m JOIN users u ON u.id = m.user_id \
+         WHERE m.workspace_id = $1 ORDER BY m.created_at, u.email",
+    )
+    .bind(workspace_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|error| problem::internal(format!("listar los miembros: {error}")))?;
+    Ok(Json(json!({ "members": filas })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AltaMiembro {
+    email: String,
+    role: String,
+}
+
+/// `POST /api/v1/members`: añade por email de usuario EXISTENTE (404 claro si
+/// no hay cuenta). Solo owner (lo garantiza la matriz).
+async fn anadir_miembro(
+    State(state): State<AppState>,
+    Extension(key): Extension<crate::auth::AuthedKey>,
+    Json(cuerpo): Json<AltaMiembro>,
+) -> Result<(StatusCode, Json<Value>), Problem> {
+    let workspace_id = key.workspace()?;
+    if Role::from_db(&cuerpo.role).is_err() {
+        return Err(problem::bad_request(format!(
+            "\"{}\" no es un rol (owner|editor|runner|viewer)",
+            cuerpo.role
+        )));
+    }
+    let email = cuerpo.email.trim().to_lowercase();
+    let user_id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM users WHERE email = $1")
+        .bind(&email)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|error| problem::internal(format!("buscar el usuario: {error}")))?;
+    let Some(user_id) = user_id else {
+        return Err(problem::not_found(format!(
+            "no hay cuenta con {email}: esa persona debe registrarse primero"
+        )));
+    };
+    let insertado = sqlx::query(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, $3)",
+    )
+    .bind(workspace_id)
+    .bind(user_id)
+    .bind(&cuerpo.role)
+    .execute(&state.pool)
+    .await;
+    if let Err(sqlx::Error::Database(db)) = &insertado
+        && db.constraint().is_some()
+    {
+        return Err(problem::conflict("esa persona ya es miembro del workspace"));
+    }
+    insertado.map_err(|error| problem::internal(format!("añadir el miembro: {error}")))?;
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "userId": user_id, "email": email, "role": cuerpo.role })),
+    ))
+}
+
+/// ¿Cuántos owners vivos tiene el workspace?
+async fn owners_vivos(state: &AppState, workspace_id: Uuid) -> Result<i64, Problem> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM workspace_members \
+         WHERE workspace_id = $1 AND role = 'owner'",
+    )
+    .bind(workspace_id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|error| problem::internal(format!("contar los owners: {error}")))
+}
+
+/// `PATCH /api/v1/members/{userId}`: cambia el rol. El último owner no se
+/// degrada (409).
+async fn cambiar_rol(
+    State(state): State<AppState>,
+    Extension(key): Extension<crate::auth::AuthedKey>,
+    axum::extract::Path(user_id): axum::extract::Path<Uuid>,
+    Json(cuerpo): Json<Value>,
+) -> Result<Json<Value>, Problem> {
+    let workspace_id = key.workspace()?;
+    let Some(role) = cuerpo.get("role").and_then(Value::as_str) else {
+        return Err(problem::bad_request("el body necesita \"role\""));
+    };
+    if Role::from_db(role).is_err() {
+        return Err(problem::bad_request(format!(
+            "\"{role}\" no es un rol (owner|editor|runner|viewer)"
+        )));
+    }
+    let fila: Option<String> = sqlx::query_scalar(
+        "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|error| problem::internal(format!("buscar el miembro: {error}")))?;
+    let Some(rol_actual) = fila else {
+        return Err(problem::not_found(
+            "ese usuario no es miembro del workspace",
+        ));
+    };
+    if rol_actual == "owner" && role != "owner" && owners_vivos(&state, workspace_id).await? <= 1 {
+        return Err(problem::conflict(
+            "es el último owner del workspace: añade otro owner antes de degradarlo",
+        ));
+    }
+    let actualizado = sqlx::query(
+        "UPDATE workspace_members SET role = $3 WHERE workspace_id = $1 AND user_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(user_id)
+    .bind(role)
+    .execute(&state.pool)
+    .await
+    .map_err(|error| problem::internal(format!("cambiar el rol: {error}")))?;
+    if actualizado.rows_affected() == 0 {
+        return Err(problem::not_found(
+            "ese usuario no es miembro del workspace",
+        ));
+    }
+    Ok(Json(json!({ "userId": user_id, "role": role })))
+}
+
+/// `DELETE /api/v1/members/{userId}`: expulsa. El último owner no se expulsa.
+async fn expulsar(
+    State(state): State<AppState>,
+    Extension(key): Extension<crate::auth::AuthedKey>,
+    axum::extract::Path(user_id): axum::extract::Path<Uuid>,
+) -> Result<StatusCode, Problem> {
+    let workspace_id = key.workspace()?;
+    let rol_actual: Option<String> = sqlx::query_scalar(
+        "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+    )
+    .bind(workspace_id)
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|error| problem::internal(format!("buscar el miembro: {error}")))?;
+    let Some(rol_actual) = rol_actual else {
+        return Err(problem::not_found(
+            "ese usuario no es miembro del workspace",
+        ));
+    };
+    if rol_actual == "owner" && owners_vivos(&state, workspace_id).await? <= 1 {
+        return Err(problem::conflict(
+            "es el último owner del workspace: añade otro owner antes de expulsarlo",
+        ));
+    }
+    sqlx::query("DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2")
+        .bind(workspace_id)
+        .bind(user_id)
+        .execute(&state.pool)
+        .await
+        .map_err(|error| problem::internal(format!("expulsar el miembro: {error}")))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Router AUTENTICADO de `/api/v1/members` (dentro del admin, tras la matriz).
+pub fn router_miembros() -> axum::Router<AppState> {
+    axum::Router::new()
+        .route(
+            "/members",
+            axum::routing::get(listar_miembros).post(anadir_miembro),
+        )
+        .route(
+            "/members/{user_id}",
+            axum::routing::patch(cambiar_rol).delete(expulsar),
+        )
 }

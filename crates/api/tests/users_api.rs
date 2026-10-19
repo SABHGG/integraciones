@@ -701,3 +701,224 @@ async fn el_editor_administra_recursos_pero_no_la_membresia() {
     assert_eq!(status, StatusCode::FORBIDDEN, "{cuerpo}");
     assert!(cuerpo.contains("owner"), "{cuerpo}");
 }
+
+// ── membresía y auditoría (MVP4, fase 3, spec `workspace-roles`) ───────
+
+#[tokio::test]
+async fn el_owner_gestiona_la_membresia_y_el_resto_la_ve_en_lectura() {
+    let Some(h) = begin().await else { return };
+    let (email_nuevo, password_nuevo, _) = h.registrar("invitado").await;
+
+    // El owner (api key) añade por email existente.
+    let (status, cuerpo) = h
+        .post(
+            "/api/v1/members",
+            Some(&h.key),
+            Some(json!({ "email": email_nuevo, "role": "editor" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{cuerpo}");
+
+    // Añadir un email SIN cuenta: 404 claro.
+    let fantasma = format!("fantasma-{}{EMAIL_SUFFIX}", Uuid::now_v7().simple());
+    let (status, cuerpo) = h
+        .post(
+            "/api/v1/members",
+            Some(&h.key),
+            Some(json!({ "email": fantasma, "role": "viewer" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{cuerpo}");
+    assert!(cuerpo.contains("registrarse"), "{cuerpo}");
+
+    // Duplicado: 409.
+    let (status, _) = h
+        .post(
+            "/api/v1/members",
+            Some(&h.key),
+            Some(json!({ "email": email_nuevo, "role": "viewer" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // El editor (usuario) VE la lista (GET = viewer) con email y rol.
+    let token_editor = h.token_con_rol("editor-vista", "editor").await;
+    let lista = h.get("/api/v1/members", Some(&token_editor), None).await;
+    assert_eq!(lista.status, StatusCode::OK, "{}", lista.body);
+    let lista_json = lista.json();
+    let miembros = lista_json["members"].as_array().expect("members");
+    assert!(
+        miembros
+            .iter()
+            .any(|m| m["email"] == json!(email_nuevo) && m["role"] == json!("editor")),
+        "{}",
+        lista.body
+    );
+
+    // El nuevo miembro entra con su workspace ya fijado por login.
+    let (status, cuerpo) = h
+        .post(
+            "/api/v1/auth/login",
+            None,
+            Some(json!({ "email": email_nuevo, "password": password_nuevo, "workspace": h.workspace_slug })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{cuerpo}");
+
+    // Owner cambia el rol y expulsa.
+    let user_id = h.get("/api/v1/members", Some(&h.key), None).await.json()["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["email"] == json!(email_nuevo))
+        .expect("miembro nuevo")["userId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let (status, _) = h
+        .http(
+            "PATCH",
+            &format!("/api/v1/members/{user_id}"),
+            Some(&h.key),
+            Some(json!({ "role": "viewer" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "cambio de rol");
+    let (status, _) = h
+        .http(
+            "DELETE",
+            &format!("/api/v1/members/{user_id}"),
+            Some(&h.key),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "expulsión");
+}
+
+#[tokio::test]
+async fn el_ultimo_owner_no_se_degrada_ni_se_expulsa() {
+    let Some(h) = begin().await else { return };
+    let (email_jefe, _, _) = h.registrar("jefe").await;
+    let (status, _) = h
+        .post(
+            "/api/v1/members",
+            Some(&h.key),
+            Some(json!({ "email": email_jefe, "role": "owner" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let jefe_id = h.get("/api/v1/members", Some(&h.key), None).await.json()["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["email"] == json!(email_jefe))
+        .expect("jefe")["userId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Último owner: degradar → 409; expulsar → 409.
+    let (status, cuerpo) = h
+        .http(
+            "PATCH",
+            &format!("/api/v1/members/{jefe_id}"),
+            Some(&h.key),
+            Some(json!({ "role": "viewer" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{cuerpo}");
+    let (status, _) = h
+        .http(
+            "DELETE",
+            &format!("/api/v1/members/{jefe_id}"),
+            Some(&h.key),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // Con un segundo owner, degradar al primero ya es posible.
+    let (email_socio, _, _) = h.registrar("socio").await;
+    let (status, _) = h
+        .post(
+            "/api/v1/members",
+            Some(&h.key),
+            Some(json!({ "email": email_socio, "role": "owner" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, _) = h
+        .http(
+            "PATCH",
+            &format!("/api/v1/members/{jefe_id}"),
+            Some(&h.key),
+            Some(json!({ "role": "viewer" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "ya no es el último owner");
+}
+
+#[tokio::test]
+async fn la_ejecucion_audita_quien_disparo() {
+    let Some(h) = begin().await else { return };
+    let puente = h.sembrar_puente_publicado("auditada-mvp4").await;
+
+    // 1. Usuario (editor) dispara: principal user con su email.
+    let token = h.token_con_rol("disparador", "editor").await;
+    let (status, cuerpo) = h
+        .http(
+            "POST",
+            &format!("/api/v1/bridges/{puente}/run"),
+            Some(&token),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{cuerpo}");
+    // Buscar la ejecución del puente y ver su principal.
+    let (principal,): (Value,) = sqlx::query_as(
+        "SELECT trigger_principal FROM executions e \
+         JOIN bridges b ON b.id = e.bridge_id \
+         WHERE b.slug = 'auditada-mvp4' ORDER BY e.created_at DESC LIMIT 1",
+    )
+    .fetch_one(&h.pool)
+    .await
+    .expect("ejecución del editor");
+    assert_eq!(principal["type"], json!("user"));
+    assert!(
+        principal["email"]
+            .as_str()
+            .unwrap_or("")
+            .ends_with(EMAIL_SUFFIX),
+        "{}",
+        principal
+    );
+    // 2. API key dispara (replay de la misma ejecución): principal api_key.
+    let execution_id = sqlx::query_scalar::<_, Uuid>(
+        "SELECT e.id FROM executions e JOIN bridges b ON b.id = e.bridge_id \
+         WHERE b.slug = 'auditada-mvp4' ORDER BY e.created_at DESC LIMIT 1",
+    )
+    .fetch_one(&h.pool)
+    .await
+    .expect("id de ejecución");
+    let (status, _) = h
+        .post(
+            &format!("/api/v1/executions/{execution_id}/replay"),
+            Some(&h.key),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let (principal_replay,): (Value,) = sqlx::query_as(
+        "SELECT trigger_principal FROM executions \
+         WHERE bridge_id = $1 AND trigger_type = 'manual' ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(puente)
+    .fetch_one(&h.pool)
+    .await
+    .expect("replay");
+    assert_eq!(principal_replay["type"], json!("api_key"));
+    assert_eq!(principal_replay["name"], json!("users-test-key"));
+
+    // 3. Fan-out por emit interno: system.
+}

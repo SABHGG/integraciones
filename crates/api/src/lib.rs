@@ -61,6 +61,7 @@ pub fn app(state: AppState) -> Router {
         .merge(bridges::router())
         .merge(executions::router())
         .merge(events::router())
+        .merge(users::router_miembros())
         // Cualquier ruta /api/v1 desconocida responde Problem Details: el
         // cliente del plano admin solo habla application/problem+json.
         .fallback(|| async { problem::not_found("la ruta no existe en la API") })

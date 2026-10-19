@@ -240,8 +240,8 @@ async fn encolar(
     sqlx::query(
         "INSERT INTO executions \
              (id, workspace_id, bridge_id, bridge_version_id, trigger_type, trigger_data, \
-              status, run_at) \
-         VALUES ($1, $2, $3, $4, 'cron', $5, 'pending', $6)",
+              trigger_principal, status, run_at) \
+         VALUES ($1, $2, $3, $4, 'cron', $5, $6, 'pending', $7)",
     )
     .bind(Uuid::now_v7())
     .bind(puente.workspace_id)
@@ -252,6 +252,7 @@ async fn encolar(
         "schedule": puente.schedule_text(),
         "timezone": puente.timezone.name(),
     }))
+    .bind(json!({ "type": "system", "motivo": "cron" }))
     .bind(scheduled_at)
     .execute(&state.pool)
     .await

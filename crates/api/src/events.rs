@@ -31,6 +31,8 @@ async fn publicar(
     payload: Option<Json<Value>>,
 ) -> Result<(axum::http::StatusCode, Json<Value>), Problem> {
     let workspace_id = key.workspace()?;
+    // Auditoría (D7): las ejecuciones del fan-out las dispara quien publica.
+    let disparador = key.trigger_principal();
     if !domain::definition::validar_topic(&topic) {
         return Err(problem::bad_request(format!(
             "\"{topic}\" no es un topic válido (minúsculas, dígitos, puntos y guiones)"
@@ -43,9 +45,10 @@ async fn publicar(
         .begin()
         .await
         .map_err(|error| problem::internal(format!("abrir la transacción: {error}")))?;
-    let (event_id, ejecuciones) = encolar_fanout(&mut tx, workspace_id, &topic, &payload)
-        .await
-        .map_err(|error| problem::internal(format!("fan-out del evento: {error}")))?;
+    let (event_id, ejecuciones) =
+        encolar_fanout(&mut tx, workspace_id, &topic, &payload, Some(&disparador))
+            .await
+            .map_err(|error| problem::internal(format!("fan-out del evento: {error}")))?;
     tx.commit()
         .await
         .map_err(|error| problem::internal(format!("publicar el evento: {error}")))?;
@@ -99,6 +102,7 @@ pub(crate) async fn encolar_fanout(
     workspace_id: Uuid,
     topic: &str,
     payload: &Value,
+    disparador: Option<&Value>,
 ) -> Result<(Uuid, usize), sqlx::Error> {
     let event_id = Uuid::now_v7();
     let suscriptores = suscriptores(tx, workspace_id, topic).await?;
@@ -111,14 +115,15 @@ pub(crate) async fn encolar_fanout(
     for (bridge_id, version_id) in &suscriptores {
         sqlx::query(
             "INSERT INTO executions (id, workspace_id, bridge_id, bridge_version_id, \
-             trigger_type, trigger_data, status, run_at) \
-             VALUES ($1, $2, $3, $4, 'event', $5, 'pending', now())",
+             trigger_type, trigger_data, trigger_principal, status, run_at) \
+             VALUES ($1, $2, $3, $4, 'event', $5, $6, 'pending', now())",
         )
         .bind(Uuid::now_v7())
         .bind(workspace_id)
         .bind(bridge_id)
         .bind(version_id)
         .bind(&trigger_data)
+        .bind(disparador)
         .execute(&mut **tx)
         .await?;
     }
