@@ -40,7 +40,7 @@ if ! ./pg18/bin/pg_ctl -D "$DATA" status >/dev/null 2>&1; then
     ./pg18/bin/pg_ctl -D "$DATA" -o "-p 5433 -k $BASE" -l "$BASE/pg.log" start
 fi
 
-for db in integraciones integraciones_engine integraciones_scheduler; do
+for db in integraciones integraciones_engine integraciones_scheduler integraciones_e2e; do
     ./pg18/bin/createdb -h "$BASE" -p 5433 -U integraciones "$db" 2>/dev/null \
         || echo ">> db '$db' ya existe"
 done
