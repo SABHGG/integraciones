@@ -9,12 +9,14 @@ import { Login } from "./auth";
 import { Ejecuciones, DetalleEjecucion } from "./executions";
 import { EditorPuente, ListaPuentes } from "./bridges";
 import { Miembros } from "./members";
+import { Credenciales } from "./credentials";
 import "./styles.css";
 
 type Ruta =
   | { pantalla: "ejecuciones" }
   | { pantalla: "ejecucion"; id: string }
   | { pantalla: "puentes" }
+  | { pantalla: "credenciales" }
   | { pantalla: "puente"; id: string }
   | { pantalla: "miembros" };
 
@@ -24,6 +26,7 @@ function leerRuta(): Ruta {
   if (partes[1] === "executions") return { pantalla: "ejecuciones" };
   if (partes[1] === "bridges" && partes[2]) return { pantalla: "puente", id: partes[2] };
   if (partes[1] === "members") return { pantalla: "miembros" };
+  if (partes[1] === "credentials") return { pantalla: "credenciales" };
   return { pantalla: "puentes" };
 }
 
@@ -86,6 +89,7 @@ function App(): preact.ComponentChildren {
           {enlace("/executions", "Ejecuciones", ruta.pantalla.startsWith("ejecucion"))}
           {enlace("/bridges", "Puentes", ruta.pantalla.startsWith("puente"))}
           {enlace("/members", "Miembros", ruta.pantalla === "miembros")}
+          {enlace("/credentials", "Credenciales", ruta.pantalla === "credenciales")}
         </nav>
         <span class="ayuda" style="margin-left: auto;">{etiquetaRol(rol)}</span>
         <button class="secundario salir" onClick={() => void salir()}>Salir</button>
@@ -96,6 +100,7 @@ function App(): preact.ComponentChildren {
         {ruta.pantalla === "puentes" && <ListaPuentes navegar={navegar} />}
         {ruta.pantalla === "puente" && <EditorPuente id={ruta.id} rol={rol} />}
         {ruta.pantalla === "miembros" && <Miembros rol={rol} />}
+        {ruta.pantalla === "credenciales" && <Credenciales rol={rol} />}
       </main>
     </>
   );

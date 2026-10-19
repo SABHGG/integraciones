@@ -8,8 +8,8 @@
 
 ## 2. Fase 2 — Credenciales en la consola
 
-- [ ] 2.1 Página de credenciales: listado con versión vigente, crear, rotar y eliminar con confirmación; errores del servidor en línea; edición visible solo a editor (viewer en lectura); test Vitest del flujo de formularios
-- [ ] 2.2 Historial de versiones por credencial (ids y fechas, sin valores) con enlace a `currentVersionId`; test
+- [x] 2.1 Página de credenciales: listado con versión vigente, crear, rotar y eliminar con confirmación; errores del servidor en línea; edición visible solo a editor (viewer en lectura); test Vitest del flujo de formularios
+- [x] 2.2 Historial de versiones por credencial (ids y fechas, sin valores) con enlace a `currentVersionId`; test
 
 ## 3. Fase 3 — Biblioteca de bloques en la consola
 
