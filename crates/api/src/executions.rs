@@ -12,11 +12,12 @@
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
-use axum::routing::get;
+use axum::http::StatusCode;
+use axum::routing::{get, post};
 use axum::{Extension, Router};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::auth::AuthedKey;
@@ -34,6 +35,7 @@ pub fn router() -> Router<AppState> {
         .route("/executions", get(list_executions))
         .route("/executions/{id}", get(get_execution))
         .route("/executions/{id}/trace", get(get_trace))
+        .route("/executions/{id}/replay", post(replay))
 }
 
 // ---------------------------------------------------------------- DTOs ---
@@ -69,6 +71,9 @@ struct ExecutionDetailDto {
     error: Option<Value>,
     /// MVP3: credenciales usadas (pares credential/version, sin valores).
     credentials_used: Option<Value>,
+    /// MVP3: ejecuciones derivadas por replay (vacío si no las hay).
+    #[sqlx(skip)]
+    replays: Vec<ReplayRefDto>,
     run_at: DateTime<Utc>,
     started_at: Option<DateTime<Utc>>,
     finished_at: Option<DateTime<Utc>>,
@@ -226,7 +231,86 @@ async fn get_execution(
     .await
     .map_err(|error| rest::db_error("cargar la ejecución", error))?
     .ok_or_else(not_found)?;
+    // Enlace inverso (MVP3): las ejecuciones derivadas por replay, con su
+    // estado y fecha; vacío para la mayoría.
+    let mut row = row;
+    row.replays = sqlx::query_as::<_, ReplayRefDto>(
+        "SELECT id, status, created_at FROM executions \
+         WHERE trigger_data->>'replayOf' = $1 ORDER BY created_at",
+    )
+    .bind(id.to_string())
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|error| rest::db_error("cargar los replays", error))?;
     Ok(Json(row))
+}
+
+/// Referencia de un replay para el detalle de la ejecución original.
+#[derive(Debug, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+struct ReplayRefDto {
+    id: Uuid,
+    status: String,
+    created_at: DateTime<Utc>,
+}
+
+/// `POST /api/v1/executions/{id}/replay` (MVP3, spec `execution-replay`):
+/// crea una ejecución nueva con la MISMA versión congelada y la misma
+/// entrada de trigger de la original (`trigger_data.replayOf` = id
+/// original) y la encola `pending` para el worker normal — mismo timeout,
+/// mismo masking, misma entrega webhook. El original no se muta.
+async fn replay(
+    State(state): State<AppState>,
+    Extension(key): Extension<AuthedKey>,
+    Path(raw_id): Path<String>,
+) -> Result<(StatusCode, Json<Value>), Problem> {
+    let workspace_id = key.workspace()?;
+    let id = rest::parse_id(&raw_id, "la ejecución no existe en este workspace")?;
+    let original: Option<(Uuid, Uuid, String, Value)> = sqlx::query_as(
+        "SELECT bridge_id, bridge_version_id, trigger_type, trigger_data \
+         FROM executions WHERE id = $1 AND workspace_id = $2",
+    )
+    .bind(id)
+    .bind(workspace_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|error| rest::db_error("cargar la ejecución", error))?;
+
+    let Some((bridge_id, version_id, trigger_type, mut trigger_data)) = original else {
+        return Err(not_found());
+    };
+    if !trigger_data.is_object() {
+        trigger_data = json!({});
+    }
+    if let Some(objeto) = trigger_data.as_object_mut() {
+        objeto.insert("replayOf".to_string(), json!(id));
+    }
+
+    let nuevo_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO executions (id, workspace_id, bridge_id, bridge_version_id, \
+         trigger_type, trigger_data, status, run_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', now())",
+    )
+    .bind(nuevo_id)
+    .bind(workspace_id)
+    .bind(bridge_id)
+    .bind(version_id)
+    .bind(&trigger_type)
+    .bind(&trigger_data)
+    .execute(&state.pool)
+    .await
+    .map_err(|error| rest::db_error("encolar el replay", error))?;
+
+    tracing::info!(original = %id, replay = %nuevo_id, "replay encolado");
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(json!({
+            "executionId": nuevo_id,
+            "replayOf": id,
+            "status": "pending",
+        })),
+    ))
 }
 
 /// `GET /api/v1/executions/{id}/trace`: pasos en orden (`seq`) con IO

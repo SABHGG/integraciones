@@ -22,10 +22,10 @@
 
 ## 4. Fase 4 — Dry-run y replay
 
-- [ ] 4.1 Motor en modo dry-run: ejecuta el borrador con las reglas del ejecutor (refs, schemas, fail-fast, timeout) sin persistir filas ni disparar webhook/emit; trace completo en la respuesta; tests
-- [ ] 4.2 `POST /api/v1/bridges/{id}/dry-run` con mocks por instancia (`mock: {output}` salta sandbox/HTTP y alimenta el contexto); tests de cadena mixta mock/real
-- [ ] 4.3 `POST /api/v1/executions/{id}/replay`: clona `bridge_version_id` + entrada, `trigger_data.replayOf`, corre por la cola normal; test de replay de una ejecución http
-- [ ] 4.4 Enlace bidireccional original ↔ replays en detalle y listado; tests
+- [x] 4.1 Motor en modo dry-run: ejecuta el borrador con las reglas del ejecutor (refs, schemas, fail-fast, timeout) sin persistir filas ni disparar webhook/emit; trace completo en la respuesta; tests
+- [x] 4.2 `POST /api/v1/bridges/{id}/dry-run` con mocks por instancia (`mock: {output}` salta sandbox/HTTP y alimenta el contexto); tests de cadena mixta mock/real
+- [x] 4.3 `POST /api/v1/executions/{id}/replay`: clona `bridge_version_id` + entrada, `trigger_data.replayOf`, corre por la cola normal; test de replay de una ejecución http
+- [x] 4.4 Enlace bidireccional original ↔ replays en detalle y listado; tests
 
 ## 5. Fase 5 — Consola web
 

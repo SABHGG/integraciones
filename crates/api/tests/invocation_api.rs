@@ -1086,3 +1086,214 @@ async fn los_errores_de_transporte_no_cambian_en_el_disparo_async() {
 
     assert_eq!(h.execution_count().await, 0, "nada se encoló");
 }
+
+// ── replay (MVP3, tasks 4.3-4.4) ───────────────────────────────────────
+
+impl Harness {
+    /// POST al plano de administración (con auth Bearer).
+    async fn admin_post(&self, uri: &str, body: Option<Value>) -> Resp {
+        let mut builder = Request::builder()
+            .method(Method::POST)
+            .uri(uri)
+            .header(header::AUTHORIZATION, format!("Bearer {}", self.key));
+        let body = match body {
+            Some(value) => {
+                builder = builder.header(header::CONTENT_TYPE, "application/json");
+                Body::from(value.to_string())
+            }
+            None => Body::empty(),
+        };
+        let response = self
+            .app
+            .clone()
+            .oneshot(builder.body(body).expect("petición válida"))
+            .await
+            .expect("respuesta del router");
+        let status = response.status();
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|valor| valor.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .expect("cuerpo legible");
+        Resp {
+            status,
+            content_type,
+            body: String::from_utf8(bytes.to_vec()).expect("cuerpo UTF-8"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn el_replay_copia_version_y_entrada_y_corre_por_la_cola() {
+    let Some(h) = begin().await else { return };
+
+    h.bridge(
+        "replayable",
+        "POST",
+        json!([bloque_duplicar("b1", "duplicar")]),
+    )
+    .await;
+
+    // Ejecución original (síncrona, http).
+    let original_resp = h
+        .x(
+            Method::POST,
+            "replayable",
+            Some(("application/json", json!({ "total": 3 }))),
+            None,
+        )
+        .await;
+    assert_eq!(
+        original_resp.status,
+        StatusCode::OK,
+        "{}",
+        original_resp.body
+    );
+    let original_id = original_resp.json()["executionId"]
+        .as_str()
+        .expect("executionId")
+        .to_string();
+
+    // Replay: 202 con el enlace al original.
+    let replay_resp = h
+        .admin_post(&format!("/api/v1/executions/{original_id}/replay"), None)
+        .await;
+    assert_eq!(
+        replay_resp.status,
+        StatusCode::ACCEPTED,
+        "{}",
+        replay_resp.body
+    );
+    let ack = replay_resp.json();
+    let replay_id = ack["executionId"]
+        .as_str()
+        .expect("executionId")
+        .to_string();
+    assert_eq!(ack["replayOf"], json!(original_id));
+    assert_eq!(ack["status"], json!("pending"));
+    assert_ne!(replay_id, original_id);
+
+    // La fila del replay nace pending y corre por la cola normal.
+    assert_eq!(
+        h.estado_ejecucion(&replay_id).await.as_deref(),
+        Some("pending")
+    );
+    let state = AppState {
+        pool: h.pool.clone(),
+    };
+    assert!(
+        api::worker::procesar_pendiente(&state)
+            .await
+            .expect("worker: un paso")
+    );
+    assert_eq!(
+        h.estado_ejecucion(&replay_id).await.as_deref(),
+        Some("succeeded")
+    );
+
+    // Misma versión congelada y misma entrada que la original.
+    let (version_original, version_replay, trigger_original, trigger_replay): (
+        Uuid,
+        Uuid,
+        Value,
+        Value,
+    ) = sqlx::query_as(
+        "SELECT (SELECT bridge_version_id FROM executions WHERE id = $1), \
+                (SELECT bridge_version_id FROM executions WHERE id = $2), \
+                (SELECT trigger_data FROM executions WHERE id = $1), \
+                (SELECT trigger_data FROM executions WHERE id = $2)",
+    )
+    .bind(Uuid::parse_str(&original_id).expect("uuid"))
+    .bind(Uuid::parse_str(&replay_id).expect("uuid"))
+    .fetch_one(&h.pool)
+    .await
+    .expect("filas de ejecuciones");
+    assert_eq!(version_original, version_replay, "misma versión congelada");
+    assert_eq!(
+        trigger_original["body"], trigger_replay["body"],
+        "misma entrada del trigger"
+    );
+    assert_eq!(trigger_replay["replayOf"], json!(original_id));
+}
+
+#[tokio::test]
+async fn el_replay_no_muta_el_original_y_el_enlace_es_bidireccional() {
+    let Some(h) = begin().await else { return };
+
+    h.bridge(
+        "replay-x3",
+        "POST",
+        json!([bloque_duplicar("b1", "duplicar")]),
+    )
+    .await;
+    let original_resp = h
+        .x(
+            Method::POST,
+            "replay-x3",
+            Some(("application/json", json!({ "total": 1 }))),
+            None,
+        )
+        .await;
+    let original_id = original_resp.json()["executionId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Tres replays.
+    let mut replays = Vec::new();
+    for _ in 0..3 {
+        let r = h
+            .admin_post(&format!("/api/v1/executions/{original_id}/replay"), None)
+            .await;
+        assert_eq!(r.status, StatusCode::ACCEPTED, "{}", r.body);
+        replays.push(r.json()["executionId"].as_str().unwrap().to_string());
+    }
+    let state = AppState {
+        pool: h.pool.clone(),
+    };
+    while api::worker::procesar_pendiente(&state)
+        .await
+        .expect("worker")
+    {}
+
+    // El detalle de la original lista los tres con su estado y fecha.
+    let detalle = h
+        .admin_get(&format!("/api/v1/executions/{original_id}"))
+        .await;
+    assert_eq!(detalle.status, StatusCode::OK, "{}", detalle.body);
+    let cuerpo = detalle.json();
+    let derivadas = cuerpo["replays"].as_array().expect("replays");
+    assert_eq!(derivadas.len(), 3);
+    let ids: Vec<&str> = derivadas
+        .iter()
+        .map(|d| d["id"].as_str().unwrap())
+        .collect();
+    for replay in &replays {
+        assert!(ids.contains(&replay.as_str()), "{replay} no listado");
+    }
+    for derivada in derivadas {
+        assert_eq!(derivada["status"], json!("succeeded"));
+        assert!(derivada["createdAt"].as_str().is_some());
+    }
+    // El original conserva su estado y su trace intactos.
+    assert_eq!(cuerpo["status"], json!("succeeded"));
+    assert!(cuerpo.get("replayOf").is_none() || cuerpo["replayOf"].is_null());
+
+    // El detalle de un replay identifica al original (resoluble).
+    let detalle_replay = h
+        .admin_get(&format!("/api/v1/executions/{}", replays[0]))
+        .await
+        .json();
+    assert_eq!(
+        detalle_replay["triggerData"]["replayOf"],
+        json!(original_id)
+    );
+    let original_existe = h
+        .admin_get(&format!("/api/v1/executions/{original_id}"))
+        .await;
+    assert_eq!(original_existe.status, StatusCode::OK);
+}

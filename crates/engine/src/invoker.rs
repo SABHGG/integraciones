@@ -17,6 +17,10 @@ use serde_json::Value as Json;
 pub struct InvokeRequest<'a> {
     /// JS ya compilado con `export default function(input, ctx)`.
     pub code: &'a str,
+    /// Id de la instancia en la definición (para mocks de dry-run, MVP3).
+    pub block_instance_id: &'a str,
+    /// Nombre de la instancia en la definición (para mocks de dry-run, MVP3).
+    pub block_name: &'a str,
     /// Entrada resuelta del bloque (mapeo de entrada ya resuelto contra el
     /// contexto de ejecución).
     pub input: Json,
@@ -41,6 +45,10 @@ pub struct InvokeRequest<'a> {
 /// vive en el invoker.
 #[derive(Debug, Clone)]
 pub struct BuiltInRequest<'a> {
+    /// Id de la instancia en la definición (para mocks de dry-run, MVP3).
+    pub block_instance_id: &'a str,
+    /// Nombre de la instancia en la definición (para mocks de dry-run, MVP3).
+    pub block_name: &'a str,
     /// Config de instancia ya resuelta (interpolación `{$.ref}` aplicada).
     /// Los placeholders `{$credential:nombre}` quedan intactos: los resuelve
     /// el host justo antes de la llamada, sin que el secreto entre al IO.
@@ -67,6 +75,45 @@ pub trait BlockInvoker {
                 message: "este invoker no soporta bloques built-in http".to_string(),
             })
         }
+    }
+}
+
+/// Invoker que interpola MOCKS por instancia (MVP3, dry-run): las claves del
+/// mapa son id o nombre de instancia; una instancia mockeada NO se invoca
+/// (ni sandbox ni HTTP) y su salida declarada alimenta el contexto. El resto
+/// delega en el invoker interior y corre de verdad.
+pub struct MockingInvoker<I> {
+    inner: I,
+    mocks: std::collections::HashMap<String, Json>,
+}
+
+impl<I> MockingInvoker<I> {
+    /// Envuelve `inner` con los mocks dados (`{id|nombre: salida}`).
+    pub fn new(inner: I, mocks: std::collections::HashMap<String, Json>) -> Self {
+        Self { inner, mocks }
+    }
+}
+
+impl<I: BlockInvoker> BlockInvoker for MockingInvoker<I> {
+    async fn invoke(&self, request: InvokeRequest<'_>) -> Result<Json, SandboxError> {
+        for (clave, salida) in &self.mocks {
+            if clave == request.block_instance_id || clave == request.block_name {
+                return Ok(salida.clone());
+            }
+        }
+        self.inner.invoke(request).await
+    }
+
+    async fn invoke_built_in_http(
+        &self,
+        request: BuiltInRequest<'_>,
+    ) -> Result<Json, SandboxError> {
+        for (clave, salida) in &self.mocks {
+            if clave == request.block_instance_id || clave == request.block_name {
+                return Ok(salida.clone());
+            }
+        }
+        self.inner.invoke_built_in_http(request).await
     }
 }
 

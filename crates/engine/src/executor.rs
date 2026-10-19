@@ -337,6 +337,8 @@ impl<I: BlockInvoker> Executor<I> {
                 self.invoker
                     .invoke(InvokeRequest {
                         code,
+                        block_instance_id: &block.id,
+                        block_name: &block.name,
                         input: resolved_input.clone(),
                         config: resolved_config,
                         timeout_ms,
@@ -345,6 +347,8 @@ impl<I: BlockInvoker> Executor<I> {
             } else {
                 self.invoker
                     .invoke_built_in_http(BuiltInRequest {
+                        block_instance_id: &block.id,
+                        block_name: &block.name,
                         config: &resolved_config,
                         timeout_ms,
                     })

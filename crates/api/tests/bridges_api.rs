@@ -1225,3 +1225,154 @@ async fn trigger_event_exige_topic_con_formato_slug() {
         "el topic queda congelado en el snapshot"
     );
 }
+
+// ── dry-run (MVP3, tasks 4.1-4.2) ──────────────────────────────────────
+
+#[tokio::test]
+async fn el_dry_run_corre_el_borrador_sin_publicar_ni_dejar_rastro() {
+    let Some(h) = begin().await else { return };
+    let origen = bloque_origen(&h, "dry").await;
+    let destino = bloque_destino(&h, "dry").await;
+
+    let bridge = h.create_bridge("ensayo").await;
+    let id = bridge["id"].as_str().unwrap().to_string();
+    let draft = json!({
+        "trigger": { "type": "http", "method": "POST", "path": "/x/ensayo" },
+        "blocks": [
+            h.instance("b1", "origen", &origen, json!({ "total": 5 })),
+            h.instance("b2", "destino", &destino, json!({ "total": "$.origen.total" })),
+        ]
+    });
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+
+    // Cero ejecuciones antes (el puente nunca se publicó).
+    let antes = h.get("/api/v1/executions").await;
+    assert_eq!(antes.status, StatusCode::OK, "{}", antes.body);
+    assert_eq!(antes.json()["items"].as_array().map(Vec::len), Some(0));
+
+    // Dry-run del borrador SIN versión publicada: trace en la respuesta.
+    let ensayo = h
+        .post(&format!("/api/v1/bridges/{id}/dry-run"), Some(json!({})))
+        .await;
+    assert_eq!(ensayo.status, StatusCode::OK, "{}", ensayo.body);
+    let cuerpo = ensayo.json();
+    assert_eq!(cuerpo["status"], json!("succeeded"), "{}", cuerpo);
+    assert_eq!(cuerpo["output"], json!({ "total": 5 }));
+
+    let steps = cuerpo["steps"].as_array().expect("steps");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["blockName"], json!("origen"));
+    assert_eq!(steps[0]["output"], json!({ "total": 5 }));
+    assert!(steps[0]["durationMs"].as_i64().is_some());
+    assert_eq!(steps[1]["blockName"], json!("destino"));
+    assert_eq!(
+        steps[1]["input"],
+        json!({ "total": 5 }),
+        "el segundo bloque consumió la salida real del primero"
+    );
+
+    // El dry-run no deja rastro: el listado sigue vacío.
+    let despues = h.get("/api/v1/executions").await;
+    assert_eq!(despues.json()["items"].as_array().map(Vec::len), Some(0));
+}
+
+#[tokio::test]
+async fn el_mock_salta_el_bloque_y_alimenta_la_cadena_mixta() {
+    let Some(h) = begin().await else { return };
+    let origen = bloque_origen(&h, "drymock").await;
+    let destino = bloque_destino(&h, "drymock").await;
+
+    let bridge = h.create_bridge("ensayo-mock").await;
+    let id = bridge["id"].as_str().unwrap().to_string();
+    let draft = json!({
+        "trigger": { "type": "http", "method": "POST", "path": "/x/ensayo-mock" },
+        "blocks": [
+            h.instance("b1", "origen", &origen, json!({ "total": 5 })),
+            h.instance("b2", "destino", &destino, json!({ "total": "$.origen.total" })),
+        ]
+    });
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+
+    // Solo el primer bloque va mockeado: el segundo corre su código real
+    // consumiendo la salida del mock.
+    let ensayo = h
+        .post(
+            &format!("/api/v1/bridges/{id}/dry-run"),
+            Some(json!({ "mocks": { "origen": { "output": { "total": 99 } } } })),
+        )
+        .await;
+    assert_eq!(ensayo.status, StatusCode::OK, "{}", ensayo.body);
+    let cuerpo = ensayo.json();
+    let steps = cuerpo["steps"].as_array().expect("steps");
+    assert_eq!(
+        steps[0]["output"],
+        json!({ "total": 99 }),
+        "el mock alimenta el contexto sin invocar el bloque"
+    );
+    assert_eq!(steps[1]["input"], json!({ "total": 99 }));
+    assert_eq!(cuerpo["output"], json!({ "total": 99 }));
+
+    // Mock por ID de instancia también.
+    let ensayo = h
+        .post(
+            &format!("/api/v1/bridges/{id}/dry-run"),
+            Some(json!({ "mocks": { "b2": { "output": { "total": 1, "extra": true } } } })),
+        )
+        .await;
+    assert_eq!(ensayo.status, StatusCode::OK, "{}", ensayo.body);
+    assert_eq!(
+        ensayo.json()["output"],
+        json!({ "total": 1, "extra": true }),
+        "el segundo bloque mockeado fija la salida final"
+    );
+
+    // Mock mal formado (sin output): 422.
+    let ensayo = h
+        .post(
+            &format!("/api/v1/bridges/{id}/dry-run"),
+            Some(json!({ "mocks": { "origen": {} } })),
+        )
+        .await;
+    assert_eq!(
+        ensayo.status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "{}",
+        ensayo.body
+    );
+}
+
+#[tokio::test]
+async fn el_dry_run_de_un_borrador_invalido_es_422() {
+    let Some(h) = begin().await else { return };
+    let origen = bloque_origen(&h, "drymalo").await;
+
+    let bridge = h.create_bridge("ensayo-malo").await;
+    let id = bridge["id"].as_str().unwrap().to_string();
+    // Ref rota: el destino pide un campo que el origen no produce.
+    let destino_malo = h
+        .published_block(
+            "destino-malo-dry",
+            json!({ "type": "object", "properties": { "total": { "type": "integer" } } }),
+            json!({}),
+        )
+        .await;
+    let draft = json!({
+        "trigger": { "type": "http", "method": "POST", "path": "/x/ensayo-malo" },
+        "blocks": [
+            h.instance("b1", "origen", &origen, json!({})),
+            h.instance("b2", "destino", &destino_malo, json!({ "total": "$.origen.inexistente" })),
+        ]
+    });
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+
+    let ensayo = h
+        .post(&format!("/api/v1/bridges/{id}/dry-run"), Some(json!({})))
+        .await;
+    assert_eq!(
+        ensayo.status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "{}",
+        ensayo.body
+    );
+    assert!(ensayo.body.contains("validación"), "{}", ensayo.body);
+}

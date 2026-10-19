@@ -727,6 +727,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/bridges/{id}/webhook-secret", get(get_webhook_secret))
         .route("/bridges/{id}/run", post(run_bridge))
+        .route("/bridges/{id}/dry-run", post(dry_run))
 }
 
 // ------------------------------------------------------------ Handlers ---
@@ -1316,46 +1317,14 @@ async fn validate_bridge(
 /// de la transacción serializa publicaciones concurrentes y evita repetir
 /// número; `UNIQUE(bridge_id, version)` es la última defensa.
 #[tracing::instrument(skip_all)]
-async fn publish_version(
-    State(state): State<AppState>,
-    Extension(key): Extension<AuthedKey>,
-    Path(raw_id): Path<String>,
-    body: Bytes,
-) -> Result<Response, Problem> {
-    let workspace_id = key.workspace()?;
-    let id = rest::parse_id(&raw_id, "el puente no existe en este workspace")?;
-    if !body.is_empty() {
-        return Err(problem::bad_request(
-            "la publicación usa el borrador del puente: el body debe estar vacío",
-        ));
-    }
-    let mut tx = state
-        .pool
-        .begin()
-        .await
-        .map_err(|error| rest::db_error("abrir la transacción", error))?;
-    let bridge = sqlx::query_as::<_, BridgeDto>(&format!(
-        "SELECT {BRIDGE_COLUMNS} FROM bridges WHERE id = $1 AND workspace_id = $2 FOR UPDATE"
-    ))
-    .bind(id)
-    .bind(workspace_id)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(|error| rest::db_error("cargar el puente", error))?
-    .ok_or_else(not_found)?;
-    let (issues, instances) =
-        validar_borrador(&mut tx, workspace_id, bridge.draft.as_ref()).await?;
-    if !issues.is_empty() {
-        return Err(rest::invalid_body(
-            "el borrador no pasa la validación",
-            issues.iter().map(Issue::to_json).collect(),
-        ));
-    }
-    // El snapshot: trigger tipado, inputSchema y las instancias RESUELTAS
-    // (code copiado de la block_version y schemas propios).
-    let draft = bridge
-        .draft
-        .expect("validar_borrador ya garantiza el borrador");
+/// Construye la `BridgeDefinition` tipada del borrador ya VALIDADO (trigger
+/// congelado, instancias resueltas con su code, webhook/mask/emit). La usan
+/// la publicación (para el snapshot) y el dry-run (para ensayar el borrador
+/// sin publicar), garantizando que ambos ven exactamente la misma definición.
+fn definicion_del_borrador(
+    draft: &Value,
+    instances: &[Instance],
+) -> Result<BridgeDefinition, Problem> {
     let trigger: TriggerDefinition = serde_json::from_value(
         draft
             .get("trigger")
@@ -1419,7 +1388,7 @@ async fn publish_version(
                 vec![rest::field_error("emit", error.to_string())],
             )
         })?;
-    let definition = BridgeDefinition {
+    Ok(BridgeDefinition {
         trigger,
         input_schema: draft
             .get("inputSchema")
@@ -1429,7 +1398,54 @@ async fn publish_version(
         webhook: webhook.clone(),
         mask,
         emit,
-    };
+    })
+}
+
+async fn publish_version(
+    State(state): State<AppState>,
+    Extension(key): Extension<AuthedKey>,
+    Path(raw_id): Path<String>,
+    body: Bytes,
+) -> Result<Response, Problem> {
+    let workspace_id = key.workspace()?;
+    let id = rest::parse_id(&raw_id, "el puente no existe en este workspace")?;
+    if !body.is_empty() {
+        return Err(problem::bad_request(
+            "la publicación usa el borrador del puente: el body debe estar vacío",
+        ));
+    }
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|error| rest::db_error("abrir la transacción", error))?;
+    let bridge = sqlx::query_as::<_, BridgeDto>(&format!(
+        "SELECT {BRIDGE_COLUMNS} FROM bridges WHERE id = $1 AND workspace_id = $2 FOR UPDATE"
+    ))
+    .bind(id)
+    .bind(workspace_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|error| rest::db_error("cargar el puente", error))?
+    .ok_or_else(not_found)?;
+    let (issues, instances) =
+        validar_borrador(&mut tx, workspace_id, bridge.draft.as_ref()).await?;
+    if !issues.is_empty() {
+        return Err(rest::invalid_body(
+            "el borrador no pasa la validación",
+            issues.iter().map(Issue::to_json).collect(),
+        ));
+    }
+    // El snapshot: trigger tipado, inputSchema y las instancias RESUELTAS
+    // (code copiado de la block_version y schemas propios).
+    let draft = bridge
+        .draft
+        .expect("validar_borrador ya garantiza el borrador");
+    let definition_webhook_presente = draft
+        .get("webhook")
+        .filter(|value| !value.is_null())
+        .is_some();
+    let definition = definicion_del_borrador(&draft, &instances)?;
     let definition = serde_json::to_value(&definition)
         .map_err(|error| problem::internal(format!("snapshot no serializable: {error}")))?;
     // Versión siguiente atómica: el lock del puente serializa publicaciones.
@@ -1445,7 +1461,7 @@ async fn publish_version(
     // primera versión con webhook y se conserva entre versiones (regenerarlo
     // rompería la verificación de los consumidores). Cifrado en reposo con la
     // envolvente de la bóveda; solo sale por el plano de administración.
-    if webhook.is_some() {
+    if definition_webhook_presente {
         let secret_actual: Option<Vec<u8>> =
             sqlx::query_scalar("SELECT webhook_secret FROM bridges WHERE id = $1")
                 .bind(id)
@@ -1598,6 +1614,153 @@ async fn get_webhook_secret(
 /// `cron-triggers`): encola una ejecución `manual` de la versión publicada
 /// activa con `run_at` inmediato y devuelve su `executionId`. Sin versión
 /// publicada → 409 Problem (el worker la correrá en cuanto la reclame).
+/// Cuerpo de `POST /bridges/{id}/dry-run`: datos de prueba para `$.trigger`
+/// y mocks por instancia (`{id|nombre: {output}}`).
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DryRunRequest {
+    #[serde(default)]
+    trigger_data: Option<Value>,
+    #[serde(default)]
+    mocks: Option<Value>,
+}
+
+/// `POST /api/v1/bridges/{id}/dry-run` (MVP3, spec `dry-run`): ejecuta el
+/// BORRADOR actual — sin requerir versión publicada — con las mismas reglas
+/// del ejecutor y devuelve el trace en la propia respuesta. Sin persistencia:
+/// ni `executions` ni `execution_steps`, sin webhook y sin `emit`; el
+/// resultado vive solo en la respuesta. Un bloque mockeado no se invoca.
+async fn dry_run(
+    State(state): State<AppState>,
+    Extension(key): Extension<AuthedKey>,
+    Path(raw_id): Path<String>,
+    body: Bytes,
+) -> Result<Json<Value>, Problem> {
+    let workspace_id = key.workspace()?;
+    let id = rest::parse_id(&raw_id, "el puente no existe en este workspace")?;
+    let cuerpo: DryRunRequest = if body.is_empty() {
+        DryRunRequest {
+            trigger_data: None,
+            mocks: None,
+        }
+    } else {
+        rest::parse_body(&body)?
+    };
+
+    // Mocks: mapa {id|nombre: {output}}; validar forma antes de correr.
+    let mut mocks = std::collections::HashMap::new();
+    if let Some(especificacion) = cuerpo.mocks.filter(|valor| !valor.is_null()) {
+        let Some(objeto) = especificacion.as_object() else {
+            return Err(rest::invalid_body(
+                "el body no es un dry-run válido",
+                vec![rest::field_error(
+                    "mocks",
+                    "debe ser un objeto {instancia: {output}}",
+                )],
+            ));
+        };
+        for (clave, valor) in objeto {
+            let Some(salida) = valor.get("output") else {
+                return Err(rest::invalid_body(
+                    "el body no es un dry-run válido",
+                    vec![rest::field_error(
+                        format!("mocks.{clave}").as_str(),
+                        "necesita \"output\" (la salida fija del mock)",
+                    )],
+                ));
+            };
+            mocks.insert(clave.clone(), salida.clone());
+        }
+    }
+
+    // El borrador debe validar completo (mismas reglas que la publicación).
+    let bridge = load_bridge(&state, workspace_id, id).await?;
+    if bridge
+        .draft
+        .as_ref()
+        .and_then(Value::as_object)
+        .is_none_or(serde_json::Map::is_empty)
+    {
+        return Err(rest::invalid_body(
+            "el borrador está vacío",
+            vec![rest::field_error(
+                "draft",
+                "nada que ensayar: edita el borrador primero",
+            )],
+        ));
+    }
+    let mut conn = state
+        .pool
+        .acquire()
+        .await
+        .map_err(|error| rest::db_error("conectar a la base de datos", error))?;
+    let (issues, instances) =
+        validar_borrador(&mut conn, workspace_id, bridge.draft.as_ref()).await?;
+    if !issues.is_empty() {
+        return Err(rest::invalid_body(
+            "el borrador no pasa la validación",
+            issues.iter().map(Issue::to_json).collect(),
+        ));
+    }
+    drop(conn);
+    let draft = bridge
+        .draft
+        .expect("validar_borrador ya garantiza el borrador");
+    let definition = definicion_del_borrador(&draft, &instances)?;
+
+    // `$.trigger` según el tipo congelado: http normaliza {body, query};
+    // los demás reciben los datos de prueba tal cual.
+    let datos = cuerpo.trigger_data.unwrap_or(Value::Null);
+    let trigger_data = if definition.trigger.trigger_type == domain::definition::TriggerType::Http {
+        json!({ "body": datos, "query": {} })
+    } else {
+        datos
+    };
+
+    // Bóveda real para los bloques NO mockeados (mismo camino de producción).
+    let boveda = crate::invoke::cargar_boveda(&state.pool, workspace_id)
+        .await
+        .map_err(|error| problem::internal(format!("cargar la bóveda: {error}")))?;
+    let resolutor = std::sync::Arc::new(move |name: String| {
+        boveda.get(&name).map(|(secreto, _, _)| secreto.clone())
+    });
+
+    // La corrida en memoria: mismo ejecutor, mocks por instancia, sin BD.
+    let corrida = tokio::task::spawn_blocking(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime current-thread para el ejecutor");
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&runtime, async {
+            let sandbox =
+                engine::invoker::SandboxInvoker::new().with_credential_resolver(resolutor);
+            let invoker = engine::invoker::MockingInvoker::new(sandbox, mocks);
+            let executor = engine::executor::Executor::new(invoker);
+            executor
+                .run(engine::executor::ChainRun::new(&definition, trigger_data))
+                .await
+        })
+    })
+    .await
+    .expect("hilo blocking del dry-run");
+
+    Ok(Json(json!({
+        "status": corrida.status.as_str(),
+        "output": corrida.output,
+        "error": corrida.error.as_ref().map(|error| serde_json::to_value(error).unwrap_or(Value::Null)),
+        "steps": corrida.steps.iter().map(|paso| json!({
+            "seq": paso.seq,
+            "blockName": paso.block_name,
+            "status": paso.status.as_str(),
+            "input": paso.input,
+            "output": paso.output,
+            "error": paso.error.as_ref().map(|error| serde_json::to_value(error).unwrap_or(Value::Null)),
+            "durationMs": paso.duration_ms,
+        })).collect::<Vec<_>>(),
+    })))
+}
+
 async fn run_bridge(
     State(state): State<AppState>,
     Extension(key): Extension<AuthedKey>,

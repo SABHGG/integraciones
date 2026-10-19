@@ -686,7 +686,7 @@ fn envelope_response(envelope: Value) -> Response {
 /// en claro solo vive en memoria del host.
 type EntradaBoveda = (String, Uuid, Uuid);
 
-async fn cargar_boveda(
+pub(crate) async fn cargar_boveda(
     pool: &sqlx::PgPool,
     workspace_id: Uuid,
 ) -> Result<HashMap<String, EntradaBoveda>, sqlx::Error> {
