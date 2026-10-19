@@ -860,3 +860,112 @@ async fn el_trigger_cron_se_valida_al_publicar_y_se_congela_en_el_snapshot() {
     assert!(fields.contains(&"trigger.schedule"), "{problem:?}");
     assert!(fields.contains(&"trigger.timezone"), "{problem:?}");
 }
+
+// ── webhook de resultado (MVP2, task 4.1) ──────────────────────────────
+
+#[tokio::test]
+async fn publica_puente_con_webhook_https_congela_la_url_y_expone_el_secreto_por_admin() {
+    let Some(h) = begin().await else { return };
+
+    let origen = bloque_origen(&h, "wh").await;
+    let draft = json!({
+        "trigger": { "type": "http", "method": "POST", "path": "/x/con-hook" },
+        "webhook": { "url": "https://receptor.example.com/hook" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+    });
+    let id = h.create_bridge("webhook-ok").await["id"].as_str().unwrap().to_string();
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+
+    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    assert_eq!(published.status, StatusCode::CREATED, "{}", published.body);
+    let version = published.json();
+    assert_eq!(
+        version["definition"]["webhook"]["url"],
+        json!("https://receptor.example.com/hook"),
+        "el snapshot congela la URL"
+    );
+
+    // El secreto solo sale por el plano admin: 64 hex (256 bits).
+    let secreto_resp = h.get(&format!("/api/v1/bridges/{id}/webhook-secret")).await;
+    assert_eq!(secreto_resp.status, StatusCode::OK, "{}", secreto_resp.body);
+    let secreto_json = secreto_resp.json();
+    let secreto = secreto_json["secret"].as_str().expect("secret").to_string();
+    assert_eq!(secreto.len(), 64, "256 bits en hex: {secreto}");
+    assert!(secreto.chars().all(|c| c.is_ascii_hexdigit()));
+
+    // Estable entre publicaciones (regenerarlo rompería a los consumidores).
+    h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let secreto2 = h.get(&format!("/api/v1/bridges/{id}/webhook-secret")).await;
+    assert_eq!(secreto2.status, StatusCode::OK);
+    assert_eq!(
+        secreto2.json()["secret"],
+        json!(secreto),
+        "el secreto no cambia entre versiones"
+    );
+
+    // Sin auth de administración, el secreto no se expone: 401 Problem.
+    let response = h
+        .app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/bridges/{id}/webhook-secret"))
+                .body(axum::body::Body::empty())
+                .expect("petición válida"),
+        )
+        .await
+        .expect("respuesta");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn una_webhook_sin_https_bloquea_la_publicacion() {
+    let Some(h) = begin().await else { return };
+
+    let origen = bloque_origen(&h, "whhttp").await;
+    for url in [
+        "http://receptor.example.com/hook",
+        "ftp://receptor.example.com",
+    ] {
+        let draft = json!({
+            "trigger": { "type": "http", "method": "POST", "path": "/x/hook-inseguro" },
+            "webhook": { "url": url },
+            "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+        });
+        let id = h.create_bridge("webhook-inseguro").await["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+
+        let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+        let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(
+            problem["errors"]
+                .as_array()
+                .expect("errors")
+                .iter()
+                .any(|e| e["field"] == json!("webhook.url")),
+            "{url}: {problem:?}"
+        );
+        h.delete(&format!("/api/v1/bridges/{id}")).await;
+    }
+}
+
+#[tokio::test]
+async fn el_secreto_de_un_puente_sin_webhook_es_404() {
+    let Some(h) = begin().await else { return };
+
+    let origen = bloque_origen(&h, "whnulo").await;
+    let draft = json!({
+        "trigger": { "type": "http", "method": "POST", "path": "/x/sin-hook" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+    });
+    let id = h.create_bridge("sin-webhook").await["id"].as_str().unwrap().to_string();
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+    h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+
+    let respuesta = h.get(&format!("/api/v1/bridges/{id}/webhook-secret")).await;
+    respuesta.problem(StatusCode::NOT_FOUND);
+}

@@ -36,6 +36,15 @@ fn empty_object() -> Value {
     json!({})
 }
 
+/// Webhook de resultado del puente (MVP2): entrega firmada del sobre final.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebhookDefinition {
+    /// URL `https` de entrega (validada al publicar y congelada en el
+    /// snapshot: la versión que corrió es la que entrega).
+    pub url: String,
+}
+
 /// Definición completa de un puente (snapshot de una versión publicada).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +58,9 @@ pub struct BridgeDefinition {
     /// Cadena lineal de bloques, en orden de ejecución.
     #[serde(default)]
     pub blocks: Vec<BlockInstance>,
+    /// Webhook de resultado, si el puente lo declara (`{url}` https).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webhook: Option<WebhookDefinition>,
 }
 
 impl BridgeDefinition {

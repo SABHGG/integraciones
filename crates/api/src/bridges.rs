@@ -709,6 +709,7 @@ pub fn router() -> Router<AppState> {
             "/bridges/{id}/versions",
             post(publish_version).get(list_versions),
         )
+        .route("/bridges/{id}/webhook-secret", get(get_webhook_secret))
 }
 
 // ------------------------------------------------------------ Handlers ---
@@ -995,6 +996,9 @@ struct PatchBridge {
     input_schema: Option<Value>,
     #[serde(default)]
     blocks: Option<Value>,
+    /// Webhook de resultado (MVP2): `{url}` https. `null` = no tocar.
+    #[serde(default)]
+    webhook: Option<Value>,
 }
 
 /// `PATCH /api/v1/bridges/{id}`: edita nombre/descripción y REEMPLAZA por
@@ -1040,6 +1044,7 @@ async fn patch_bridge(
         ("trigger", request.trigger),
         ("inputSchema", request.input_schema),
         ("blocks", request.blocks),
+        ("webhook", request.webhook),
     ] {
         if let Some(value) = value.filter(|value| !value.is_null()) {
             draft.insert(key.to_string(), value);
@@ -1114,6 +1119,24 @@ async fn validar_borrador(
         ));
     };
     let mut issues = validate_trigger(draft.get("trigger").filter(|value| !value.is_null()));
+    // Webhook de resultado (MVP2): la entrega viaja firmada y solo por TLS.
+    if let Some(webhook) = draft.get("webhook").filter(|value| !value.is_null()) {
+        match webhook.get("url").and_then(Value::as_str) {
+            None => issues.push(Issue::new(
+                "webhook.url",
+                "el webhook necesita \"url\" (la https donde se entrega el resultado)",
+            )),
+            Some(url) if !url.starts_with("https://") => {
+                issues.push(Issue::new(
+                    "webhook.url",
+                    format!(
+                        "\"{url}\" debe ser https: la entrega del resultado viaja firmada y solo se envía por TLS"
+                    ),
+                ));
+            }
+            Some(_) => {}
+        }
+    }
     if let Some(schema) = draft.get("inputSchema").filter(|value| !value.is_null())
         && let Err(error) = domain::schema::validate_schema_doc(schema)
     {
@@ -1228,6 +1251,18 @@ async fn publish_version(
             timeout_ms: instance.timeout_ms,
         })
         .collect();
+    let webhook: Option<domain::definition::WebhookDefinition> = draft
+        .get("webhook")
+        .filter(|value| !value.is_null())
+        .cloned()
+        .map(serde_json::from_value::<domain::definition::WebhookDefinition>)
+        .transpose()
+        .map_err(|error| {
+            rest::invalid_body(
+                "el borrador no pasa la validación",
+                vec![rest::field_error("webhook", error.to_string())],
+            )
+        })?;
     let definition = BridgeDefinition {
         trigger,
         input_schema: draft
@@ -1235,6 +1270,7 @@ async fn publish_version(
             .filter(|value| !value.is_null())
             .cloned(),
         blocks,
+        webhook: webhook.clone(),
     };
     let definition = serde_json::to_value(&definition)
         .map_err(|error| problem::internal(format!("snapshot no serializable: {error}")))?;
@@ -1247,6 +1283,31 @@ async fn publish_version(
     .await
     .map_err(|error| rest::db_error("calcular la versión siguiente", error))?;
     let version_id = Uuid::now_v7();
+    // Secreto HMAC del webhook (MVP2): se genera UNA vez al publicar la
+    // primera versión con webhook y se conserva entre versiones (regenerarlo
+    // rompería la verificación de los consumidores). Cifrado en reposo con la
+    // envolvente de la bóveda; solo sale por el plano de administración.
+    if webhook.is_some() {
+        let secret_actual: Option<Vec<u8>> = sqlx::query_scalar(
+            "SELECT webhook_secret FROM bridges WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|error| rest::db_error("cargar el secreto del webhook", error))?;
+        if secret_actual.is_none() {
+            let mut bytes = [0u8; 32];
+            getrandom::fill(&mut bytes)
+                .map_err(|error| problem::internal(format!("generar el secreto: {error}")))?;
+            let secret_hex = hex::encode(bytes);
+            sqlx::query("UPDATE bridges SET webhook_secret = $2 WHERE id = $1")
+                .bind(id)
+                .bind(crate::vault::encrypt(&secret_hex))
+                .execute(&mut *tx)
+                .await
+                .map_err(|error| rest::db_error("guardar el secreto del webhook", error))?;
+        }
+    }
     sqlx::query(
         "INSERT INTO bridge_versions (id, bridge_id, version, definition) VALUES ($1, $2, $3, $4)",
     )
@@ -1333,6 +1394,51 @@ async fn list_versions(
         items: rows,
         next_cursor,
     }))
+}
+
+/// `GET /bridges/{id}/webhook-secret`: expone el secreto HMAC del puente,
+/// por el plano de administración y solo por él (change MVP2).
+///
+/// El secreto es el mismo por puente (estable se haya publicado; regenerarlo
+/// rompería la verificación de los consumidores). Sin webhook publicado
+/// responde 404 Problem, y copiarlo requiere la auth Bearer de administración.
+async fn get_webhook_secret(
+    State(state): State<AppState>,
+    Extension(key): Extension<AuthedKey>,
+    Path(raw_id): Path<String>,
+) -> Result<Json<Value>, Problem> {
+    let id = rest::parse_id(&raw_id, "el puente no existe")?;
+    let exists: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM bridges WHERE id = $1 AND workspace_id = $2",
+    )
+    .bind(id)
+    .bind(key.workspace_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|error| problem::internal(format!("cargar el puente: {error}")))?;
+    if exists.is_none() {
+        return Err(problem::not_found("el puente no existe"));
+    }
+
+    let secreto: Option<Vec<u8>> = sqlx::query_scalar(
+        "SELECT webhook_secret FROM bridges WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|error| problem::internal(format!("cargar el secreto: {error}")))?;
+
+    let Some(bytes) = secreto else {
+        return Err(problem::not_found(
+            "el puente no tiene webhook publicado",
+        ));
+    };
+    let secreto_en_claro = crate::vault::decrypt(&bytes)
+        .map_err(|error| problem::internal(format!("descifrar el secreto: {error}")))?;
+
+    Ok(Json(json!({
+        "secret": secreto_en_claro,
+    })))
 }
 
 #[cfg(test)]
@@ -1822,3 +1928,4 @@ mod tests {
         );
     }
 }
+

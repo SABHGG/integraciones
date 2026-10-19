@@ -53,6 +53,7 @@ aes-gcm = "0.10"
 # el módulo scalar_api_reference::axum con router y respuestas listas).
 scalar_api_reference = { version = "0.2.15", features = ["axum"] }
 hmac = "0.12"
+getrandom = "0.3"
 base64 = "0.22"
 hex = "0.4"
 serde_urlencoded = "0.7"
