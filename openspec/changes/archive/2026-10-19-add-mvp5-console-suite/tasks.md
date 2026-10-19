@@ -38,4 +38,4 @@
 ## 7. Fase 7 — Cierre
 
 - [x] 7.1 README: secciones de consola (credenciales, bloques, versiones/diff/rollback, métricas, export/import) con el rol que puede operar cada página y capturas de flujo descritas
-- [ ] 7.2 CI verde (build de consola + vitest + suites Rust) y push; archive con sync de specs (workspace-stats, bridge-version-access, web-console)
+- [x] 7.2 CI verde (build de consola + vitest + suites Rust) y push; archive con sync de specs (workspace-stats, bridge-version-access, web-console)

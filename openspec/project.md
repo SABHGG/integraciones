@@ -11,6 +11,8 @@ El backend está escrito en **Rust** y ejecuta los bloques (JavaScript/TypeScrip
 
 ## Current State
 
+**MVP5 construido** (change `add-mvp5-console-suite` archivado el 2026-10-19; 19/19 tareas, 325 tests Rust + 55 de la consola, clippy limpio, CI verde): la consola cubre TODO el producto — credenciales (crear/rotar/historial, borrado con confirmación escrita), biblioteca de bloques (filtros, schemas/ui, custom_logic con errores de transpile en línea), versiones con diff estructural en cliente y rollback por re-publicación (el pasado jamás se reescribe), métricas del workspace (`GET /stats`, una consulta agregada, máx. 90 días) con auto-refresh (5 s, pausa en pestaña oculta) y export/import/duplicar (`{name, slug, definition}` sin ids, publicación explícita). Backend nuevo: solo dos lecturas (`/stats`, definición de versión). Cada página nace por rol (D8: espejo `puede()` para presentación, servidor como única fuente de verdad).
+
 **MVP4 construido** (change `add-mvp4-users-roles` archivado el 2026-10-19; 16/16 tareas, 319 tests + 16 de la consola, clippy limpio): identidad por persona — registro/login/logout con sesiones opacas (hash SHA-256, argon2id, 401 uniforme), matriz de roles declarativa en middleware (`owner > editor > runner > viewer`, 403 con el rol requerido, API keys = owner para backcompat), gestión de miembros por el owner (lista visible por cualquier identidad; añadir por email existente, último owner protegido con 409) y auditoría del disparador (`executions.trigger_principal`: user/api_key/system) — más la consola con login email+contraseña, UI por rol y página de miembros.
 
 **MVP3 construido** (change `add-mvp3-events-observability-ui` archivado el 2026-10-19; 24/24 tareas, ~315 tests + 10 de la consola, clippy limpio, CI paralelo por categoría con cargo-audit semanal, repo privado en GitHub): todo el MVP2 más bóveda versionada de credenciales (rotación inmutable + auditoría de la versión usada), enmascaramiento declarativo e irreversible (`mask` congelado por versión, `***` antes de persistir), eventos (trigger `event` con fan-out transaccional y `emit.onSuccess/onFailure` al completar), dry-run del borrador con mocks por instancia, replay de ejecuciones (misma versión congelada + `replayOf`, enlace bidireccional) y consola web embebida en `/console` (Preact + Vite + CodeMirror, plan aprobado: SPA ligera sin SSR, rust-embed, cero backend nuevo).
@@ -19,11 +21,12 @@ El backend está escrito en **Rust** y ejecuta los bloques (JavaScript/TypeScrip
 
 La base de conocimiento vive en:
 
-- `openspec/specs/` — las 16 capacidades vigentes sincronizadas (6 del MVP1 + 3 del MVP2 + 5 del MVP3 + user-auth y workspace-roles del MVP4, con web-console ampliada)
+- `openspec/specs/` — las 18 capacidades vigentes sincronizadas (6 del MVP1 + 3 del MVP2 + 5 del MVP3 + 2 del MVP4 + workspace-stats y bridge-version-access del MVP5, con web-console ampliada en MVP4 y MVP5)
 - `openspec/changes/archive/2026-10-18-add-mvp1-core/` — MVP1 (23/23 tareas)
 - `openspec/changes/archive/2026-10-19-add-mvp2-async-cron-conditionals/` — MVP2 (26/26 tareas)
 - `openspec/changes/archive/2026-10-19-add-mvp3-events-observability-ui/` — MVP3 (24/24 tareas)
 - `openspec/changes/archive/2026-10-19-add-mvp4-users-roles/` — MVP4 (16/16 tareas)
+- `openspec/changes/archive/2026-10-19-add-mvp5-console-suite/` — MVP5 (19/19 tareas)
 - Memoria Engram del proyecto (topic_keys `integraciones-*`) — acta de las decisiones
 
 Próximo hito: sin change activo. Candidatos documentados en el roadmap (identidad real de usuarios, entrega garantizada de eventos, e2e de navegador con Playwright).
@@ -107,5 +110,6 @@ docker compose up -d          # Postgres (cuando exista compose)
 
 - **MVP1** ✅ archivado (`2026-10-18-add-mvp1-core`) — ejecutor + HTTP sync + store de ejecuciones + biblioteca de bloques + bóveda mínima
 - **MVP2** ✅ archivado (`2026-10-19-add-mvp2-async-cron-conditionals`) — async 202 + polling + webhook de resultado (HMAC con reintentos) + cron (scheduler, solape, recuperación de caída, disparo manual) + **puentes condicionales** (`when` por instancia o bloque `switch` con rutas nombradas; pasos no ejecutados `skipped`; condiciones deterministas sobre `$.`, sin JS arbitrario; prevención de ciclos)
+- **MVP5** ✅ archivado (`2026-10-19-add-mvp5-console-suite`) — consola 100 % del producto: credenciales, biblioteca de bloques, versiones con diff/rollback, métricas + auto-refresh y export/import/duplicar, todo por rol; backend de solo dos lecturas nuevas
 - **MVP4** ✅ archivado (`2026-10-19-add-mvp4-users-roles`) — usuarios (register/login/logout, sesiones opacas revocables), matriz de roles en middleware, miembros con último owner protegido, auditoría `trigger_principal` y consola con login por persona + UI por rol + página de miembros
 - **MVP3** ✅ archivado (`2026-10-19-add-mvp3-events-observability-ui`) — bóveda versionada (rotación + `credentials_used`), mask declarativo irreversible, eventos (trigger `event` + fan-out + `emit`), dry-run con mocks, replay con enlace bidireccional y consola web `/console` (Preact + Vite + CodeMirror embebida en el binario)
