@@ -40,6 +40,6 @@
 
 ## 6. Fase 6 — Cierre
 
-- [ ] 6.1 E2E punta a punta: puente condicional (`switch` con dos rutas) disparado async → polling → webhook firmado recibido en servidor local; y puente cron con solape simulado
-- [ ] 6.2 README: sección "MVP2" (async, polling, webhook, cron, condicionales) con ejemplos curl y verificación de firma
-- [ ] 6.3 CI verde (`cargo test --workspace`, `clippy -D warnings`) y OpenAPI validado; commits por unidad de trabajo
+- [x] 6.1 E2E punta a punta: puente condicional (`switch` con dos rutas) disparado async → polling → webhook firmado recibido en servidor local; y puente cron con solape simulado
+- [x] 6.2 README: sección "MVP2" (async, polling, webhook, cron, condicionales) con ejemplos curl y verificación de firma
+- [x] 6.3 CI verde (`cargo test --workspace`, `clippy -D warnings`) y OpenAPI validado; commits por unidad de trabajo

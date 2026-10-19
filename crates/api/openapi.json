@@ -1130,6 +1130,97 @@
           }
         }
       }
+    },
+    "/api/v1/bridges/{id}/run": {
+      "post": {
+        "tags": [
+          "Puentes"
+        ],
+        "summary": "Disparo manual inmediato",
+        "description": "Encola una ejecución `manual` de la versión publicada activa del puente con `run_at` inmediato y devuelve su `executionId` (MVP2). El worker interno la reclama y corre; el resultado se consulta en `/api/v1/executions/{executionId}`.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Ejecución encolada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "executionId"
+                  ],
+                  "properties": {
+                    "executionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "El puente no tiene versión publicada (Problem Details)."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        }
+      }
+    },
+    "/api/v1/bridges/{id}/webhook-secret": {
+      "get": {
+        "tags": [
+          "Puentes"
+        ],
+        "summary": "Secreto HMAC del webhook",
+        "description": "Expone el secreto HMAC-SHA256 (256 bits, hex) con el que se firman las entregas de resultado (`X-Integraciones-Signature`). Es único por puente, estable entre versiones y solo se expone por el plano de administración. 404 si el puente no tiene webhook publicado.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secreto del puente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "secret"
+                  ],
+                  "properties": {
+                    "secret": {
+                      "type": "string",
+                      "description": "64 caracteres hex (256 bits)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          }
+        }
+      }
     }
   },
   "components": {
