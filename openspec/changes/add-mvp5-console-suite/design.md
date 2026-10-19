@@ -2,7 +2,7 @@
 
 ## Context
 
-La consola del MVP3 (Preact + Vite + CodeMirror, embebida, 180 KB gzip) cubre login, dashboard de ejecuciones con trace y editor de puentes. La API ya ofrece credenciales versionadas, biblioteca de bloques con `ui`, publicación y validación; faltan dos piezas de lectura (métricas agregadas, definición de una versión) y toda la superficie visual para operarlas. `add-mvp4-users-roles` queda en espera: este change no toca auth.
+La consola del MVP3 (Preact + Vite + CodeMirror, embebida, 180 KB gzip) cubre login, dashboard de ejecuciones con trace y editor de puentes. La API ya ofrece credenciales versionadas, biblioteca de bloques con `ui`, publicación y validación; faltan dos piezas de lectura (métricas agregadas, definición de una versión) y toda la superficie visual para operarlas. El MVP4 está **archivado**: la consola entra con email+contraseña (o API key de automatización), el `whoami` expone el rol y las páginas existentes ya lo respetan — este change hereda esa sesión y esa matriz, no añade auth.
 
 ## Goals / Non-Goals
 
@@ -38,6 +38,9 @@ Polling del listado cada 5 s (apagado por defecto, selector por interacción), p
 
 ### D7 — Páginas nuevas con el mismo conjunto de patrones
 Credenciales y bloques replican el harness visual del editor (cards, errores del servidor en línea, `422` mapeado). El editor de código de `custom_logic` reutiliza `EditorCodigo`; los formularios de bloques reutilizan el generador `ui`.
+
+### D8 — Superficies nuevas bajo la matriz de roles (MVP4)
+Cada página nueva consulta el rol del `whoami` y usa el espejo `puede()` de `roles.ts` para ocultar lo que el rol no permite: stats y definición de versión son `GET` → legibles por `viewer`; las mutaciones (rotar/eliminar credencial, crear/publicar bloque, rollback, importar/duplicar) quedan visibles solo con `editor`. El servidor sigue siendo la única fuente de verdad: un `403` se muestra donde ocurre y ninguna página duplica la matriz — la espejo es solo presentación.
 
 ## Risks / Trade-offs
 

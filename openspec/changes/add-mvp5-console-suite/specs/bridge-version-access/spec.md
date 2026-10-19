@@ -7,7 +7,7 @@ Acceso de lectura a la definición congelada de una versión publicada concreta,
 ## ADDED Requirements
 
 ### Requirement: Definición de una versión publicada
-El sistema SHALL exponer `GET /api/v1/bridges/{id}/versions/{version}` (plano admin) que devuelve los metadatos de la versión (`id`, `version`, `createdAt`) y su `definition` congelada exactamente como se publicó. La versión SHALL referirse a una versión existente del puente (404 en caso contrario). El endpoint SHALL ser de solo lectura: ninguna operación de escritura nueva.
+El sistema SHALL exponer `GET /api/v1/bridges/{id}/versions/{version}` (plano admin; lectura según la matriz de roles — `viewer` puede leer) que devuelve los metadatos de la versión (`id`, `version`, `createdAt`) y su `definition` congelada exactamente como se publicó. La versión SHALL referirse a una versión existente del puente (404 en caso contrario). El endpoint SHALL ser de solo lectura: ninguna operación de escritura nueva.
 
 #### Scenario: Definición congelada recuperable
 - **WHEN** se solicita la versión 3 de un puente con tres versiones publicadas

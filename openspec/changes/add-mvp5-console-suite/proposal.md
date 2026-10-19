@@ -4,7 +4,7 @@
 
 La consola del MVP3 cubre ejecuciones y edición de puentes, pero deja fuera superficies que la API ya ofrece (credenciales con su historial de versiones, la biblioteca de bloques) y funcionalidades de operación que hoy exigen curl: métricas agregadas, comparación y rollback de versiones, y compartir puentes. Este change dedica un hito completo a cerrar esa brecha: que todo lo que el producto sabe hacer sea visible y operable desde `/console`, más las piezas de solo lectura de API que faltan (definición de una versión concreta, métricas agregadas).
 
-`add-mvp4-users-roles` queda en espera: la consola sigue autenticándose con API key de workspace (acceso aceptado en MVP3).
+Este change se construye **sobre `add-mvp4-users-roles` (archivado)**: la consola ya entra con email y contraseña (o API key de automatización) y la UI ya respeta la matriz de roles — las superficies nuevas nacen por rol: viewer las lee, editor las opera.
 
 ## What Changes
 
@@ -29,5 +29,5 @@ La consola del MVP3 cubre ejecuciones y edición de puentes, pero deja fuera sup
 
 - **Backend**: dos endpoints nuevos de solo lectura (`stats`, definición de versión) — nada cambia de contrato; migraciones: ninguna.
 - **Consola**: tres páginas nuevas, dashboard ampliado y utilidades de lista; sigue sin haber endpoints de negocio exclusivos de la consola.
-- **Compatibilidad**: `add-mvp4-users-roles` queda en espera sin conflicto (este change no toca auth).
+- **Compatibilidad**: construido sobre el MVP4 archivado sin tocar auth: cada superficie nueva aplica la matriz vigente (lectura = viewer, operación de escritura = editor) reutilizando el espejo de roles de la consola.
 - **Fuera de alcance**: edición visual de triggers cron/eventos más allá del JSON actual, notificaciones/alertas, temas claro/oscuro, atajos de teclado.

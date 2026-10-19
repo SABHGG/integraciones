@@ -7,7 +7,7 @@ Métricas agregadas de ejecución del workspace (solo lectura) para que el dashb
 ## ADDED Requirements
 
 ### Requirement: Métricas agregadas del workspace
-El sistema SHALL exponer `GET /api/v1/stats` (plano admin, cualquier identidad del workspace) que agregue sobre `executions` para un rango `from`/`to` (RFC 3339, por defecto últimos 30 días): total de ejecuciones, conteo por estado, serie diaria y duración media de las exitosas (ms). La respuesta SHALL salir de una sola consulta agregada (sin N+1), y los días sin ejecuciones SHALL poder rellenarlos los consumidores del rango.
+El sistema SHALL exponer `GET /api/v1/stats` (plano admin; lectura según la matriz de roles — `viewer` puede leer) que agregue sobre `executions` para un rango `from`/`to` (RFC 3339, por defecto últimos 30 días): total de ejecuciones, conteo por estado, serie diaria y duración media de las exitosas (ms). La respuesta SHALL salir de una sola consulta agregada (sin N+1), y los días sin ejecuciones SHALL poder rellenarlos los consumidores del rango.
 
 #### Scenario: Métricas de un rango
 - **WHEN** se solicita `GET /stats?from=…&to=…` de un workspace con ejecuciones
