@@ -32,11 +32,11 @@
 
 ## 5. Fase 5 — Scheduler cron y disparo manual
 
-- [ ] 5.1 Scheduler en el binario api: pre-encola la próxima ocurrencia con `run_at` = instante programado, `trigger_type: cron` y `trigger_data.scheduled_at`; test con reloj inyectable
-- [ ] 5.2 Política de solape: ocurrencia con ejecución previa `pending|running` → no encola y registra `missed_triggers(overlap)`; test
-- [ ] 5.3 Recuperación de caída: al arrancar encola solo la ocurrencia vencida más reciente y registra el resto como `downtime`; test simulando downtime
-- [ ] 5.4 `POST /api/v1/bridges/{id}/run`: encola ejecución `manual` inmediata de la versión publicada activa y devuelve `executionId` (409 si no hay versión publicada); tests
-- [ ] 5.5 Trigger cron no se expone en `/x`: puente cron publicado no registra ruta de invocación; test
+- [x] 5.1 Scheduler en el binario api: pre-encola la próxima ocurrencia con `run_at` = instante programado, `trigger_type: cron` y `trigger_data.scheduled_at`; test con reloj inyectable
+- [x] 5.2 Política de solape: ocurrencia con ejecución previa `pending|running` → no encola y registra `missed_triggers(overlap)`; test
+- [x] 5.3 Recuperación de caída: al arrancar encola solo la ocurrencia vencida más reciente y registra el resto como `downtime`; test simulando downtime
+- [x] 5.4 `POST /api/v1/bridges/{id}/run`: encola ejecución `manual` inmediata de la versión publicada activa y devuelve `executionId` (409 si no hay versión publicada); tests
+- [x] 5.5 Trigger cron no se expone en `/x`: puente cron publicado no registra ruta de invocación; test
 
 ## 6. Fase 6 — Cierre
 
