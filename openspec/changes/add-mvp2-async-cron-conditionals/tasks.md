@@ -24,11 +24,11 @@
 
 ## 4. Fase 4 — Webhook de resultado firmado
 
-- [ ] 4.1 Definición: `webhook: {url}` validada (https obligatorio) al publicar y congelada en snapshot; secreto HMAC por puente generado y expuesto solo por el plano admin; tests del validador y del endpoint
-- [ ] 4.2 Al terminar una ejecución de puente con webhook: crear fila `webhook_deliveries` con la URL copiada a `executions.webhook_url`, payload = sobre final + metadatos; test contra Postgres real
-- [ ] 4.3 Job de entregas: consume pending con `SKIP LOCKED`, firma HMAC-SHA256 del body crudo + `X-Integraciones-Timestamp` + `X-Integraciones-Delivery`; servidor local de pruebas verifica firma; tests
-- [ ] 4.4 Reintentos: backoff 30 s/2 m/10 m/1 h/6 h, 5 intentos, éxito solo 2xx, estado final `delivered|failed` con último `response_status`; tests con servidor que falla N veces
-- [ ] 4.5 Entrega también en fallo de ejecución (`success: false` + `error.code`); test
+- [x] 4.1 Definición: `webhook: {url}` validada (https obligatorio) al publicar y congelada en snapshot; secreto HMAC por puente generado y expuesto solo por el plano admin; tests del validador y del endpoint
+- [x] 4.2 Al terminar una ejecución de puente con webhook: crear fila `webhook_deliveries` con la URL copiada a `executions.webhook_url`, payload = sobre final + metadatos; test contra Postgres real
+- [x] 4.3 Job de entregas: consume pending con `SKIP LOCKED`, firma HMAC-SHA256 del body crudo + `X-Integraciones-Timestamp` + `X-Integraciones-Delivery`; servidor local de pruebas verifica firma; tests
+- [x] 4.4 Reintentos: backoff 30 s/2 m/10 m/1 h/6 h, 5 intentos, éxito solo 2xx, estado final `delivered|failed` con último `response_status`; tests con servidor que falla N veces
+- [x] 4.5 Entrega también en fallo de ejecución (`success: false` + `error.code`); test
 
 ## 5. Fase 5 — Scheduler cron y disparo manual
 
