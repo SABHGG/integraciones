@@ -198,17 +198,39 @@ impl Harness {
     /// Siembra la credencial `stripe` de la bóveda del workspace (cifrada
     /// igual que la API: los bytes en claro ya no viven en la tabla).
     async fn credencial(&self, name: &str) {
+        // MVP3 (bóveda versionada): sembrar credencial + su versión 1 vigente.
+        let credential_id = Uuid::now_v7();
+        let version_id = Uuid::now_v7();
+        let cifrado = api::vault::encrypt(SECRETO);
+        let mut tx = self.pool.begin().await.expect("tx de siembra");
         sqlx::query(
             "INSERT INTO credentials (id, workspace_id, name, secret_encrypted) \
              VALUES ($1, $2, $3, $4)",
         )
-        .bind(Uuid::now_v7())
+        .bind(credential_id)
         .bind(self.workspace_id)
         .bind(name)
-        .bind(api::vault::encrypt(SECRETO))
-        .execute(&self.pool)
+        .bind(&cifrado)
+        .execute(&mut *tx)
         .await
         .expect("credencial sembrada");
+        sqlx::query(
+            "INSERT INTO credential_versions (id, credential_id, secret_encrypted) \
+             VALUES ($1, $2, $3)",
+        )
+        .bind(version_id)
+        .bind(credential_id)
+        .bind(&cifrado)
+        .execute(&mut *tx)
+        .await
+        .expect("versión 1 sembrada");
+        sqlx::query("UPDATE credentials SET current_version_id = $2 WHERE id = $1")
+            .bind(credential_id)
+            .bind(version_id)
+            .execute(&mut *tx)
+            .await
+            .expect("versión vigente");
+        tx.commit().await.expect("commit de siembra");
     }
 
     /// Petición al plano de invocación `/x/{slug}` (sin auth de administración).

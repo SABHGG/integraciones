@@ -439,6 +439,13 @@ pub(crate) async fn ejecutar_encolada(
         .await
         .map_err(|error| problem::internal(format!("cargar la bóveda: {error}")))?;
 
+    // MVP3: registro de credenciales usadas (auditoría de la bóveda
+    // versionada). El resolutor es síncrono: anota cada resolución real en un
+    // mapa compartido; se persiste con el trace, sin valores.
+    let usadas: Arc<std::sync::Mutex<HashMap<String, (Uuid, Uuid)>>> =
+        Arc::new(std::sync::Mutex::new(HashMap::new()));
+    let usadas_resolutor = Arc::clone(&usadas);
+
     // La corrida: el futuro del ejecutor no es Send (rquickjs full-async),
     // así que corre en un hilo blocking con runtime current-thread + LocalSet.
     let outcome = tokio::task::spawn_blocking(move || {
@@ -448,8 +455,19 @@ pub(crate) async fn ejecutar_encolada(
             .expect("runtime current-thread para el ejecutor");
         let local = tokio::task::LocalSet::new();
         local.block_on(&runtime, async {
-            let invoker = SandboxInvoker::new()
-                .with_credential_resolver(Arc::new(move |name: String| boveda.get(&name).cloned()));
+            let invoker =
+                SandboxInvoker::new().with_credential_resolver(Arc::new(move |name: String| {
+                    match boveda.get(&name) {
+                        Some((secreto, credential_id, version_id)) => {
+                            usadas_resolutor
+                                .lock()
+                                .expect("registro de credenciales usadas")
+                                .insert(name, (*credential_id, *version_id));
+                            Some(secreto.clone())
+                        }
+                        None => None,
+                    }
+                }));
             let executor = Executor::new(invoker);
             executor.run(ChainRun::new(&definition, trigger_data)).await
         })
@@ -459,7 +477,8 @@ pub(crate) async fn ejecutar_encolada(
 
     // Persistencia: pasos con IO completo + cierre en UNA transacción (spec
     // `execution-store`: los pasos se persisten con la avanzación de estado).
-    persist_outcome(&state.pool, execution_id, &outcome)
+    let credentials_used = credential_usadas_json(&usadas);
+    persist_outcome(&state.pool, execution_id, &outcome, credentials_used)
         .await
         .map_err(|error| problem::internal(format!("persistir el resultado: {error}")))?;
 
@@ -630,30 +649,58 @@ fn envelope_response(envelope: Value) -> Response {
         .expect("sobre: builder con status válido no puede fallar")
 }
 
-/// Precarga los secretos de la bóveda del workspace (nombre → secreto) para
-/// el resolutor síncrono de `ctx.credential` y de `{$credential:nombre}` en
-/// bloques built-in. MVP1: pocos secretos por workspace, una consulta. Los
-/// bytes están cifrados en reposo (AES-256-GCM, `vault`); se descifran aquí
-/// y el secreto en claro solo vive en memoria del host.
+/// Precarga la bóveda del workspace: nombre → (secreto, credential_id,
+/// version_id) de la VERSIÓN VIGENTE de cada credencial (MVP3, bóveda
+/// versionada). Pocos secretos por workspace, una consulta. Los bytes están
+/// cifrados en reposo (AES-256-GCM, `vault`); se descifran aquí y el secreto
+/// en claro solo vive en memoria del host.
+type EntradaBoveda = (String, Uuid, Uuid);
+
 async fn cargar_boveda(
     pool: &sqlx::PgPool,
     workspace_id: Uuid,
-) -> Result<HashMap<String, String>, sqlx::Error> {
-    let filas: Vec<(String, Vec<u8>)> =
-        sqlx::query_as("SELECT name, secret_encrypted FROM credentials WHERE workspace_id = $1")
-            .bind(workspace_id)
-            .fetch_all(pool)
-            .await?;
+) -> Result<HashMap<String, EntradaBoveda>, sqlx::Error> {
+    let filas: Vec<(String, Vec<u8>, Uuid, Uuid)> = sqlx::query_as(
+        "SELECT c.name, cv.secret_encrypted, c.id, cv.id \
+         FROM credentials c \
+         JOIN credential_versions cv ON cv.id = c.current_version_id \
+         WHERE c.workspace_id = $1",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await?;
     let mut boveda = HashMap::with_capacity(filas.len());
-    for (name, bytes) in filas {
+    for (name, bytes, credential_id, version_id) in filas {
         let secreto = crate::vault::decrypt(&bytes).map_err(|error| {
             sqlx::Error::Configuration(
                 format!("descifrar la credencial \"{name}\": {error}").into(),
             )
         })?;
-        boveda.insert(name, secreto);
+        boveda.insert(name, (secreto, credential_id, version_id));
     }
     Ok(boveda)
+}
+
+/// Serializa el registro de credenciales usadas (pares credential/version,
+/// con el nombre para lectura humana; jamás valores).
+fn credential_usadas_json(
+    usadas: &std::sync::Mutex<HashMap<String, (Uuid, Uuid)>>,
+) -> Option<Value> {
+    let guard = usadas.lock().expect("registro de credenciales usadas");
+    if guard.is_empty() {
+        return None;
+    }
+    let entradas: Vec<Value> = guard
+        .iter()
+        .map(|(name, (credential_id, version_id))| {
+            json!({
+                "name": name,
+                "credentialId": credential_id,
+                "versionId": version_id,
+            })
+        })
+        .collect();
+    Some(json!({ "credentialsUsed": entradas }))
 }
 
 /// Cierra la ejecución como `failed` con error estructurado y sin pasos
@@ -681,6 +728,7 @@ async fn persist_outcome(
     pool: &sqlx::PgPool,
     execution_id: Uuid,
     outcome: &ExecutionOutcome,
+    credentials_used: Option<Value>,
 ) -> Result<(), sqlx::Error> {
     let status_final = outcome.status.as_str();
     let execution_error = outcome
@@ -722,12 +770,18 @@ async fn persist_outcome(
         .execute(&mut *tx)
         .await?;
     }
-    sqlx::query("UPDATE executions SET status = $2, error = $3, finished_at = now() WHERE id = $1")
-        .bind(execution_id)
-        .bind(status_final)
-        .bind(execution_error)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE executions \
+         SET status = $2, error = $3, credentials_used = COALESCE($4, credentials_used), \
+             finished_at = now() \
+         WHERE id = $1",
+    )
+    .bind(execution_id)
+    .bind(status_final)
+    .bind(execution_error)
+    .bind(credentials_used)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(())
 }

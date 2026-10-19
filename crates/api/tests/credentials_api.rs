@@ -244,7 +244,9 @@ impl Harness {
     /// Lee los bytes crudos de la bóveda.
     async fn bytes_boveda(&self, name: &str) -> Vec<u8> {
         sqlx::query_scalar::<_, Vec<u8>>(
-            "SELECT secret_encrypted FROM credentials WHERE workspace_id = $1 AND name = $2",
+            "SELECT cv.secret_encrypted FROM credentials c \
+             JOIN credential_versions cv ON cv.id = c.current_version_id \
+             WHERE c.workspace_id = $1 AND c.name = $2",
         )
         .bind(self.workspace_id)
         .bind(name)
@@ -502,4 +504,164 @@ async fn delete_elimina_la_credencial_y_luega_404() {
         .admin(Method::GET, &format!("/api/v1/credentials/{id}"), None)
         .await;
     detalle.problem(StatusCode::NOT_FOUND);
+}
+
+// ── bóveda versionada (MVP3, tasks 1.1-1.4) ────────────────────────────
+
+#[tokio::test]
+async fn la_rotacion_crea_versiones_y_el_historial_no_revela_valores() {
+    let Some(h) = begin().await else { return };
+
+    h.post_credencial("stripe-versionada", SECRETO).await;
+    let listado = h
+        .admin(Method::GET, "/api/v1/credentials", None)
+        .await
+        .json();
+    let id = listado["credentials"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Rotaciones: v2 y v3.
+    for secreto in [SECRETO_NUEVO, "tercer-valor-robusto"] {
+        let rotacion = h
+            .admin(
+                Method::PATCH,
+                &format!("/api/v1/credentials/{id}"),
+                Some(json!({ "secret": secreto })),
+            )
+            .await;
+        assert_eq!(rotacion.status, StatusCode::OK, "{}", rotacion.body);
+    }
+
+    // El historial lista metadatos y JAMÁS valores.
+    let historial = h
+        .admin(
+            Method::GET,
+            &format!("/api/v1/credentials/{id}/versions"),
+            None,
+        )
+        .await;
+    assert_eq!(historial.status, StatusCode::OK, "{}", historial.body);
+    assert!(
+        !historial.body.contains(SECRETO)
+            && !historial.body.contains(SECRETO_NUEVO)
+            && !historial.body.contains("tercer-valor-robusto"),
+        "el historial no puede contener valores: {}",
+        historial.body
+    );
+    let historial_json = historial.json();
+    let versiones = historial_json["versions"].as_array().expect("versions");
+    assert_eq!(versiones.len(), 3, "creación + dos rotaciones");
+    for version in versiones {
+        assert!(version["id"].as_str().is_some());
+        assert!(version["rotatedAt"].as_str().is_some());
+        assert!(version.get("secret").is_none() && version.get("secretEncrypted").is_none());
+    }
+
+    // El detalle expone la versión vigente (la 3).
+    let detalle = h
+        .admin(Method::GET, &format!("/api/v1/credentials/{id}"), None)
+        .await
+        .json();
+    assert_eq!(
+        detalle["currentVersionId"], versiones[2]["id"],
+        "la vigente es la última rotación"
+    );
+}
+
+#[tokio::test]
+async fn la_ejecucion_registra_las_versiones_de_credencial_usadas() {
+    let Some(h) = begin().await else { return };
+    let (base, registro) = mock_server().await;
+
+    h.post_credencial("stripe-audit", SECRETO).await;
+    let listado = h
+        .admin(Method::GET, "/api/v1/credentials", None)
+        .await
+        .json();
+    let credential_id = listado["credentials"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let historial = h
+        .admin(
+            Method::GET,
+            &format!("/api/v1/credentials/{credential_id}/versions"),
+            None,
+        )
+        .await
+        .json();
+    let version_v1 = historial["versions"][0]["id"].as_str().unwrap().to_string();
+
+    h.bridge(
+        "auditada",
+        json!([{
+            "id": "b1",
+            "name": "traeUsuario",
+            "code": null,
+            "config": {
+                "url": format!("{base}/users/7"),
+                "method": "GET",
+                "headers": { "X-Api-Key": "{$credential:stripe-audit}" }
+            }
+        }]),
+    )
+    .await;
+
+    // Primera ejecución: usa la versión 1.
+    let sobre = h.x(Method::POST, "auditada", Some(json!({}))).await;
+    assert_eq!(sobre.status, StatusCode::OK, "{}", sobre.body);
+    let execution_id = sobre.json()["executionId"].as_str().unwrap().to_string();
+    registro.lock().unwrap().clear();
+
+    let detalle = h
+        .admin(
+            Method::GET,
+            &format!("/api/v1/executions/{execution_id}"),
+            None,
+        )
+        .await
+        .json();
+    let usadas = detalle["credentialsUsed"]["credentialsUsed"]
+        .as_array()
+        .expect("credentialsUsed");
+    assert_eq!(usadas.len(), 1);
+    assert_eq!(usadas[0]["credentialId"], json!(credential_id));
+    assert_eq!(usadas[0]["versionId"], json!(version_v1));
+    assert_eq!(usadas[0]["name"], json!("stripe-audit"));
+
+    // Rotación a v2: la siguiente ejecución registra la versión 2, sin tocar
+    // ninguna definición; ambas versiones son verificables en el historial.
+    h.admin(
+        Method::PATCH,
+        &format!("/api/v1/credentials/{credential_id}"),
+        Some(json!({ "secret": SECRETO_NUEVO })),
+    )
+    .await;
+    let historial = h
+        .admin(
+            Method::GET,
+            &format!("/api/v1/credentials/{credential_id}/versions"),
+            None,
+        )
+        .await
+        .json();
+    let version_v2 = historial["versions"][1]["id"].as_str().unwrap().to_string();
+
+    let sobre = h.x(Method::POST, "auditada", Some(json!({}))).await;
+    assert_eq!(sobre.status, StatusCode::OK, "{}", sobre.body);
+    let execution_id = sobre.json()["executionId"].as_str().unwrap().to_string();
+    let detalle = h
+        .admin(
+            Method::GET,
+            &format!("/api/v1/executions/{execution_id}"),
+            None,
+        )
+        .await
+        .json();
+    let usadas = detalle["credentialsUsed"]["credentialsUsed"]
+        .as_array()
+        .expect("credentialsUsed");
+    assert_eq!(usadas[0]["versionId"], json!(version_v2), "audita la v2");
 }

@@ -67,6 +67,8 @@ struct ExecutionDetailDto {
     status: String,
     idempotency_key: Option<String>,
     error: Option<Value>,
+    /// MVP3: credenciales usadas (pares credential/version, sin valores).
+    credentials_used: Option<Value>,
     run_at: DateTime<Utc>,
     started_at: Option<DateTime<Utc>>,
     finished_at: Option<DateTime<Utc>>,
@@ -214,7 +216,8 @@ async fn get_execution(
     let id = rest::parse_id(&raw_id, "la ejecución no existe en este workspace")?;
     let row = sqlx::query_as::<_, ExecutionDetailDto>(
         "SELECT id, bridge_id, bridge_version_id, trigger_type, trigger_data, status, \
-                idempotency_key, error, run_at, started_at, finished_at, created_at, updated_at \
+                idempotency_key, error, credentials_used, run_at, started_at, finished_at, \
+                created_at, updated_at \
          FROM executions WHERE id = $1 AND workspace_id = $2",
     )
     .bind(id)

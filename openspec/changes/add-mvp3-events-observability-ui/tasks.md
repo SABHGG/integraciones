@@ -2,10 +2,10 @@
 
 ## 1. Fase 1 — Bóveda versionada con rotación
 
-- [ ] 1.1 Migración: tabla `credential_versions` (valor cifrado, `rotated_at`), copia del secreto vigente como versión 1 y `credentials.current_version_id`; aplicable sobre el schema existente
-- [ ] 1.2 Escritura versionada: `POST`/`PATCH /api/v1/credentials` crea versión inmutable y mueve la vigente; historial de metadatos en `GET` (sin valores nunca); tests RED/GREEN
-- [ ] 1.3 `ctx.credential` resuelve la versión vigente; registro de `executions.credentials_used` (pares credential/version) en la transacción del trace; test contra Postgres real
-- [ ] 1.4 Auditoría: detalle de ejecución expone las versiones usadas, verificables contra el historial; test
+- [x] 1.1 Migración: tabla `credential_versions` (valor cifrado, `rotated_at`), copia del secreto vigente como versión 1 y `credentials.current_version_id`; aplicable sobre el schema existente
+- [x] 1.2 Escritura versionada: `POST`/`PATCH /api/v1/credentials` crea versión inmutable y mueve la vigente; historial de metadatos en `GET` (sin valores nunca); tests RED/GREEN
+- [x] 1.3 `ctx.credential` resuelve la versión vigente; registro de `executions.credentials_used` (pares credential/version) en la transacción del trace; test contra Postgres real
+- [x] 1.4 Auditoría: detalle de ejecución expone las versiones usadas, verificables contra el historial; test
 
 ## 2. Fase 2 — Enmascaramiento
 

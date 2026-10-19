@@ -31,14 +31,18 @@ pub fn router() -> Router<AppState> {
             "/credentials/{id}",
             get(obtener).patch(rotar).delete(eliminar),
         )
+        .route("/credentials/{id}/versions", get(versiones))
 }
 
 /// Metadatos de una credencial: jamás incluye el secreto.
 #[derive(sqlx::FromRow, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CredencialMeta {
     id: Uuid,
     name: String,
     description: String,
+    /// Versión vigente que resuelve `ctx.credential(name)` (MVP3).
+    current_version_id: Option<Uuid>,
     created_at: chrono::DateTime<chrono::Utc>,
     updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -87,7 +91,7 @@ async fn fila_por_id(
     id: Uuid,
 ) -> Result<CredencialMeta, Problem> {
     sqlx::query_as::<_, CredencialMeta>(
-        "SELECT id, name, description, created_at, updated_at \
+        "SELECT id, name, description, current_version_id, created_at, updated_at \
          FROM credentials WHERE workspace_id = $1 AND id = $2",
     )
     .bind(workspace_id)
@@ -111,6 +115,14 @@ async fn crear(
     let id = Uuid::now_v7();
     let cifrado = vault::encrypt(&cuerpo.secret);
 
+    // MVP3 (bóveda versionada): la creación escribe la versión 1 y la deja
+    // vigente, en una sola transacción. La columna legada `secret_encrypted`
+    // se conserva con el mismo valor por seguridad de rollback.
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|error| problem::internal(format!("crear la credencial: {error}")))?;
     sqlx::query(
         "INSERT INTO credentials (id, workspace_id, name, secret_encrypted, description) \
          VALUES ($1, $2, $3, $4, $5)",
@@ -120,7 +132,7 @@ async fn crear(
     .bind(&name)
     .bind(&cifrado)
     .bind(cuerpo.description.unwrap_or_default())
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await
     .map_err(|error| {
         if is_unique_violation(&error) {
@@ -131,6 +143,26 @@ async fn crear(
             problem::internal(format!("crear la credencial: {error}"))
         }
     })?;
+    let version_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO credential_versions (id, credential_id, secret_encrypted) \
+         VALUES ($1, $2, $3)",
+    )
+    .bind(version_id)
+    .bind(id)
+    .bind(&cifrado)
+    .execute(&mut *tx)
+    .await
+    .map_err(|error| problem::internal(format!("crear la versión 1: {error}")))?;
+    sqlx::query("UPDATE credentials SET current_version_id = $2 WHERE id = $1")
+        .bind(id)
+        .bind(version_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| problem::internal(format!("fijar la versión vigente: {error}")))?;
+    tx.commit()
+        .await
+        .map_err(|error| problem::internal(format!("crear la credencial: {error}")))?;
 
     let fila = fila_por_id(&state.pool, workspace_id, id).await?;
     Ok((StatusCode::CREATED, Json(fila)))
@@ -143,7 +175,7 @@ async fn listar(
     let workspace_id = key.workspace()?;
 
     let credenciales: Vec<CredencialMeta> = sqlx::query_as(
-        "SELECT id, name, description, created_at, updated_at \
+        "SELECT id, name, description, current_version_id, created_at, updated_at \
          FROM credentials WHERE workspace_id = $1 ORDER BY name",
     )
     .bind(workspace_id)
@@ -183,12 +215,36 @@ async fn rotar(
         ));
     }
 
-    // El UPDATE no toca el secreto si no viene; si viene, se re-cifra.
+    // MVP3 (bóveda versionada): escribir el valor crea una versión INMUTABLE
+    // y mueve la vigente; renombrar/descríbir no crea versión. En una sola
+    // transacción para que la vigencia nunca quede a medias.
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|error| problem::internal(format!("rotar la credencial: {error}")))?;
+    let nueva_version = if let Some(secreto) = &cuerpo.secret {
+        let version_id = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO credential_versions (id, credential_id, secret_encrypted) \
+             SELECT $1, id, $3 FROM credentials WHERE workspace_id = $2 AND id = $4",
+        )
+        .bind(version_id)
+        .bind(workspace_id)
+        .bind(vault::encrypt(secreto))
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| problem::internal(format!("crear la versión: {error}")))?;
+        Some(version_id)
+    } else {
+        None
+    };
     let resultado = sqlx::query(
         "UPDATE credentials SET \
              name = COALESCE($3, name), \
              description = COALESCE($4, description), \
-             secret_encrypted = COALESCE($5, secret_encrypted), \
+             current_version_id = COALESCE($5, current_version_id), \
              updated_at = now() \
          WHERE workspace_id = $1 AND id = $2",
     )
@@ -196,8 +252,8 @@ async fn rotar(
     .bind(id)
     .bind(cuerpo.name.clone())
     .bind(cuerpo.description.clone())
-    .bind(cuerpo.secret.as_deref().map(vault::encrypt))
-    .execute(&state.pool)
+    .bind(nueva_version)
+    .execute(&mut *tx)
     .await
     .map_err(|error| {
         if is_unique_violation(&error) {
@@ -215,9 +271,46 @@ async fn rotar(
             "la credencial no existe en este workspace",
         ));
     }
+    tx.commit()
+        .await
+        .map_err(|error| problem::internal(format!("rotar la credencial: {error}")))?;
 
     let fila = fila_por_id(&state.pool, workspace_id, id).await?;
     Ok(Json(fila))
+}
+
+/// `GET /credentials/{id}/versions`: historial de versiones como METADATOS
+/// (ids y fechas); jamás devuelve el valor de ninguna versión (write-only se
+/// mantiene en todas). MVP3: rotación auditable.
+async fn versiones(
+    State(state): State<AppState>,
+    Extension(key): Extension<AuthedKey>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>, Problem> {
+    let workspace_id = key.workspace()?;
+    fila_por_id(&state.pool, workspace_id, id).await?;
+
+    #[derive(sqlx::FromRow, serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct VersionMeta {
+        id: Uuid,
+        rotated_at: chrono::DateTime<chrono::Utc>,
+        created_at: chrono::DateTime<chrono::Utc>,
+    }
+    let versiones: Vec<VersionMeta> = sqlx::query_as(
+        "SELECT v.id, v.rotated_at, v.created_at \
+         FROM credential_versions v \
+         JOIN credentials c ON c.id = v.credential_id \
+         WHERE c.workspace_id = $1 AND c.id = $2 \
+         ORDER BY v.rotated_at, v.created_at",
+    )
+    .bind(workspace_id)
+    .bind(id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|error| problem::internal(format!("listar las versiones: {error}")))?;
+
+    Ok(Json(serde_json::json!({ "versions": versiones })))
 }
 
 async fn eliminar(
