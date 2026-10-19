@@ -8,7 +8,8 @@
 pub mod auth;
 pub mod blocks;
 pub mod bridges;
-pub mod credentials;
+pub mod console;
+mod credentials;
 pub mod cursor;
 pub mod docs;
 mod events;
@@ -79,6 +80,7 @@ pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .merge(docs)
+        .merge(console::router())
         .nest("/api/v1", admin)
         .nest("/x", invocation)
         .with_state(state)

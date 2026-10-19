@@ -8,6 +8,8 @@ name = "integraciones-api"
 path = "src/main.rs"
 
 [dependencies]
+rust-embed = "8"
+mime_guess = "2"
 domain.workspace = true
 sandbox.workspace = true
 engine.workspace = true

@@ -29,12 +29,12 @@
 
 ## 5. Fase 5 — Consola web
 
-- [ ] 5.1 Elegir framework SPA ligero (criterio del design D6) y andamiaje: build estático TypeScript embebido en el binario y servido bajo `/console` con el plano admin como única API; test de serving y auth
-- [ ] 5.2 Login con API key (Bearer en todas las llamadas, error del plano admin visible en key inválida); tests e2e del flujo
-- [ ] 5.3 Dashboard de ejecuciones: listado con filtros y cursor, detalle, visor de trace con pasos `skipped` e IO enmascarado; test con ejecución failed real
-- [ ] 5.4 Gestión de puentes: editor visual de la cadena (orden, `when`, rutas de `switch`) que muestra los 422 del validador del servidor sobre el canvas; test de ruta hacia atrás marcada
-- [ ] 5.5 Formularios generados desde el campo `ui` de la versión del bloque (+ JSON genérico si no hay `ui`); test con `http-get`
-- [ ] 5.6 Editor de código TS/JS para `custom_logic` con errores de transpile/schema en línea al publicar; test de error de sintaxis mostrado
+- [x] 5.1 Elegir framework SPA ligero (criterio del design D6) y andamiaje: build estático TypeScript embebido en el binario y servido bajo `/console` con el plano admin como única API; test de serving y auth
+- [x] 5.2 Login con API key (Bearer en todas las llamadas, error del plano admin visible en key inválida); tests e2e del flujo
+- [x] 5.3 Dashboard de ejecuciones: listado con filtros y cursor, detalle, visor de trace con pasos `skipped` e IO enmascarado; test con ejecución failed real
+- [x] 5.4 Gestión de puentes: editor visual de la cadena (orden, `when`, rutas de `switch`) que muestra los 422 del validador del servidor sobre el canvas; test de ruta hacia atrás marcada
+- [x] 5.5 Formularios generados desde el campo `ui` de la versión del bloque (+ JSON genérico si no hay `ui`); test con `http-get`
+- [x] 5.6 Editor de código TS/JS para `custom_logic` con errores de transpile/schema en línea al publicar; test de error de sintaxis mostrado
 
 ## 6. Fase 6 — Cierre
 

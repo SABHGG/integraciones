@@ -100,11 +100,24 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # Consola embebida (MVP3): los assets deben existir para que el test de
+      # serving de /console encuentre el dist construido (no el stub).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+      - name: Build y tests de la consola
+        run: |
+          npm ci
+          npm run build
+          npm test
+        working-directory: console
       - name: Suites de la API (BD compartida `integraciones`)
         run: |
           cargo test -p api --lib --test blocks_api --test bridges_api \
-            --test builtin_http_api --test credentials_api --test e2e_demo \
-            --test executions_api --test retention_api --test webhooks_api
+            --test builtin_http_api --test console_api --test credentials_api --test e2e_demo \
+            --test events_api --test executions_api --test retention_api --test webhooks_api
         env:
           DATABASE_URL: postgres://integraciones:integraciones@127.0.0.1:5433/integraciones
           # Clave de bóveda solo para CI (no es un secreto): ejercita el
