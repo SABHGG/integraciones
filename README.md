@@ -264,7 +264,29 @@ curl -X POST /api/v1/bridges/$ID/dry-run \
 
 **Replay controlado**: `POST /api/v1/executions/{id}/replay` re-ejecuta con la misma versión congelada y la misma entrada (con `replayOf` en `triggerData`), por la cola normal — mismo masking, mismo webhook. El detalle del original lista sus replays; el del replay enlaza al original.
 
-**Consola web**: el mismo binario sirve una SPA en `/console` — entra con tu API key: dashboard de ejecuciones con trace paso a paso, editor visual de puentes (formularios generados desde los metadatos `ui` de cada bloque, errores del validador sobre el canvas, editor de código con los errores de transpile), dry-run con un clic y publicación. Sin backend nuevo: la consola habla exclusivamente con el plano admin.
+**Consola web**: el mismo binario sirve una SPA en `/console` — dashboard de ejecuciones con trace paso a paso, editor visual de puentes (formularios generados desde los metadatos `ui` de cada bloque, errores del validador sobre el canvas, editor de código con los errores de transpile), dry-run con un clic y publicación. Sin backend nuevo: la consola habla exclusivamente con el plano admin. Entra con **email y contraseña** (sesión de usuario) o con tu API key (acceso de automatización/demo).
+
+## Usuarios, roles y miembros (MVP4)
+
+**Cuentas y sesiones**: `POST /api/v1/auth/register` crea la cuenta (contraseña ≥ 10, hash argon2id; error uniforme 401 en login para no revelar si el email existe). El registro no da acceso a ningún workspace: hace falta que un owner añada a la persona por email. `POST /api/v1/auth/login` devuelve un token opaco (guardamos solo su SHA-256) — con una membresía la sesión nace fijada a ese workspace; con varias exige `"workspace": "<slug>"` (409 para elegir). `POST /api/v1/auth/logout` revoca la sesión en el servidor.
+
+```bash
+curl -X POST /api/v1/auth/login -H "Content-Type: application/json" \
+  -d '{"email":"edu@dominio","password":"…","workspace":"mi-ws"}'
+# → {"token":"…","activeWorkspace":{"slug":"mi-ws","role":"editor",…},…}
+```
+
+**Roles declarativos**: `owner > editor > runner > viewer`. La matriz vive en el middleware (`rol_requerido`): lectura = viewer, disparos (run/dry-run/replay/eventos) = runner, escritura de recursos (puentes, bloques, credenciales, publicaciones) = editor, membresía = owner. Las API keys actúan como `owner` (compatibilidad con automatización y CI). El rol se resuelve **por petición**: un cambio de rol o una expulsión surte efecto al instante, sin esperar expiración.
+
+**Miembros** (owner; la lista la ve cualquier identidad autenticada): añadir por email de cuenta existente (`POST /api/v1/members`, 404 claro si aún no se registró, 409 si ya es miembro), cambiar rol (`PATCH /api/v1/members/{userId}`) y expulsar (`DELETE`). El **último owner está protegido**: 409 al degradarlo o expulsarlo hasta que haya otro.
+
+```bash
+curl -X POST /api/v1/members -H "Authorization: Bearer $TOKEN_OWNER" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"edu@dominio","role":"editor"}'   # 201
+```
+
+**Auditoría del disparador**: cada ejecución guarda `triggerPrincipal` — `{"type":"user","email":…}` en disparos y replays de usuario, `{"type":"api_key","name":…}` con keys y `{"type":"system","motivo":"cron"|"emit"}` en los internos (`null` en el ingestor sin identidad). La consola refleja el rol del `whoami`: oculta lo que el rol no permite y muestra los 403 del servidor donde ocurren; la página **Miembros** es editable solo para owners y de lectura para el resto.
 
 ## Seguridad del sandbox
 

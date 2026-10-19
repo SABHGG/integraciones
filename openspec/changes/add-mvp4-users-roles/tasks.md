@@ -27,6 +27,6 @@
 
 ## 5. Fase 5 — Cierre
 
-- [ ] 5.1 OpenAPI: auth (register/login/logout), members, roles en errores 403; validado
-- [ ] 5.2 README: sección de usuarios, roles y login de la consola con ejemplos; límites (sin invitations, sin rate limit) documentados
-- [ ] 5.3 E2E punta a punta: registro → owner añade → login por rol → editor publica → viewer denegado → replay audita email → expulsión revoca acceso; CI verde y archive
+- [x] 5.1 OpenAPI: auth (register/login/logout), members, roles en errores 403; validado
+- [x] 5.2 README: sección de usuarios, roles y login de la consola con ejemplos; límites (sin invitations, sin rate limit) documentados
+- [x] 5.3 E2E punta a punta: registro → owner añade → login por rol → editor publica → viewer denegado → replay audita email → expulsión revoca acceso; CI verde y archive
