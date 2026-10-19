@@ -209,7 +209,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: E2E punta a punta (worker + webhook + scheduler)
-        run: cargo test -p api --test e2e_mvp2
+        run: cargo test -p api --test e2e_mvp2 --test e2e_mvp3
         env:
           DATABASE_URL: postgres://integraciones:integraciones@127.0.0.1:5433/integraciones_e2e
           VAULT_KEY: 63692d7661756c742d6b65792d6e6f742d612d7365637265740000000000000000000000
