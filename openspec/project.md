@@ -11,18 +11,19 @@ El backend está escrito en **Rust** y ejecuta los bloques (JavaScript/TypeScrip
 
 ## Current State
 
-**MVP2 construido** (change `add-mvp2-async-cron-conditionals` archivado el 2026-10-19; 26/26 tareas, 278 tests, clippy limpio, CI verde, repo privado en GitHub): todo el MVP1 más disparo asíncrono con polling, webhook de resultado firmado (HMAC-SHA256 con reintentos), triggers cron (scheduler con solape y recuperación de caída, disparo manual) y puentes condicionales (`when`/`switch` con pasos `skipped`).
+**MVP3 construido** (change `add-mvp3-events-observability-ui` archivado el 2026-10-19; 24/24 tareas, ~315 tests + 10 de la consola, clippy limpio, CI paralelo por categoría con cargo-audit semanal, repo privado en GitHub): todo el MVP2 más bóveda versionada de credenciales (rotación inmutable + auditoría de la versión usada), enmascaramiento declarativo e irreversible (`mask` congelado por versión, `***` antes de persistir), eventos (trigger `event` con fan-out transaccional y `emit.onSuccess/onFailure` al completar), dry-run del borrador con mocks por instancia, replay de ejecuciones (misma versión congelada + `replayOf`, enlace bidireccional) y consola web embebida en `/console` (Preact + Vite + CodeMirror, plan aprobado: SPA ligera sin SSR, rust-embed, cero backend nuevo).
+
+**MVP2 construido** (archivado el 2026-10-19; 26/26 tareas, 278 tests): disparo asíncrono con polling, webhook de resultado firmado (HMAC-SHA256 con reintentos), triggers cron (scheduler con solape y recuperación de caída, disparo manual) y puentes condicionales (`when`/`switch` con pasos `skipped`).
 
 La base de conocimiento vive en:
 
-- `openspec/specs/` — las 9 capacidades vigentes sincronizadas (6 del MVP1 + async-invocation, webhook-delivery y cron-triggers del MVP2)
+- `openspec/specs/` — las 14 capacidades vigentes sincronizadas (6 del MVP1 + 3 del MVP2 + credentials-vault, io-masking, event-triggers, dry-run y execution-replay/web-console del MVP3)
 - `openspec/changes/archive/2026-10-18-add-mvp1-core/` — MVP1 (23/23 tareas)
 - `openspec/changes/archive/2026-10-19-add-mvp2-async-cron-conditionals/` — MVP2 (26/26 tareas)
+- `openspec/changes/archive/2026-10-19-add-mvp3-events-observability-ui/` — MVP3 (24/24 tareas)
 - Memoria Engram del proyecto (topic_keys `integraciones-*`) — acta de las decisiones
 
-Próximo hito documentado como change activo:
-
-- **MVP3** → `changes/add-mvp3-events-observability-ui/` (eventos, dry-run, replay, bóveda versionada, mask, consola web; asume MVP2 aplicado)
+Próximo hito: sin change activo. Candidatos documentados en el roadmap (identidad real de usuarios, entrega garantizada de eventos, e2e de navegador con Playwright).
 
 ## Key Decisions (resumen ejecutivo)
 
@@ -36,7 +37,7 @@ Próximo hito documentado como change activo:
 | Errores | Fail-fast simple; bloque señala error con `throw` nativo |
 | Respuesta HTTP del puente | Sync: 200 con sobre `{success, data, error?, executionId}`; async: 202 + `{success, executionId}`. Códigos de error estables |
 | Datos entre bloques | JSON con schemas estrictos; contexto acumulado con salidas nombradas; referencias con prefijo `$.` (raíces `$.trigger`, `$.now`); ref no resuelta = fail-fast |
-| Observabilidad | IO completo por bloque persistido + replay (MVP2); trazas en `execution_steps` |
+| Observabilidad | IO completo por bloque persistido + replay; trazas en `execution_steps`; credenciales usadas auditable por ejecución; mask irreversible antes de persistir |
 | Secretos | Bóveda compartida por referencia (resuelta en host, nunca en IO); enmascaramiento como red de seguridad; retención configurable (~30 días IO) |
 | Tenancy | Workspaces con roles (owner/editor/runner/viewer); auth v1 = API key global (Bearer), schema preparado para identidad real |
 | Versionado | Versiones inmutables; ejecuciones guardan snapshot de la definición |
@@ -71,7 +72,8 @@ Próximo hito documentado como change activo:
                                     ▼
                      Postgres: blocks, block_versions, bridges,
                      bridge_versions, executions, execution_steps,
-                     webhook_deliveries, missed_triggers, credentials
+                     webhook_deliveries, missed_triggers, credentials,
+                     credential_versions (+ consola /console embebida)
 ```
 
 ## Stack (definitivo — confirmado al construir la Fase 0)
@@ -102,4 +104,4 @@ docker compose up -d          # Postgres (cuando exista compose)
 
 - **MVP1** ✅ archivado (`2026-10-18-add-mvp1-core`) — ejecutor + HTTP sync + store de ejecuciones + biblioteca de bloques + bóveda mínima
 - **MVP2** ✅ archivado (`2026-10-19-add-mvp2-async-cron-conditionals`) — async 202 + polling + webhook de resultado (HMAC con reintentos) + cron (scheduler, solape, recuperación de caída, disparo manual) + **puentes condicionales** (`when` por instancia o bloque `switch` con rutas nombradas; pasos no ejecutados `skipped`; condiciones deterministas sobre `$.`, sin JS arbitrario; prevención de ciclos)
-- **MVP3** → `add-mvp3-events-observability-ui` (asume MVP2) — eventos/colas, dry-run con mocks, replay, bóveda completa (versiones + rotación), enmascaramiento de IO, UI (dashboard, formularios + editor de código)
+- **MVP3** ✅ archivado (`2026-10-19-add-mvp3-events-observability-ui`) — bóveda versionada (rotación + `credentials_used`), mask declarativo irreversible, eventos (trigger `event` + fan-out + `emit`), dry-run con mocks, replay con enlace bidireccional y consola web `/console` (Preact + Vite + CodeMirror embebida en el binario)

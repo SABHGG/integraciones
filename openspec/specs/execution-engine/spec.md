@@ -27,7 +27,7 @@ El ejecutor SHALL ser un componente independiente del transporte HTTP que recibe
 - **AND** ningún código de ejecución de bloques vive dentro del handler de request/response
 
 ### Requirement: Cadena lineal con fail-fast
-El ejecutor SHALL recorrer los bloques instanciados en orden de cadena: resolver el input de cada bloque desde el contexto (referencias `$.`), validarlo contra el inputSchema del bloque, invocar el sandbox y registrar la salida nombrada. Una instancia con `when` cuya condición evalúa a falso SHALL registrarse como `skipped` sin invocar el sandbox ni producir salida; un bloque `switch` SHALL evaluar sus condiciones en orden de declaración, saltar a la primera ruta verdadera (o a `default` si existe) y registrar las rutas no tomadas como `skipped`. En la ruta efectivamente tomada, el primer error SHALL terminar la ejecución en estado failed con el error registrado en el trace.
+El ejecutor SHALL recorrer los bloques en orden de cadena: resolver el input desde el contexto (`$.`), validarlo contra el inputSchema e invocar el sandbox, registrando la salida. Un `when` falso SHALL registrar el paso como `skipped` (sin invocación ni salida); un `switch` SHALL evaluar en orden y saltar a la primera ruta verdadera (o a `default`), dejando el resto `skipped`. El primer error SHALL terminar la ejecución en failed, con el error en el trace.
 
 #### Scenario: Error de bloque detiene la cadena
 - **WHEN** el segundo bloque de una cadena de tres lanza `throw`
