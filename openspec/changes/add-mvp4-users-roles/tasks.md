@@ -9,9 +9,9 @@
 
 ## 2. Fase 2 — Matriz de roles
 
-- [ ] 2.1 Matriz declarativa (segmento + método → rol mínimo) evaluada en un punto tras autenticar: `403` con rol requerido, `401` sin identidad; test unitario exhaustivo de la matriz
-- [ ] 2.2 API keys existentes = `owner` (backcompat CI/seed); tests de que ningún contrato de éxito cambia con key
-- [ ] 2.3 Tests de integración por rol sobre recursos reales: viewer no edita, runner dispara pero no crea, editor administra sin tocar membresía, owner todo
+- [x] 2.1 Matriz declarativa (segmento + método → rol mínimo) evaluada en un punto tras autenticar: `403` con rol requerido, `401` sin identidad; test unitario exhaustivo de la matriz
+- [x] 2.2 API keys existentes = `owner` (backcompat CI/seed); tests de que ningún contrato de éxito cambia con key
+- [x] 2.3 Tests de integración por rol sobre recursos reales: viewer no edita, runner dispara pero no crea, editor administra sin tocar membresía, owner todo
 
 ## 3. Fase 3 — Miembros
 

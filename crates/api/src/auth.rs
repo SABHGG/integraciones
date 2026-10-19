@@ -48,6 +48,53 @@ impl Role {
             Role::Viewer => "viewer",
         }
     }
+
+    /// ¿Cubre este rol lo que exige `requerido`? La jerarquía es lineal:
+    /// owner ⊃ editor ⊃ runner ⊃ viewer.
+    pub fn cubre(self, requerido: Role) -> bool {
+        self.rango() >= requerido.rango()
+    }
+
+    /// Rango de jerarquía: a más alto, más cubre.
+    fn rango(self) -> u8 {
+        match self {
+            Role::Viewer => 0,
+            Role::Runner => 1,
+            Role::Editor => 2,
+            Role::Owner => 3,
+        }
+    }
+}
+
+/// Acciones de EJECUCIÓN (runner): disparar, ensayar, re-ejecutar, publicar
+/// eventos. Cualquier otra escritura es administración de recursos (editor).
+fn es_accion_ejecutar(segmentos: &[&str]) -> bool {
+    matches!(
+        segmentos.last(),
+        Some(&"run") | Some(&"dry-run") | Some(&"replay")
+    )
+}
+
+/// Matriz de permisos del plano admin (design D4), declarativa y en UN solo
+/// lugar: (método, ruta) → rol mínimo. `GET` es lectura (viewer); ejecutar
+/// (run/dry-run/replay y publicar eventos) es runner; el resto de escrituras
+/// administran recursos (editor); la membresía es del owner. `whoami` es de
+/// cualquier identidad. Las rutas `/auth/*` nunca llegan aquí (router público).
+pub fn rol_requerido(metodo: &str, ruta: &str) -> Role {
+    let ruta = ruta.trim_start_matches("/api/v1");
+    let segmentos: Vec<&str> = ruta.split('/').filter(|s| !s.is_empty()).collect();
+    match segmentos.first().copied() {
+        Some("whoami") => Role::Viewer,
+        Some("members") => Role::Owner,
+        Some("events") => Role::Runner,
+        _ if metodo == "GET" => Role::Viewer,
+        _ if matches!(segmentos.first(), Some(&"bridges") | Some(&"executions"))
+            && es_accion_ejecutar(&segmentos) =>
+        {
+            Role::Runner
+        }
+        _ => Role::Editor,
+    }
 }
 
 /// Quién está detrás del `Bearer` (auditoría y `whoami`).
@@ -252,6 +299,18 @@ pub async fn require_auth(
         }
     };
 
+    // Matriz de roles (design D4): denegación 403 con el rol requerido,
+    // ANTES de que el handler toque nada.
+    let requerido = rol_requerido(req.method().as_str(), req.uri().path());
+    if !autenticada.role.cubre(requerido) {
+        return Err(problem::forbidden(format!(
+            "esta acción requiere rol {} y tu identidad tiene {}",
+            requerido.etiqueta(),
+            autenticada.role.etiqueta()
+        ))
+        .into_response());
+    }
+
     req.extensions_mut().insert(autenticada);
     Ok(next.run(req).await)
 }
@@ -388,6 +447,65 @@ mod tests {
         assert_eq!(Role::from_db("owner"), Ok(Role::Owner));
         assert_eq!(Role::from_db("viewer"), Ok(Role::Viewer));
         assert!(Role::from_db("emperador").is_err());
+    }
+
+    #[test]
+    fn la_matriz_de_roles_cubre_todas_las_rutas_del_plano() {
+        use Role::{Editor, Owner, Runner, Viewer};
+        // (método, ruta, rol mínimo)
+        let casos = [
+            // lectura: cualquier identidad
+            ("GET", "/api/v1/bridges", Viewer),
+            ("GET", "/api/v1/executions", Viewer),
+            ("GET", "/api/v1/executions/x/trace", Viewer),
+            ("GET", "/api/v1/credentials", Viewer),
+            ("GET", "/api/v1/blocks", Viewer),
+            ("GET", "/api/v1/whoami", Viewer),
+            // ejecución: runner
+            (
+                "POST",
+                "/api/v1/bridges/123e4567-e89b-12d3-a456-426614174000/run",
+                Runner,
+            ),
+            (
+                "POST",
+                "/api/v1/bridges/123e4567-e89b-12d3-a456-426614174000/dry-run",
+                Runner,
+            ),
+            (
+                "POST",
+                "/api/v1/executions/123e4567-e89b-12d3-a456-426614174000/replay",
+                Runner,
+            ),
+            ("POST", "/api/v1/events/pedido.creado", Runner),
+            // administración de recursos: editor
+            ("POST", "/api/v1/blocks", Editor),
+            ("POST", "/api/v1/blocks/x/versions", Editor),
+            ("PATCH", "/api/v1/bridges/x", Editor),
+            ("POST", "/api/v1/bridges/x/versions", Editor),
+            ("POST", "/api/v1/credentials", Editor),
+            ("PATCH", "/api/v1/credentials/x", Editor),
+            ("DELETE", "/api/v1/credentials/x", Editor),
+            ("POST", "/api/v1/bridges", Editor),
+            ("DELETE", "/api/v1/bridges/x", Editor),
+            // membresía: owner
+            ("GET", "/api/v1/members", Owner),
+            ("POST", "/api/v1/members", Owner),
+            ("PATCH", "/api/v1/members/x", Owner),
+            ("DELETE", "/api/v1/members/x", Owner),
+        ];
+        for (metodo, ruta, esperado) in casos {
+            assert_eq!(rol_requerido(metodo, ruta), esperado, "{metodo} {ruta}");
+        }
+        // La jerarquía lineal: owner cubre todo; viewer solo lectura.
+        assert!(
+            Role::Owner.cubre(Editor) && Role::Editor.cubre(Runner) && Role::Runner.cubre(Viewer)
+        );
+        assert!(
+            !Role::Viewer.cubre(Runner)
+                && !Role::Runner.cubre(Editor)
+                && !Role::Editor.cubre(Owner)
+        );
     }
 
     #[test]

@@ -465,3 +465,239 @@ async fn la_api_key_sigue_autenticando_como_owner() {
     let puentes = h.get("/api/v1/bridges", Some(&h.key), None).await;
     assert_eq!(puentes.status, StatusCode::OK, "{}", puentes.body);
 }
+
+// ── matriz de roles (MVP4, fase 2, spec `workspace-roles`) ─────────────
+
+impl Harness {
+    /// Crea un usuario con el rol dado en el workspace de test y devuelve
+    /// su token de sesión (con el workspace ya fijado).
+    async fn token_con_rol(&self, nombre: &str, rol: &str) -> String {
+        let (email, password, _) = self.registrar(nombre).await;
+        self.sembrar_miembro(&email, rol).await;
+        let (status, cuerpo) = self
+            .post(
+                "/api/v1/auth/login",
+                None,
+                Some(json!({ "email": email, "password": password, "workspace": self.workspace_slug })),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{cuerpo}");
+        let sobre: Value = serde_json::from_str(&cuerpo).expect("JSON de login");
+        sobre["token"].as_str().expect("token").to_string()
+    }
+
+    /// Petición que devuelve (status, cuerpo) — cómoda para los tests de roles.
+    async fn http(
+        &self,
+        method: &str,
+        uri: &str,
+        bearer: Option<&str>,
+        body: Option<Value>,
+    ) -> (StatusCode, String) {
+        let respuesta = self.enviar(method, uri, bearer, body).await;
+        (respuesta.status, respuesta.body)
+    }
+
+    /// Siembra un puente publicado v1 (eco JS) para disparos, con el mismo
+    /// contenido como borrador válido (el dry-run ensaya el borrador y exige
+    /// blockId/blockVersionId reales).
+    async fn sembrar_puente_publicado(&self, slug: &str) -> Uuid {
+        let bridge_id = Uuid::now_v7();
+        let block_id = Uuid::now_v7();
+        let block_version_id = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO blocks (id, workspace_id, slug, name, block_type) \
+             VALUES ($1, $2, $3, $4, 'custom_logic')",
+        )
+        .bind(block_id)
+        .bind(self.workspace_id)
+        .bind(format!("eco-{slug}"))
+        .bind(format!("Eco {slug}"))
+        .execute(&self.pool)
+        .await
+        .expect("bloque");
+        sqlx::query(
+            "INSERT INTO block_versions (id, block_id, version, code) \
+             VALUES ($1, $2, 1, 'export default () => ({ ok: true });')",
+        )
+        .bind(block_version_id)
+        .bind(block_id)
+        .execute(&self.pool)
+        .await
+        .expect("block_version");
+        let definition = json!({
+            "trigger": { "type": "http", "method": "POST", "path": format!("/x/{slug}") },
+            "blocks": [{
+                "id": "b1", "name": "eco",
+                "blockId": block_id,
+                "blockVersionId": block_version_id,
+                "input": {}, "config": {}, "outputSchema": {}
+            }]
+        });
+        sqlx::query(
+            "INSERT INTO bridges (id, workspace_id, slug, name, draft) VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(bridge_id)
+        .bind(self.workspace_id)
+        .bind(slug)
+        .bind(format!("Puente {slug}"))
+        .bind(&definition)
+        .execute(&self.pool)
+        .await
+        .expect("bridge");
+        sqlx::query(
+            "INSERT INTO bridge_versions (id, bridge_id, version, definition) VALUES ($1, $2, 1, $3)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(bridge_id)
+        .bind(&definition)
+        .execute(&self.pool)
+        .await
+        .expect("bridge_version");
+        sqlx::query("UPDATE bridges SET latest_version = 1 WHERE id = $1")
+            .bind(bridge_id)
+            .execute(&self.pool)
+            .await
+            .expect("latest_version");
+        bridge_id
+    }
+}
+
+#[tokio::test]
+async fn el_viewer_solo_lee_y_el_resto_es_403_con_el_rol_requerido() {
+    let Some(h) = begin().await else { return };
+    let token = h.token_con_rol("viewer", "viewer").await;
+
+    // Lectura: OK.
+    let lectura = h.get("/api/v1/bridges", Some(&token), None).await;
+    assert_eq!(lectura.status, StatusCode::OK, "{}", lectura.body);
+
+    // Escrituras de recursos: 403 con el rol requerido en el detalle.
+    for (metodo, uri, cuerpo) in [
+        (
+            "POST",
+            "/api/v1/blocks",
+            Some(json!({"slug": "x", "name": "x", "blockType": "custom_logic"})),
+        ),
+        (
+            "POST",
+            "/api/v1/credentials",
+            Some(json!({"name": "c", "secret": "secreto-largo"})),
+        ),
+        (
+            "DELETE",
+            "/api/v1/credentials/123e4567-e89b-12d3-a456-426614174000",
+            None,
+        ),
+    ] {
+        let (status, cuerpo_respuesta) = h.http(metodo, uri, Some(&token), cuerpo).await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "{metodo} {uri}: {cuerpo_respuesta}"
+        );
+        assert!(
+            cuerpo_respuesta.contains("editor"),
+            "el 403 debe nombrar el rol requerido: {cuerpo_respuesta}"
+        );
+    }
+
+    // Ejecución también supera su techo (viewer < runner).
+    let puente = h.sembrar_puente_publicado("para-viewer").await;
+    let (status, cuerpo_respuesta) = h
+        .http(
+            "POST",
+            &format!("/api/v1/bridges/{puente}/run"),
+            Some(&token),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{cuerpo_respuesta}");
+    assert!(cuerpo_respuesta.contains("runner"), "{cuerpo_respuesta}");
+}
+
+#[tokio::test]
+async fn el_runner_ejecuta_pero_no_administra_recursos() {
+    let Some(h) = begin().await else { return };
+    let token = h.token_con_rol("runner", "runner").await;
+    let puente = h.sembrar_puente_publicado("para-runner").await;
+
+    // Ejecutar: disparo manual, dry-run y publicación de evento.
+    let (status, _) = h
+        .http(
+            "POST",
+            &format!("/api/v1/bridges/{puente}/run"),
+            Some(&token),
+            None,
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::ACCEPTED,
+        "el disparo manual es de runner"
+    );
+
+    let (status, cuerpo) = h
+        .http(
+            "POST",
+            &format!("/api/v1/bridges/{puente}/dry-run"),
+            Some(&token),
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{cuerpo}");
+
+    let (status, _) = h
+        .http(
+            "POST",
+            "/api/v1/events/runner.topic",
+            Some(&token),
+            Some(json!({"x": 1})),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::ACCEPTED,
+        "publicar eventos es de runner"
+    );
+
+    // Administrar recursos: 403.
+    let (status, cuerpo) = h
+        .http(
+            "POST",
+            "/api/v1/blocks",
+            Some(&token),
+            Some(json!({"slug": "no-puede", "name": "no", "blockType": "custom_logic"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{cuerpo}");
+}
+
+#[tokio::test]
+async fn el_editor_administra_recursos_pero_no_la_membresia() {
+    let Some(h) = begin().await else { return };
+    let token = h.token_con_rol("editor", "editor").await;
+
+    // Crear bloque (recurso): OK.
+    let (status, cuerpo) = h
+        .http(
+            "POST",
+            "/api/v1/blocks",
+            Some(&token),
+            Some(json!({"slug": "de-editor", "name": "de editor", "blockType": "custom_logic"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{cuerpo}");
+
+    // Membresía: 403 con rol owner (la matriz corre antes del 404 de ruta).
+    let (status, cuerpo) = h
+        .http(
+            "PATCH",
+            "/api/v1/members/123e4567-e89b-12d3-a456-426614174000",
+            Some(&token),
+            Some(json!({"role": "viewer"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{cuerpo}");
+    assert!(cuerpo.contains("owner"), "{cuerpo}");
+}
