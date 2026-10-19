@@ -158,6 +158,15 @@ async fn invoke_slug(
             ))
         })?;
 
+    // 1.bis. Un puente con trigger cron no se expone en el plano de
+    // invocación (spec `cron-triggers`): 404 indistinguible de un slug
+    // inexistente, antes de cualquier otro chequeo.
+    if definition.trigger.trigger_type == domain::definition::TriggerType::Cron {
+        return Err(problem::not_found(format!(
+            "no existe un puente publicado con slug {slug:?}"
+        )));
+    }
+
     // 2. Matching del method del trigger (insensible a mayúsculas).
     let allowed = definition.trigger.method.as_deref().unwrap_or("GET");
     if !allowed.eq_ignore_ascii_case(method.as_str()) {

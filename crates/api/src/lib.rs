@@ -16,6 +16,7 @@ pub mod invoke;
 pub mod problem;
 pub mod rest;
 pub mod retention;
+pub mod scheduler;
 pub mod state;
 pub mod transpile;
 pub mod ui;

@@ -45,6 +45,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "job de retención activo"
     );
 
+    // Scheduler de triggers cron (MVP2): recuperación de caída + tick por
+    // segundo. MVP2 asume instancia única (design.md D5).
+    api::scheduler::spawn(AppState { pool: pool.clone() });
+    tracing::info!("scheduler cron activo");
+
     // Worker de la cola de ejecuciones (MVP2): reclama y corre las filas
     // `pending` de disparos asíncronos, cron y manuales con SKIP LOCKED.
     // MVP2 asume instancia única (design.md D5): con réplicas haría falta
