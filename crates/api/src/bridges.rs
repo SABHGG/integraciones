@@ -725,6 +725,7 @@ pub fn router() -> Router<AppState> {
             "/bridges/{id}/versions",
             post(publish_version).get(list_versions),
         )
+        .route("/bridges/{id}/versions/{version}", get(version_definition))
         .route("/bridges/{id}/webhook-secret", get(get_webhook_secret))
         .route("/bridges/{id}/run", post(run_bridge))
         .route("/bridges/{id}/dry-run", post(dry_run))
@@ -2320,4 +2321,58 @@ mod tests {
             mensajes(&issues)
         );
     }
+}
+
+/// DTO de la definición congelada de una versión (spec `bridge-version-access`).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VersionDefinitionDto {
+    id: Uuid,
+    version: i32,
+    created_at: DateTime<Utc>,
+    definition: Value,
+}
+
+/// `GET /bridges/{id}/versions/{version}` — definición congelada de una
+/// versión publicada (MVP5, design D2): solo lectura; 400 si `version` no
+/// es un entero, 404 si la versión no existe en el puente del workspace.
+async fn version_definition(
+    State(state): State<AppState>,
+    Extension(key): Extension<AuthedKey>,
+    Path((raw_id, raw_version)): Path<(String, String)>,
+) -> Result<Json<VersionDefinitionDto>, Problem> {
+    let workspace_id = key.workspace()?;
+    let id = rest::parse_id(&raw_id, "el puente no existe en este workspace")?;
+    let version: i32 = raw_version
+        .parse()
+        .map_err(|_| problem::bad_request("la versión debe ser un número entero"))?;
+    sqlx::query_as::<_, VersionDefinitionRow>(
+        "SELECT bv.id, bv.version, bv.created_at, bv.definition \
+         FROM bridge_versions bv JOIN bridges b ON b.id = bv.bridge_id \
+         WHERE bv.bridge_id = $1 AND b.workspace_id = $2 AND bv.version = $3",
+    )
+    .bind(id)
+    .bind(workspace_id)
+    .bind(version)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|error| rest::db_error("recuperar la versión", error))?
+    .map(|row| {
+        Json(VersionDefinitionDto {
+            id: row.id,
+            version: row.version,
+            created_at: row.created_at,
+            definition: row.definition,
+        })
+    })
+    .ok_or_else(|| problem::not_found("la versión no existe en este puente"))
+}
+
+/// Fila cruda de la consulta (definition jsonb → Value).
+#[derive(Debug, sqlx::FromRow)]
+struct VersionDefinitionRow {
+    id: Uuid,
+    version: i32,
+    created_at: DateTime<Utc>,
+    definition: Value,
 }

@@ -20,6 +20,7 @@ pub mod rest;
 pub mod retention;
 pub mod scheduler;
 pub mod state;
+pub mod stats;
 pub mod transpile;
 pub mod ui;
 pub mod users;
@@ -62,6 +63,7 @@ pub fn app(state: AppState) -> Router {
         .merge(executions::router())
         .merge(events::router())
         .merge(users::router_miembros())
+        .merge(stats::router())
         // Cualquier ruta /api/v1 desconocida responde Problem Details: el
         // cliente del plano admin solo habla application/problem+json.
         .fallback(|| async { problem::not_found("la ruta no existe en la API") })

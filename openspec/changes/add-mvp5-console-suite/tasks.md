@@ -2,9 +2,9 @@
 
 ## 1. Fase 1 — Backend de lectura
 
-- [ ] 1.1 `GET /api/v1/stats{?from,to}`: agregación única (serie diaria, estados, media de exitosas, desglose por puente con slug; límite de 90 días); tests de agregación con ejecuciones reales y de rango inválido 400
-- [ ] 1.2 `GET /bridges/{id}/versions/{version}`: definición congelada (400 no-entero, 404 inexistente, definition idéntica al snapshot); tests
-- [ ] 1.3 OpenAPI de ambos endpoints con `security` bearerAuth y 401/403 documentados (patrón del cierre MVP4); Scalar servido al día
+- [x] 1.1 `GET /api/v1/stats{?from,to}`: agregación única (serie diaria, estados, media de exitosas, desglose por puente con slug; límite de 90 días); tests de agregación con ejecuciones reales y de rango inválido 400
+- [x] 1.2 `GET /bridges/{id}/versions/{version}`: definición congelada (400 no-entero, 404 inexistente, definition idéntica al snapshot); tests
+- [x] 1.3 OpenAPI de ambos endpoints con `security` bearerAuth y 401/403 documentados (patrón del cierre MVP4); Scalar servido al día
 
 ## 2. Fase 2 — Credenciales en la consola
 

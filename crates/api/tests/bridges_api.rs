@@ -1376,3 +1376,57 @@ async fn el_dry_run_de_un_borrador_invalido_es_422() {
     );
     assert!(ensayo.body.contains("validación"), "{}", ensayo.body);
 }
+
+// ── definición congelada de una versión (MVP5, spec `bridge-version-access`) ──
+
+#[tokio::test]
+async fn la_definicion_congelada_de_una_version_se_recupera_exacta() {
+    let Some(h) = begin().await else { return };
+    let bridge_id = Uuid::now_v7();
+    sqlx::query("INSERT INTO bridges (id, workspace_id, slug, name) VALUES ($1, $2, $3, $4)")
+        .bind(bridge_id)
+        .bind(h.workspace_id)
+        .bind("congelada")
+        .bind("Puente congelada")
+        .execute(&h.pool)
+        .await
+        .expect("bridge");
+    let definition = json!({
+        "trigger": { "type": "http", "method": "POST", "path": "/x/congelada" },
+        "blocks": [{ "id": "b1", "name": "eco", "input": {"marca": "v1"} }]
+    });
+    sqlx::query(
+        "INSERT INTO bridge_versions (id, bridge_id, version, definition) \
+         VALUES ($1, $2, 1, $3)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(bridge_id)
+    .bind(&definition)
+    .execute(&h.pool)
+    .await
+    .expect("versión 1");
+
+    let base = format!("/api/v1/bridges/{bridge_id}/versions");
+
+    // Recuperación exacta del snapshot.
+    let r = h
+        .send(Method::GET, &format!("{base}/1"), Some(&h.key), None)
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let cuerpo = r.json();
+    assert_eq!(cuerpo["version"], json!(1));
+    assert_eq!(cuerpo["definition"], definition, "definición idéntica");
+    assert!(cuerpo["id"].is_string());
+    assert!(cuerpo["createdAt"].is_string());
+
+    // Versión inexistente → 404; versión no entera → 400.
+    let r = h
+        .send(Method::GET, &format!("{base}/9"), Some(&h.key), None)
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND, "{}", r.body);
+    let r = h
+        .send(Method::GET, &format!("{base}/abc"), Some(&h.key), None)
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST, "{}", r.body);
+    assert!(r.body.contains("entero"), "{}", r.body);
+}

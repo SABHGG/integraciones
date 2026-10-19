@@ -117,7 +117,7 @@ jobs:
         run: |
           cargo test -p api --lib --test blocks_api --test bridges_api \
             --test builtin_http_api --test console_api --test credentials_api --test e2e_demo \
-            --test events_api --test executions_api --test retention_api --test users_api --test webhooks_api
+            --test events_api --test executions_api --test retention_api --test stats_api --test users_api --test webhooks_api
         env:
           DATABASE_URL: postgres://integraciones:integraciones@127.0.0.1:5433/integraciones
           # Clave de bóveda solo para CI (no es un secreto): ejercita el
