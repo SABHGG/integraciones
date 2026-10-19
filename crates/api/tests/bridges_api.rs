@@ -969,3 +969,78 @@ async fn el_secreto_de_un_puente_sin_webhook_es_404() {
     let respuesta = h.get(&format!("/api/v1/bridges/{id}/webhook-secret")).await;
     respuesta.problem(StatusCode::NOT_FOUND);
 }
+
+// ── disparo manual y cron fuera de /x (MVP2, tasks 5.4-5.5) ────────────
+
+#[tokio::test]
+async fn run_encola_un_disparo_manual_inmediato_de_la_version_publicada() {
+    let Some(h) = begin().await else { return };
+
+    let origen = bloque_origen(&h, "run").await;
+    let draft = json!({
+        "trigger": { "type": "cron", "schedule": "0 9 * * 1-5", "timezone": "Europe/Madrid" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+    });
+    let id = h.create_bridge("runnable").await["id"].as_str().unwrap().to_string();
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+    h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+
+    let response = h.post(&format!("/api/v1/bridges/{id}/run"), None).await;
+    assert_eq!(response.status, StatusCode::ACCEPTED, "{}", response.body);
+    let sobre = response.json();
+    let execution_id = sobre["executionId"].as_str().expect("executionId");
+
+    // La ejecución nace `manual`, `pending`, con run_at inmediato.
+    let (tipo, estado): (String, String) = sqlx::query_as(
+        "SELECT trigger_type, status FROM executions WHERE id = $1",
+    )
+    .bind(execution_id.parse::<Uuid>().expect("uuid"))
+    .fetch_one(&h.pool)
+    .await
+    .expect("ejecución");
+    assert_eq!((tipo.as_str(), estado.as_str()), ("manual", "pending"));
+}
+
+#[tokio::test]
+async fn run_sin_version_publicada_es_409() {
+    let Some(h) = begin().await else { return };
+
+    let bridge = h.create_bridge("sin-publicar-run").await;
+    let id = bridge["id"].as_str().unwrap().to_string();
+
+    let response = h.post(&format!("/api/v1/bridges/{id}/run"), None).await;
+    let problem = response.problem(StatusCode::CONFLICT);
+    assert!(
+        problem["detail"].as_str().unwrap_or("").contains("versión publicada"),
+        "{problem:?}"
+    );
+}
+
+#[tokio::test]
+async fn un_puente_cron_publicado_no_se_expone_en_x() {
+    let Some(h) = begin().await else { return };
+
+    let origen = bloque_origen(&h, "cronx").await;
+    let draft = json!({
+        "trigger": { "type": "cron", "schedule": "*/5 * * * *", "timezone": "UTC" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+    });
+    let id = h.create_bridge("solo-cron").await["id"].as_str().unwrap().to_string();
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    assert_eq!(published.status, StatusCode::CREATED, "{}", published.body);
+
+    // Ni POST ni GET: el cron no registra ruta de invocación.
+    let post = h
+        .send(
+            Method::POST,
+            "/x/solo-cron",
+            None,
+            Some(json!({ "cualquier": "cosa" })),
+        )
+        .await;
+    post.problem(StatusCode::NOT_FOUND);
+
+    let get = h.send(Method::GET, "/x/solo-cron", None, None).await;
+    get.problem(StatusCode::NOT_FOUND);
+}

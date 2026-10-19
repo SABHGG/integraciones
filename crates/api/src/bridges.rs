@@ -710,6 +710,7 @@ pub fn router() -> Router<AppState> {
             post(publish_version).get(list_versions),
         )
         .route("/bridges/{id}/webhook-secret", get(get_webhook_secret))
+        .route("/bridges/{id}/run", post(run_bridge))
 }
 
 // ------------------------------------------------------------ Handlers ---
@@ -1440,6 +1441,61 @@ async fn get_webhook_secret(
         "secret": secreto_en_claro,
     })))
 }
+
+
+/// `POST /bridges/{id}/run`: disparo manual inmediato (MVP2, spec
+/// `cron-triggers`): encola una ejecución `manual` de la versión publicada
+/// activa con `run_at` inmediato y devuelve su `executionId`. Sin versión
+/// publicada → 409 Problem (el worker la correrá en cuanto la reclame).
+async fn run_bridge(
+    State(state): State<AppState>,
+    Extension(key): Extension<AuthedKey>,
+    Path(raw_id): Path<String>,
+) -> Result<(StatusCode, Json<Value>), Problem> {
+    let workspace_id = key.workspace()?;
+    let id = rest::parse_id(&raw_id, "el puente no existe en este workspace")?;
+
+    let Some((version_id,)): Option<(Uuid,)> = sqlx::query_as(
+        "SELECT bv.id FROM bridges b \
+         JOIN bridge_versions bv ON bv.bridge_id = b.id AND bv.version = b.latest_version \
+         WHERE b.id = $1 AND b.workspace_id = $2 AND b.latest_version IS NOT NULL",
+    )
+    .bind(id)
+    .bind(workspace_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|error| problem::internal(format!("cargar la versión activa: {error}")))?
+    else {
+        return Err(Problem::new(
+            StatusCode::CONFLICT,
+            "no-published-version",
+            "Conflict",
+        )
+        .with_detail("el puente no tiene versión publicada: publícala antes de ejecutarlo"));
+    };
+
+    let execution_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO executions \
+             (id, workspace_id, bridge_id, bridge_version_id, trigger_type, trigger_data, \
+              status, run_at) \
+         VALUES ($1, $2, $3, $4, 'manual', '{}', 'pending', now())",
+    )
+    .bind(execution_id)
+    .bind(workspace_id)
+    .bind(id)
+    .bind(version_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|error| problem::internal(format!("encolar el disparo manual: {error}")))?;
+
+    tracing::info!(execution = %execution_id, bridge = %id, "disparo manual encolado");
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(json!({ "executionId": execution_id })),
+    ))
+}
+
 
 #[cfg(test)]
 mod tests {
