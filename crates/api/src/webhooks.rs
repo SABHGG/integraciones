@@ -83,12 +83,13 @@ pub async fn procesar_una_entrega(state: &AppState) -> Result<bool, Problem> {
     else {
         return Ok(false);
     };
-    let attempts: i32 =
-        sqlx::query_scalar("UPDATE webhook_deliveries SET attempts = attempts + 1 WHERE id = $1 RETURNING attempts")
-            .bind(delivery_id)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(|error| problem::internal(format!("webhooks: contar el intento: {error}")))?;
+    let attempts: i32 = sqlx::query_scalar(
+        "UPDATE webhook_deliveries SET attempts = attempts + 1 WHERE id = $1 RETURNING attempts",
+    )
+    .bind(delivery_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|error| problem::internal(format!("webhooks: contar el intento: {error}")))?;
     let backoff = BACKOFF_SECS
         .get((attempts - 1).max(0) as usize)
         .copied()
@@ -109,8 +110,7 @@ pub async fn procesar_una_entrega(state: &AppState) -> Result<bool, Problem> {
         .map_err(|error| problem::internal(format!("webhooks: confirmar el claim: {error}")))?;
 
     // 2. Payload + secreto.
-    let (secreto, payload) =
-        construir_entrega(state, delivery_id, execution_id).await?;
+    let (secreto, payload) = construir_entrega(state, delivery_id, execution_id).await?;
 
     // 3. Envío firmado.
     let client = reqwest::Client::builder()
@@ -120,7 +120,10 @@ pub async fn procesar_una_entrega(state: &AppState) -> Result<bool, Problem> {
     let timestamp = chrono::Utc::now().timestamp();
     let envio = client
         .post(&url)
-        .header("X-Integraciones-Signature", firmar(secreto.as_bytes(), &payload))
+        .header(
+            "X-Integraciones-Signature",
+            firmar(secreto.as_bytes(), &payload),
+        )
         .header("X-Integraciones-Timestamp", timestamp.to_string())
         .header("X-Integraciones-Delivery", delivery_id.to_string())
         .header(reqwest::header::CONTENT_TYPE, "application/json")
@@ -155,9 +158,7 @@ pub async fn procesar_una_entrega(state: &AppState) -> Result<bool, Problem> {
     } else {
         None
     };
-    let status_code: Option<i32> = respuesta
-        .as_deref()
-        .and_then(|status| status.parse().ok());
+    let status_code: Option<i32> = respuesta.as_deref().and_then(|status| status.parse().ok());
     sqlx::query(
         "UPDATE webhook_deliveries \
          SET status = $2, response_status = $3, error = $4, \
@@ -210,7 +211,12 @@ async fn construir_entrega(
     let secreto = crate::vault::decrypt(&secreto_cifrado)
         .map_err(|error| problem::internal(format!("webhooks: descifrar el secreto: {error}")))?;
 
-    type FilaEjecucion = (String, Option<Value>, Option<chrono::DateTime<chrono::Utc>>, String);
+    type FilaEjecucion = (
+        String,
+        Option<Value>,
+        Option<chrono::DateTime<chrono::Utc>>,
+        String,
+    );
     let Some((status, error, finished_at, bridge_slug)): Option<FilaEjecucion> = sqlx::query_as(
         "SELECT e.status, e.error, e.finished_at, b.slug \
          FROM executions e JOIN bridges b ON b.id = e.bridge_id \

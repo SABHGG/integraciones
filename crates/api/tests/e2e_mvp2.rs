@@ -48,17 +48,19 @@ async fn receptor() -> (String, Registro) {
     let app = Router::new()
         .route(
             "/hook",
-            post_route(|State(registro): State<Registro>, request: Request<Body>| async move {
-                let signature = header_value(&request, "x-integraciones-signature");
-                let bytes = axum::body::to_bytes(request.into_body(), 1 << 20)
-                    .await
-                    .expect("cuerpo legible");
-                registro.lock().unwrap().push(Recibida {
-                    body: String::from_utf8(bytes.to_vec()).expect("UTF-8"),
-                    signature,
-                });
-                StatusCode::OK
-            }),
+            post_route(
+                |State(registro): State<Registro>, request: Request<Body>| async move {
+                    let signature = header_value(&request, "x-integraciones-signature");
+                    let bytes = axum::body::to_bytes(request.into_body(), 1 << 20)
+                        .await
+                        .expect("cuerpo legible");
+                    registro.lock().unwrap().push(Recibida {
+                        body: String::from_utf8(bytes.to_vec()).expect("UTF-8"),
+                        signature,
+                    });
+                    StatusCode::OK
+                },
+            ),
         )
         .with_state(registro.clone());
 
@@ -152,7 +154,9 @@ impl Mundo {
         if let Some(prefer) = prefer {
             builder = builder.header("prefer", prefer);
         }
-        let body_bytes = body.map(|v| Body::from(v.to_string())).unwrap_or(Body::empty());
+        let body_bytes = body
+            .map(|v| Body::from(v.to_string()))
+            .unwrap_or(Body::empty());
         let response = self
             .app
             .clone()
@@ -221,7 +225,6 @@ impl Mundo {
             .expect("latest_version");
         (bridge_id, secreto)
     }
-
 }
 
 fn firma(secreto: &str, body: &str) -> String {
@@ -278,9 +281,7 @@ async fn e2e_puente_condicional_async_con_polling_y_webhook_firmado() {
             }
         ]
     });
-    let (bridge_id, secreto) = mundo
-        .sembrar("checkout", definition, true)
-        .await;
+    let (bridge_id, secreto) = mundo.sembrar("checkout", definition, true).await;
     let secreto = secreto.expect("webhook con secreto");
 
     // 1. Disparo async: 202 + Location; la fila nace pending.
@@ -293,25 +294,34 @@ async fn e2e_puente_condicional_async_con_polling_y_webhook_firmado() {
         )
         .await;
     assert_eq!(status, StatusCode::ACCEPTED, "{ack}");
-    let execution_id = ack["executionId"].as_str().expect("executionId").to_string();
+    let execution_id = ack["executionId"]
+        .as_str()
+        .expect("executionId")
+        .to_string();
     assert_eq!(location, format!("/x/checkout/executions/{execution_id}"));
 
-    let (estado,): (String,) = sqlx::query_as(
-        "SELECT status FROM executions WHERE id = $1",
-    )
-    .bind(execution_id.parse::<Uuid>().expect("uuid"))
-    .fetch_one(&mundo.pool)
-    .await
-    .expect("ejecución");
+    let (estado,): (String,) = sqlx::query_as("SELECT status FROM executions WHERE id = $1")
+        .bind(execution_id.parse::<Uuid>().expect("uuid"))
+        .fetch_one(&mundo.pool)
+        .await
+        .expect("ejecución");
     assert_eq!(estado, "pending");
 
     // 2. Polling en curso: pending sin data.
     let (status, poll, _) = mundo
-        .send("GET", &format!("/x/checkout/executions/{execution_id}"), None, None)
+        .send(
+            "GET",
+            &format!("/x/checkout/executions/{execution_id}"),
+            None,
+            None,
+        )
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(poll["status"], json!("pending"));
-    assert!(poll.get("data").is_none(), "sin data mientras corre: {poll}");
+    assert!(
+        poll.get("data").is_none(),
+        "sin data mientras corre: {poll}"
+    );
 
     // 3. El worker corre la cadena: la ruta vip (total 25 ≥ 10) ejecuta y la
     //    normal queda skipped en su seq.
@@ -324,7 +334,12 @@ async fn e2e_puente_condicional_async_con_polling_y_webhook_firmado() {
 
     // 4. Polling final: sobre idéntico al síncrono con la salida de la ruta.
     let (status, sobre, _) = mundo
-        .send("GET", &format!("/x/checkout/executions/{execution_id}"), None, None)
+        .send(
+            "GET",
+            &format!("/x/checkout/executions/{execution_id}"),
+            None,
+            None,
+        )
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
@@ -353,16 +368,19 @@ async fn e2e_puente_condicional_async_con_polling_y_webhook_firmado() {
     );
 
     // 6. La entrega webhook queda programada y el job la envía firmada.
-    let (d_estado,): (String,) = sqlx::query_as(
-        "SELECT status FROM webhook_deliveries WHERE execution_id = $1",
-    )
-    .bind(execution_id.parse::<Uuid>().expect("uuid"))
-    .fetch_one(&mundo.pool)
-    .await
-    .expect("entrega");
+    let (d_estado,): (String,) =
+        sqlx::query_as("SELECT status FROM webhook_deliveries WHERE execution_id = $1")
+            .bind(execution_id.parse::<Uuid>().expect("uuid"))
+            .fetch_one(&mundo.pool)
+            .await
+            .expect("entrega");
     assert_eq!(d_estado, "pending");
 
-    assert!(api::webhooks::procesar_una_entrega(&mundo.state).await.expect("entrega"));
+    assert!(
+        api::webhooks::procesar_una_entrega(&mundo.state)
+            .await
+            .expect("entrega")
+    );
 
     let recibidas = registro.lock().unwrap().clone();
     assert_eq!(recibidas.len(), 1);
@@ -378,13 +396,12 @@ async fn e2e_puente_condicional_async_con_polling_y_webhook_firmado() {
     assert_eq!(payload["bridgeSlug"], json!("checkout"));
     assert_eq!(payload["status"], json!("succeeded"));
 
-    let (d_estado,): (String,) = sqlx::query_as(
-        "SELECT status FROM webhook_deliveries WHERE execution_id = $1",
-    )
-    .bind(execution_id.parse::<Uuid>().expect("uuid"))
-    .fetch_one(&mundo.pool)
-    .await
-    .expect("entrega");
+    let (d_estado,): (String,) =
+        sqlx::query_as("SELECT status FROM webhook_deliveries WHERE execution_id = $1")
+            .bind(execution_id.parse::<Uuid>().expect("uuid"))
+            .fetch_one(&mundo.pool)
+            .await
+            .expect("entrega");
     assert_eq!(d_estado, "delivered");
     let _ = bridge_id;
 }
@@ -404,9 +421,7 @@ async fn e2e_puente_cron_con_solape_simulado() {
             "outputSchema": {}
         }]
     });
-    let (bridge_id, _) = mundo
-        .sembrar("cada-minuto-e2e", definition, false)
-        .await;
+    let (bridge_id, _) = mundo.sembrar("cada-minuto-e2e", definition, false).await;
 
     // El scheduler pre-encola la 09:05 con run_at programado.
     api::scheduler::tick(&mundo.state, at("2026-03-04T09:04:30"))
@@ -420,7 +435,10 @@ async fn e2e_puente_cron_con_solape_simulado() {
     .fetch_all(&mundo.pool)
     .await
     .expect("filas cron");
-    assert_eq!(filas, vec![(json!("2026-03-04T09:05:00+00:00"), "pending".to_string())]);
+    assert_eq!(
+        filas,
+        vec![(json!("2026-03-04T09:05:00+00:00"), "pending".to_string())]
+    );
 
     // La ejecución queda `pending` viva (un puente lento: nadie la corre).
 

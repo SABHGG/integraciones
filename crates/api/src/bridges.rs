@@ -1289,13 +1289,12 @@ async fn publish_version(
     // rompería la verificación de los consumidores). Cifrado en reposo con la
     // envolvente de la bóveda; solo sale por el plano de administración.
     if webhook.is_some() {
-        let secret_actual: Option<Vec<u8>> = sqlx::query_scalar(
-            "SELECT webhook_secret FROM bridges WHERE id = $1",
-        )
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|error| rest::db_error("cargar el secreto del webhook", error))?;
+        let secret_actual: Option<Vec<u8>> =
+            sqlx::query_scalar("SELECT webhook_secret FROM bridges WHERE id = $1")
+                .bind(id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|error| rest::db_error("cargar el secreto del webhook", error))?;
         if secret_actual.is_none() {
             let mut bytes = [0u8; 32];
             getrandom::fill(&mut bytes)
@@ -1409,30 +1408,26 @@ async fn get_webhook_secret(
     Path(raw_id): Path<String>,
 ) -> Result<Json<Value>, Problem> {
     let id = rest::parse_id(&raw_id, "el puente no existe")?;
-    let exists: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM bridges WHERE id = $1 AND workspace_id = $2",
-    )
-    .bind(id)
-    .bind(key.workspace_id)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|error| problem::internal(format!("cargar el puente: {error}")))?;
+    let exists: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM bridges WHERE id = $1 AND workspace_id = $2")
+            .bind(id)
+            .bind(key.workspace_id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|error| problem::internal(format!("cargar el puente: {error}")))?;
     if exists.is_none() {
         return Err(problem::not_found("el puente no existe"));
     }
 
-    let secreto: Option<Vec<u8>> = sqlx::query_scalar(
-        "SELECT webhook_secret FROM bridges WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_one(&state.pool)
-    .await
-    .map_err(|error| problem::internal(format!("cargar el secreto: {error}")))?;
+    let secreto: Option<Vec<u8>> =
+        sqlx::query_scalar("SELECT webhook_secret FROM bridges WHERE id = $1")
+            .bind(id)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|error| problem::internal(format!("cargar el secreto: {error}")))?;
 
     let Some(bytes) = secreto else {
-        return Err(problem::not_found(
-            "el puente no tiene webhook publicado",
-        ));
+        return Err(problem::not_found("el puente no tiene webhook publicado"));
     };
     let secreto_en_claro = crate::vault::decrypt(&bytes)
         .map_err(|error| problem::internal(format!("descifrar el secreto: {error}")))?;
@@ -1441,7 +1436,6 @@ async fn get_webhook_secret(
         "secret": secreto_en_claro,
     })))
 }
-
 
 /// `POST /bridges/{id}/run`: disparo manual inmediato (MVP2, spec
 /// `cron-triggers`): encola una ejecución `manual` de la versión publicada
@@ -1466,12 +1460,10 @@ async fn run_bridge(
     .await
     .map_err(|error| problem::internal(format!("cargar la versión activa: {error}")))?
     else {
-        return Err(Problem::new(
-            StatusCode::CONFLICT,
-            "no-published-version",
-            "Conflict",
-        )
-        .with_detail("el puente no tiene versión publicada: publícala antes de ejecutarlo"));
+        return Err(
+            Problem::new(StatusCode::CONFLICT, "no-published-version", "Conflict")
+                .with_detail("el puente no tiene versión publicada: publícala antes de ejecutarlo"),
+        );
     };
 
     let execution_id = Uuid::now_v7();
@@ -1495,7 +1487,6 @@ async fn run_bridge(
         Json(json!({ "executionId": execution_id })),
     ))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1614,10 +1605,7 @@ mod tests {
 
     #[test]
     fn los_disparadores_no_http_solo_exigen_el_tipo() {
-        for trigger in [
-            json!({ "type": "event" }),
-            json!({ "type": "manual" }),
-        ] {
+        for trigger in [json!({ "type": "event" }), json!({ "type": "manual" })] {
             assert_sin_errores(&validate_trigger(Some(&trigger)));
         }
     }
@@ -1984,4 +1972,3 @@ mod tests {
         );
     }
 }
-

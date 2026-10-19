@@ -100,7 +100,10 @@ fn sole_key(condition: &Value) -> Result<(&str, &Value), ConditionError> {
     if map.len() != 1 {
         return Err(syntax(
             condition,
-            format!("las condiciones son declarativas: una sola clave (lleva {})", map.len()),
+            format!(
+                "las condiciones son declarativas: una sola clave (lleva {})",
+                map.len()
+            ),
         ));
     }
     let (key, value) = map.iter().next().expect("mapa no vacío");
@@ -120,7 +123,10 @@ fn ref_of(condition: &Value, value: &Value) -> Result<RefPath, ConditionError> {
 }
 
 /// Parsea el cuerpo `[ref, valor]` de un comparador.
-fn pair<'a>(condition: &'a Value, body: &'a Value) -> Result<(&'a Value, &'a Value), ConditionError> {
+fn pair<'a>(
+    condition: &'a Value,
+    body: &'a Value,
+) -> Result<(&'a Value, &'a Value), ConditionError> {
     let Value::Array(items) = body else {
         return Err(syntax(
             condition,
@@ -140,7 +146,11 @@ fn pair<'a>(condition: &'a Value, body: &'a Value) -> Result<(&'a Value, &'a Val
 }
 
 /// Valida que un array contenedor sea no vacío (para `and`/`or`).
-fn non_empty_list<'a>(condition: &'a Value, body: &'a Value, name: &str) -> Result<&'a Vec<Value>, ConditionError> {
+fn non_empty_list<'a>(
+    condition: &'a Value,
+    body: &'a Value,
+    name: &str,
+) -> Result<&'a Vec<Value>, ConditionError> {
     let Value::Array(items) = body else {
         return Err(syntax(
             condition,
@@ -381,7 +391,10 @@ pub fn refs(condition: &Value) -> Result<Vec<String>, ConditionError> {
         "not" => refs(body),
         "exists" => {
             ref_of(condition, body)?;
-            let raw = body.as_str().expect("texto de referencia ya validado").to_string();
+            let raw = body
+                .as_str()
+                .expect("texto de referencia ya validado")
+                .to_string();
             Ok(vec![raw])
         }
         op if OPERATORS.contains(&op) => {
@@ -425,7 +438,10 @@ mod tests {
             (json!({ "eq": ["$.fetchUser.pedidos", 12] }), true),
             // comparación numérica: 12 == 12.0
             (json!({ "eq": ["$.fetchUser.pedidos", 12.0] }), true),
-            (json!({ "eq": ["$.trigger.body.id", "$.fetchUser.id"] }), true),
+            (
+                json!({ "eq": ["$.trigger.body.id", "$.fetchUser.id"] }),
+                true,
+            ),
             (json!({ "eq": ["$.orden", null] }), true),
             (json!({ "ne": ["$.fetchUser.pais", "FR"] }), true),
             (json!({ "ne": ["$.fetchUser.pais", "ES"] }), false),
@@ -489,7 +505,8 @@ mod tests {
     #[test]
     fn un_campo_ausente_en_exists_falla_fast_como_en_los_mapeos() {
         let ctx = context();
-        let err = evaluate(&ctx, &json!({ "exists": "$.cliente.pais" })).expect_err("campo ausente");
+        let err =
+            evaluate(&ctx, &json!({ "exists": "$.cliente.pais" })).expect_err("campo ausente");
         let ConditionError::Unresolved { raw, detail } = err else {
             panic!("se esperaba Unresolved: {err:?}");
         };
@@ -624,12 +641,18 @@ mod tests {
             match err {
                 ConditionError::Syntax { reason, .. } => {
                     assert!(
-                        reason.contains("declarativas") || reason.contains("declarativa")
-                            || reason.contains("referencia") || reason.contains("operador")
-                            || reason.contains("condiciones") || reason.contains("clave")
-                            || reason.contains("elemento") || reason.contains("array")
-                            || reason.contains("llegó") || reason.contains("necesita")
-                            || reason.contains("lleva") || reason.contains("malformada")
+                        reason.contains("declarativas")
+                            || reason.contains("declarativa")
+                            || reason.contains("referencia")
+                            || reason.contains("operador")
+                            || reason.contains("condiciones")
+                            || reason.contains("clave")
+                            || reason.contains("elemento")
+                            || reason.contains("array")
+                            || reason.contains("llegó")
+                            || reason.contains("necesita")
+                            || reason.contains("lleva")
+                            || reason.contains("malformada")
                             || reason.contains("debe"),
                         "motivo poco claro: {reason}"
                     );

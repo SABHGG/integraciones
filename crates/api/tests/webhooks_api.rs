@@ -264,7 +264,10 @@ impl Harness {
             .await
             .expect("cuerpo");
         let sobre: Value = serde_json::from_slice(&bytes).expect("sobre JSON");
-        sobre["executionId"].as_str().expect("executionId").to_string()
+        sobre["executionId"]
+            .as_str()
+            .expect("executionId")
+            .to_string()
     }
 }
 
@@ -298,7 +301,9 @@ async fn la_entrega_firmada_llega_al_receptor_con_el_sobre_y_los_metadatos() {
     assert_eq!(webhook_url.as_deref(), Some(url.as_str()));
 
     // 4.3: el job entrega y verifica firma en el receptor.
-    let state = AppState { pool: h.pool.clone() };
+    let state = AppState {
+        pool: h.pool.clone(),
+    };
     assert!(
         api::webhooks::procesar_una_entrega(&state)
             .await
@@ -321,7 +326,10 @@ async fn la_entrega_firmada_llega_al_receptor_con_el_sobre_y_los_metadatos() {
         firma_valida(&secreto, &recibida.body, &recibida.signature),
         "la firma HMAC del body crudo verifica con el secreto del puente"
     );
-    assert!(!recibida.timestamp.is_empty(), "X-Integraciones-Timestamp presente");
+    assert!(
+        !recibida.timestamp.is_empty(),
+        "X-Integraciones-Timestamp presente"
+    );
     assert!(
         Uuid::parse_str(&recibida.delivery).is_ok(),
         "X-Integraciones-Delivery es un UUID estable: {}",
@@ -334,7 +342,10 @@ async fn la_entrega_firmada_llega_al_receptor_con_el_sobre_y_los_metadatos() {
     assert_eq!(payload["executionId"], json!(execution_id));
     assert_eq!(payload["bridgeSlug"], json!("hook-eco"));
     assert_eq!(payload["status"], json!("succeeded"));
-    assert!(payload["finishedAt"].as_str().is_some(), "finishedAt presente");
+    assert!(
+        payload["finishedAt"].as_str().is_some(),
+        "finishedAt presente"
+    );
 
     // La entrega queda `delivered` con su 200.
     let (estado, codigo): (String, Option<i32>) = sqlx::query_as(
@@ -359,7 +370,9 @@ async fn los_reintentos_aplican_backoff_y_agotan_en_failed() {
     h.bridge_con_webhook("hook-duro", &url, false).await;
     h.invocar("hook-duro", json!({ "total": 1 })).await;
 
-    let state = AppState { pool: h.pool.clone() };
+    let state = AppState {
+        pool: h.pool.clone(),
+    };
     let delivery_id: Uuid = sqlx::query_scalar(
         "SELECT d.id FROM webhook_deliveries d \
          JOIN executions e ON e.id = d.execution_id \
@@ -370,7 +383,11 @@ async fn los_reintentos_aplican_backoff_y_agotan_en_failed() {
     .expect("entrega");
 
     // Intento 1: el 500 queda `pending` con next_retry_at a ~30 s.
-    assert!(api::webhooks::procesar_una_entrega(&state).await.expect("intento 1"));
+    assert!(
+        api::webhooks::procesar_una_entrega(&state)
+            .await
+            .expect("intento 1")
+    );
     let (attempts, estado, retry): (i32, String, chrono::DateTime<chrono::Utc>) = sqlx::query_as(
         "SELECT attempts, status, next_retry_at FROM webhook_deliveries WHERE id = $1",
     )
@@ -387,22 +404,25 @@ async fn los_reintentos_aplican_backoff_y_agotan_en_failed() {
 
     // Intentos 2..5: se simula el paso del tiempo acercando next_retry_at.
     for esperado in 2..=5 {
-        sqlx::query("UPDATE webhook_deliveries SET next_retry_at = now() - interval '1 s' WHERE id = $1")
-            .bind(delivery_id)
-            .execute(&h.pool)
-            .await
-            .expect("acercar el reintento");
-        assert!(
-            api::webhooks::procesar_una_entrega(&state).await.expect("reintento"),
-            "intento {esperado} reclamable"
-        );
-        let (attempts, estado): (i32, String) = sqlx::query_as(
-            "SELECT attempts, status FROM webhook_deliveries WHERE id = $1",
+        sqlx::query(
+            "UPDATE webhook_deliveries SET next_retry_at = now() - interval '1 s' WHERE id = $1",
         )
         .bind(delivery_id)
-        .fetch_one(&h.pool)
+        .execute(&h.pool)
         .await
-        .expect("entrega");
+        .expect("acercar el reintento");
+        assert!(
+            api::webhooks::procesar_una_entrega(&state)
+                .await
+                .expect("reintento"),
+            "intento {esperado} reclamable"
+        );
+        let (attempts, estado): (i32, String) =
+            sqlx::query_as("SELECT attempts, status FROM webhook_deliveries WHERE id = $1")
+                .bind(delivery_id)
+                .fetch_one(&h.pool)
+                .await
+                .expect("entrega");
         assert_eq!(attempts, esperado);
         if esperado < 5 {
             assert_eq!(estado, "pending");
@@ -412,13 +432,17 @@ async fn los_reintentos_aplican_backoff_y_agotan_en_failed() {
     }
 
     // Sin reintentos extra: la entrega `failed` ya no es reclamable.
-    sqlx::query("UPDATE webhook_deliveries SET next_retry_at = now() - interval '1 s' WHERE id = $1")
-        .bind(delivery_id)
-        .execute(&h.pool)
-        .await
-        .expect("acercar");
+    sqlx::query(
+        "UPDATE webhook_deliveries SET next_retry_at = now() - interval '1 s' WHERE id = $1",
+    )
+    .bind(delivery_id)
+    .execute(&h.pool)
+    .await
+    .expect("acercar");
     assert!(
-        !api::webhooks::procesar_una_entrega(&state).await.expect("sin trabajo"),
+        !api::webhooks::procesar_una_entrega(&state)
+            .await
+            .expect("sin trabajo"),
         "una entrega failed no se reintenta"
     );
 
@@ -445,15 +469,30 @@ async fn el_fallo_de_ejecucion_tambien_se_entrega_con_el_error_estable() {
     h.bridge_con_webhook("hook-falla", &url, true).await;
     let execution_id = h.invocar("hook-falla", json!({ "total": 1 })).await;
 
-    let state = AppState { pool: h.pool.clone() };
-    assert!(api::webhooks::procesar_una_entrega(&state).await.expect("entrega"));
+    let state = AppState {
+        pool: h.pool.clone(),
+    };
+    assert!(
+        api::webhooks::procesar_una_entrega(&state)
+            .await
+            .expect("entrega")
+    );
 
     let recibidas = registro.lock().unwrap().clone();
     assert_eq!(recibidas.len(), 1);
     let payload: Value = serde_json::from_str(&recibidas[0].body).expect("payload JSON");
-    assert_eq!(payload["success"], json!(false), "el fallo también se entrega");
+    assert_eq!(
+        payload["success"],
+        json!(false),
+        "el fallo también se entrega"
+    );
     assert_eq!(payload["error"]["code"], json!("BLOCK_FAILED"));
-    assert!(payload["error"]["message"].as_str().unwrap_or("").contains("boom-hook"));
+    assert!(
+        payload["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("boom-hook")
+    );
     assert_eq!(payload["executionId"], json!(execution_id));
     assert_eq!(payload["status"], json!("failed"));
 }

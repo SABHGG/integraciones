@@ -347,7 +347,15 @@ async fn los_pasos_skipped_se_persisten_en_su_seq_original_sin_io_ni_duracion() 
     let (status, _, _) = execution_state(&pool, created.id).await;
     assert_eq!(status, "succeeded");
 
-    type FilaSkipped = (i32, String, String, String, Value, Option<Value>, Option<i32>);
+    type FilaSkipped = (
+        i32,
+        String,
+        String,
+        String,
+        Value,
+        Option<Value>,
+        Option<i32>,
+    );
     let filas: Vec<FilaSkipped> = sqlx::query_as(
         "SELECT seq, block_instance_id, block_name, status, input, output, duration_ms
            FROM execution_steps
@@ -365,7 +373,11 @@ async fn los_pasos_skipped_se_persisten_en_su_seq_original_sin_io_ni_duracion() 
     assert_eq!(filas[1].0, 2);
     assert_eq!(filas[1].1, "instancia-condicional");
     assert_eq!(filas[1].3, "skipped");
-    assert_eq!(filas[1].4, serde_json::json!({}), "input marcador, no ejecutado");
+    assert_eq!(
+        filas[1].4,
+        serde_json::json!({}),
+        "input marcador, no ejecutado"
+    );
     assert_eq!(filas[1].5, None);
     assert_eq!(filas[1].6, None);
     assert_eq!(filas[2].3, "succeeded");

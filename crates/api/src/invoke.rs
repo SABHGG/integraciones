@@ -305,8 +305,7 @@ async fn poll_result(
     State(state): State<AppState>,
     Path((slug, raw_execution_id)): Path<(String, String)>,
 ) -> Result<Response, Problem> {
-    let execution_id =
-        rest::parse_id(&raw_execution_id, "la ejecución no existe en este slug")?;
+    let execution_id = rest::parse_id(&raw_execution_id, "la ejecución no existe en este slug")?;
     let Some((status, error)): Option<(String, Option<Value>)> = sqlx::query_as(
         "SELECT e.status, e.error FROM executions e \
          JOIN bridges b ON b.id = e.bridge_id \
@@ -390,14 +389,15 @@ pub(crate) async fn ejecutar_encolada(
 ) -> Result<RunOutcome, Problem> {
     // La URL del webhook se extrae ANTES de mover la definición al closure
     // blocking (semántica de snapshot: la versión que corrió es la que entrega).
-    let webhook_url = definition.webhook.as_ref().map(|webhook| webhook.url.clone());
+    let webhook_url = definition
+        .webhook
+        .as_ref()
+        .map(|webhook| webhook.url.clone());
     // Validación de entrada (task 4.5): si el puente declara inputSchema, el
     // body debe cumplirlo ANTES de gastar isolate. Inválido → la ejecución
     // cierra `failed` con VALIDATION_FAILED, sin pasos y sin correr la cadena.
     // El worker solo la aplica al disparo http: cron/manual no traen entrada.
-    if validar_input
-        && let Some(schema) = &definition.input_schema
-    {
+    if validar_input && let Some(schema) = &definition.input_schema {
         let body = trigger_data.get("body").cloned().unwrap_or(Value::Null);
         match domain::schema::validate(schema, &body) {
             Ok(()) => {}

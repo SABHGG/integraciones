@@ -94,8 +94,7 @@ pub async fn tick(state: &AppState, now: DateTime<Utc>) -> Result<usize, Problem
                         // solape si la anterior sigue viva, si no, encolar
                         // (el worker la reclama al instante).
                         if unresolved {
-                            registrar_missed(state, puente.bridge_id, candidate, "overlap")
-                                .await?;
+                            registrar_missed(state, puente.bridge_id, candidate, "overlap").await?;
                         } else {
                             encolar(state, &puente, candidate).await?;
                         }

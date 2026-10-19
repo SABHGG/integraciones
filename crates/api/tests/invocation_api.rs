@@ -815,8 +815,12 @@ impl Harness {
 async fn el_disparo_async_responde_202_con_location_y_el_worker_lo_corre_paso_a_paso() {
     let Some(h) = begin().await else { return };
 
-    h.bridge("eco-async", "POST", json!([bloque_duplicar("b1", "duplicar")]))
-        .await;
+    h.bridge(
+        "eco-async",
+        "POST",
+        json!([bloque_duplicar("b1", "duplicar")]),
+    )
+    .await;
 
     // 1. Disparo async: 202 + ack {success, executionId} + Location.
     let (async_resp, location) = h
@@ -827,14 +831,22 @@ async fn el_disparo_async_responde_202_con_location_y_el_worker_lo_corre_paso_a_
             None,
         )
         .await;
-    assert_eq!(async_resp.status, StatusCode::ACCEPTED, "{}", async_resp.body);
+    assert_eq!(
+        async_resp.status,
+        StatusCode::ACCEPTED,
+        "{}",
+        async_resp.body
+    );
     let ack = async_resp.json();
     assert_eq!(ack["success"], json!(true));
     assert!(
         ack.get("data").is_none(),
         "el ack no trae resultado: solo promete la fila: {ack}"
     );
-    let execution_id = ack["executionId"].as_str().expect("executionId").to_string();
+    let execution_id = ack["executionId"]
+        .as_str()
+        .expect("executionId")
+        .to_string();
     assert_eq!(
         location,
         format!("/x/eco-async/executions/{execution_id}"),
@@ -842,7 +854,10 @@ async fn el_disparo_async_responde_202_con_location_y_el_worker_lo_corre_paso_a_
     );
 
     // 2. La fila nace `pending`: el llamador no esperó la corrida.
-    assert_eq!(h.estado_ejecucion(&execution_id).await.as_deref(), Some("pending"));
+    assert_eq!(
+        h.estado_ejecucion(&execution_id).await.as_deref(),
+        Some("pending")
+    );
 
     // 3. Poll antes del worker: pending sin data, en el plano /x (sin auth).
     let poll = h
@@ -855,7 +870,9 @@ async fn el_disparo_async_responde_202_con_location_y_el_worker_lo_corre_paso_a_
     );
 
     // 4. El worker avanza la cola (tests deterministas: paso a paso, sin loop).
-    let state = AppState { pool: h.pool.clone() };
+    let state = AppState {
+        pool: h.pool.clone(),
+    };
     assert!(
         api::worker::procesar_pendiente(&state)
             .await
@@ -872,15 +889,22 @@ async fn el_disparo_async_responde_202_con_location_y_el_worker_lo_corre_paso_a_
         final_poll.json(),
         json!({ "success": true, "data": { "total": 42 }, "executionId": execution_id })
     );
-    assert_eq!(h.estado_ejecucion(&execution_id).await.as_deref(), Some("succeeded"));
+    assert_eq!(
+        h.estado_ejecucion(&execution_id).await.as_deref(),
+        Some("succeeded")
+    );
 }
 
 #[tokio::test]
 async fn la_idempotencia_async_devuelve_la_ejecucion_original_y_su_location() {
     let Some(h) = begin().await else { return };
 
-    h.bridge("eco-async-key", "POST", json!([bloque_duplicar("b1", "dup")]))
-        .await;
+    h.bridge(
+        "eco-async-key",
+        "POST",
+        json!([bloque_duplicar("b1", "dup")]),
+    )
+    .await;
 
     let (primera, location1) = h
         .x_prefer(
@@ -919,9 +943,17 @@ async fn el_recurso_de_resultado_queda_acotado_al_slug() {
         .await;
 
     let (invocation, _) = h
-        .x_prefer("puente-a", Some("respond-async"), json!({ "total": 3 }), None)
+        .x_prefer(
+            "puente-a",
+            Some("respond-async"),
+            json!({ "total": 3 }),
+            None,
+        )
         .await;
-    let execution_id = invocation.json()["executionId"].as_str().unwrap().to_string();
+    let execution_id = invocation.json()["executionId"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     // Otro slug del mismo workspace no puede leer el resultado: 404 Problem.
     let cruzado = h
@@ -945,15 +977,15 @@ async fn el_polling_distingue_running_y_entrega_el_fallo_como_el_sincrono() {
     let Some(h) = begin().await else { return };
 
     // Ejecución `running` sembrada a mano: el poll responde el estado sin data.
-    let bridge_id = h.bridge("en-curso", "POST", json!([bloque_duplicar("b1", "dup")]))
+    let bridge_id = h
+        .bridge("en-curso", "POST", json!([bloque_duplicar("b1", "dup")]))
         .await;
-    let version_id: Uuid = sqlx::query_scalar(
-        "SELECT bv.id FROM bridge_versions bv WHERE bv.bridge_id = $1",
-    )
-    .bind(bridge_id)
-    .fetch_one(&h.pool)
-    .await
-    .expect("versión del puente");
+    let version_id: Uuid =
+        sqlx::query_scalar("SELECT bv.id FROM bridge_versions bv WHERE bv.bridge_id = $1")
+            .bind(bridge_id)
+            .fetch_one(&h.pool)
+            .await
+            .expect("versión del puente");
     let running_id = Uuid::now_v7();
     sqlx::query(
         "INSERT INTO executions (id, workspace_id, bridge_id, bridge_version_id, \
@@ -997,8 +1029,14 @@ async fn el_polling_distingue_running_y_entrega_el_fallo_como_el_sincrono() {
         .await;
     assert_eq!(disparo.status, StatusCode::ACCEPTED, "{}", disparo.body);
     let failed_id = disparo.json()["executionId"].as_str().unwrap().to_string();
-    let state = AppState { pool: h.pool.clone() };
-    assert!(api::worker::procesar_pendiente(&state).await.expect("worker"));
+    let state = AppState {
+        pool: h.pool.clone(),
+    };
+    assert!(
+        api::worker::procesar_pendiente(&state)
+            .await
+            .expect("worker")
+    );
 
     let poll_fallo = h
         .x_get(&format!("/x/async-falla/executions/{failed_id}"))
@@ -1007,7 +1045,12 @@ async fn el_polling_distingue_running_y_entrega_el_fallo_como_el_sincrono() {
     let sobre = poll_fallo.json();
     assert_eq!(sobre["success"], json!(false));
     assert_eq!(sobre["error"]["code"], json!("BLOCK_FAILED"));
-    assert!(sobre["error"]["message"].as_str().unwrap_or("").contains("boom-async"));
+    assert!(
+        sobre["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("boom-async")
+    );
     assert_eq!(sobre["executionId"], json!(failed_id));
 }
 

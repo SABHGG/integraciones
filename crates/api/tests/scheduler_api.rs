@@ -27,9 +27,7 @@ async fn begin() -> Option<(AppState, MutexGuard<'static, ()>)> {
     let url = match std::env::var("DATABASE_URL") {
         Ok(url) => url,
         Err(_) => {
-            eprintln!(
-                "DATABASE_URL no está definida: se omiten los tests del scheduler"
-            );
+            eprintln!("DATABASE_URL no está definida: se omiten los tests del scheduler");
             return None;
         }
     };
@@ -141,7 +139,9 @@ fn at(instante: &str) -> chrono::DateTime<Utc> {
 
 #[tokio::test]
 async fn el_scheduler_pre_encola_con_run_at_programado_y_sin_duplicar() {
-    let Some((state, _turno)) = begin().await else { return };
+    let Some((state, _turno)) = begin().await else {
+        return;
+    };
     let bridge_id = puente_cron(&state.pool, "cada-minuto", "* * * * *", "UTC").await;
 
     // 5.1: tick a las 09:03:30 → pre-encola la ocurrencia de las 09:04 con
@@ -179,7 +179,9 @@ async fn el_scheduler_pre_encola_con_run_at_programado_y_sin_duplicar() {
 
 #[tokio::test]
 async fn un_puente_lento_registra_overlap_y_no_acumula_ejecuciones() {
-    let Some((state, _turno)) = begin().await else { return };
+    let Some((state, _turno)) = begin().await else {
+        return;
+    };
     let bridge_id = puente_cron(&state.pool, "lento", "* * * * *", "UTC").await;
 
     // La 09:05 queda pre-encolada y sigue `pending` (nadie la corre).
@@ -220,13 +222,19 @@ async fn un_puente_lento_registra_overlap_y_no_acumula_ejecuciones() {
         .await
         .expect("tick reanudación");
     let filas = ejecuciones_cron(&state.pool, bridge_id).await;
-    assert_eq!(filas.len(), 2, "la ejecución viva se cerró: se encola la siguiente vencida");
+    assert_eq!(
+        filas.len(),
+        2,
+        "la ejecución viva se cerró: se encola la siguiente vencida"
+    );
     assert_eq!(filas[1].0, json!("2026-03-04T09:08:00+00:00"));
 }
 
 #[tokio::test]
 async fn la_recuperacion_tras_una_caida_encola_solo_la_reciente_y_registra_downtime() {
-    let Some((state, _turno)) = begin().await else { return };
+    let Some((state, _turno)) = begin().await else {
+        return;
+    };
     let bridge_id = puente_cron(&state.pool, "recuperable", "* * * * *", "UTC").await;
 
     // Historial: la 09:00 corrió bien. El proceso cae y reaparece a las 10:05:

@@ -127,7 +127,9 @@ fn parse_field(
                     .parse::<u32>()
                     .ok()
                     .filter(|n| *n >= 1)
-                    .ok_or_else(|| err(format!("el paso \"{step_text}\" debe ser un número ≥ 1")))?;
+                    .ok_or_else(|| {
+                        err(format!("el paso \"{step_text}\" debe ser un número ≥ 1"))
+                    })?;
                 (prefix, step)
             }
             None => (item, 1),
@@ -180,9 +182,8 @@ impl CronSchedule {
             return false;
         }
         let dom_ok = self.dom_restricted && (self.dom & (1 << day.day())) != 0;
-        let dow_ok = self
-            .dow_restricted
-            && (self.dow & (1 << day.weekday().num_days_from_sunday())) != 0;
+        let dow_ok =
+            self.dow_restricted && (self.dow & (1 << day.weekday().num_days_from_sunday())) != 0;
         match (self.dom_restricted, self.dow_restricted) {
             (true, true) => dom_ok || dow_ok,
             (true, false) => dom_ok,
@@ -259,9 +260,11 @@ mod tests {
     /// Resuelve una hora local que se sabe univalua (falla el test si no existe
     /// o es ambigua: las pruebas evitan las horas del cambio).
     fn at_madrid(y: i32, m: u32, d: u32, hh: u32, mm: u32) -> DateTime<Tz> {
-        let naive =
-            NaiveDateTime::parse_from_str(&format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:00"), "%Y-%m-%dT%H:%M:%S")
-                .expect("fecha sintáctica");
+        let naive = NaiveDateTime::parse_from_str(
+            &format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:00"),
+            "%Y-%m-%dT%H:%M:%S",
+        )
+        .expect("fecha sintáctica");
         Madrid
             .from_local_datetime(&naive)
             .single()
@@ -296,11 +299,23 @@ mod tests {
 
     #[test]
     fn next_after_devuelve_la_ocurrencia_estrictamente_posterior() {
-        assert_eq!(next_utc("*/5 * * * *", "2026-03-04T09:03:00Z"), "2026-03-04 09:05:00 UTC");
+        assert_eq!(
+            next_utc("*/5 * * * *", "2026-03-04T09:03:00Z"),
+            "2026-03-04 09:05:00 UTC"
+        );
         // mismo instante programado: estrictamente posterior
-        assert_eq!(next_utc("*/5 * * * *", "2026-03-04T09:05:00Z"), "2026-03-04 09:10:00 UTC");
-        assert_eq!(next_utc("0 9 * * *", "2026-03-04T09:00:00Z"), "2026-03-05 09:00:00 UTC");
-        assert_eq!(next_utc("59 23 * * *", "2026-03-04T00:00:00Z"), "2026-03-04 23:59:00 UTC");
+        assert_eq!(
+            next_utc("*/5 * * * *", "2026-03-04T09:05:00Z"),
+            "2026-03-04 09:10:00 UTC"
+        );
+        assert_eq!(
+            next_utc("0 9 * * *", "2026-03-04T09:00:00Z"),
+            "2026-03-05 09:00:00 UTC"
+        );
+        assert_eq!(
+            next_utc("59 23 * * *", "2026-03-04T00:00:00Z"),
+            "2026-03-04 23:59:00 UTC"
+        );
     }
 
     #[test]
@@ -317,7 +332,11 @@ mod tests {
             .collect();
         assert_eq!(
             series,
-            vec!["2026-03-04 08:05:00 UTC", "2026-03-04 08:10:00 UTC", "2026-03-04 08:15:00 UTC"]
+            vec![
+                "2026-03-04 08:05:00 UTC",
+                "2026-03-04 08:10:00 UTC",
+                "2026-03-04 08:15:00 UTC"
+            ]
         );
     }
 
@@ -355,8 +374,12 @@ mod tests {
     fn salto_de_primavera_2026_se_salta_la_hora_local_inexistente() {
         // 2026-03-29: 02:00→03:00 local. La 02:30 de ese día no existe: la
         // siguiente ocurrencia del `30 2 * * *` es la del día posterior.
-        let naive = NaiveDateTime::parse_from_str("2026-03-29T02:30:00", "%Y-%m-%dT%H:%M:%S").expect("sintáctica");
-        assert!(local_to_utc(naive).is_none(), "2026-03-29 02:30 local no existe");
+        let naive = NaiveDateTime::parse_from_str("2026-03-29T02:30:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("sintáctica");
+        assert!(
+            local_to_utc(naive).is_none(),
+            "2026-03-29 02:30 local no existe"
+        );
         assert_eq!(
             next_madrid("30 2 * * *", 2026, 3, 28, 12, 0),
             next_to_string("2026-03-30T02:30:00"),
@@ -364,14 +387,18 @@ mod tests {
 
         // `*/5` avanza 01:55 → 03:00 local: la franja 02:00–02:55 no existe.
         // 03:00 CEST (UTC+2) = 01:00 UTC.
-        assert_eq!(next_madrid("*/5 * * * *", 2026, 3, 29, 1, 56), "2026-03-29 01:00:00 UTC");
+        assert_eq!(
+            next_madrid("*/5 * * * *", 2026, 3, 29, 1, 56),
+            "2026-03-29 01:00:00 UTC"
+        );
     }
 
     #[test]
     fn vuelta_al_horario_normal_2026_ocurre_una_vez_con_su_instant_mas_temprano() {
         // 2026-10-25: 02:30 local existe dos veces (00:30Z y 01:30Z). La
         // ocurrencia única de `30 2 * * *` es la más temprana.
-        let naive = NaiveDateTime::parse_from_str("2026-10-25T02:30:00", "%Y-%m-%dT%H:%M:%S").expect("sintáctica");
+        let naive = NaiveDateTime::parse_from_str("2026-10-25T02:30:00", "%Y-%m-%dT%H:%M:%S")
+            .expect("sintáctica");
         match Madrid.from_local_datetime(&naive) {
             MappedLocalTime::Ambiguous(_, _) => {}
             other => panic!("se esperaba ambigua, llegó {other:?}"),
@@ -416,8 +443,14 @@ mod tests {
 
     #[test]
     fn el_mes_restringido_ignora_los_dias_fuera() {
-        assert_eq!(next_utc("0 9 1 12 *", "2026-06-15T00:00:00Z"), "2026-12-01 09:00:00 UTC");
-        assert_eq!(next_utc("* * 1 1 *", "2026-06-15T00:00:00Z"), "2027-01-01 00:00:00 UTC");
+        assert_eq!(
+            next_utc("0 9 1 12 *", "2026-06-15T00:00:00Z"),
+            "2026-12-01 09:00:00 UTC"
+        );
+        assert_eq!(
+            next_utc("* * 1 1 *", "2026-06-15T00:00:00Z"),
+            "2027-01-01 00:00:00 UTC"
+        );
     }
 
     // ── validez ────────────────────────────────────────────────────────
@@ -436,7 +469,10 @@ mod tests {
         ] {
             let err = validate(expr).expect_err(expr);
             assert_eq!(err.field, campo, "{expr}: {err}");
-            assert!(err.to_string().starts_with("cron inválido en el campo"), "{err}");
+            assert!(
+                err.to_string().starts_with("cron inválido en el campo"),
+                "{err}"
+            );
         }
         for (expr, campo) in [
             ("0 9 * * * *", "expresión"),
@@ -474,7 +510,7 @@ mod tests {
             "0 9 15 * 1",      // dom + dow restringidos
             "1,15,30 * * * *", // lista
             "1-30/10 8-18 * * *",
-            "0 9 29 2 *",      // feb 29
+            "0 9 29 2 *", // feb 29
             "59 23 31 12 6",
         ] {
             validate(expr).unwrap_or_else(|err| panic!("{expr}: {err}"));

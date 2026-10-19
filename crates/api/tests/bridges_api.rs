@@ -251,7 +251,6 @@ impl Harness {
         )
     }
 
-
     /// Crea un bloque built-in `http` y publica una versión SIN código
     /// (schemas solos): es lo que instancia un built-in o un `switch`.
     async fn published_builtin(&self, slug: &str) -> (Uuid, Uuid) {
@@ -262,7 +261,10 @@ impl Harness {
             )
             .await;
         assert_eq!(response.status, StatusCode::CREATED, "{}", response.body);
-        let block_id = response.json()["id"].as_str().expect("id del bloque").to_string();
+        let block_id = response.json()["id"]
+            .as_str()
+            .expect("id del bloque")
+            .to_string();
 
         let published = self
             .post(
@@ -686,12 +688,17 @@ async fn publica_un_puente_condicional_con_switch_valido_y_congela_el_snapshot()
         .as_str()
         .unwrap()
         .to_string();
-    h.patch(&format!("/api/v1/bridges/{id}"), draft.clone()).await;
+    h.patch(&format!("/api/v1/bridges/{id}"), draft.clone())
+        .await;
 
-    let validated = h.post(&format!("/api/v1/bridges/{id}/validate"), None).await;
+    let validated = h
+        .post(&format!("/api/v1/bridges/{id}/validate"), None)
+        .await;
     assert_eq!(validated.json()["valid"], true, "{}", validated.body);
 
-    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let published = h
+        .post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
     assert_eq!(published.status, StatusCode::CREATED, "{}", published.body);
 
     // El snapshot congela `when`, `routes` y `default`.
@@ -731,13 +738,18 @@ async fn una_ruta_del_switch_que_salta_hacia_atras_bloquea_la_publicacion() {
         .to_string();
     h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
 
-    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let published = h
+        .post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
     let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
     let errors = problem["errors"].as_array().expect("errors");
     assert!(
         errors.iter().any(|e| {
             e["field"] == json!("blocks[1].config.routes[0]")
-                && e["message"].as_str().unwrap_or("").contains("salta hacia atrás")
+                && e["message"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("salta hacia atrás")
         }),
         "{problem:?}"
     );
@@ -775,16 +787,15 @@ async fn un_when_con_codigo_arbitrario_se_rechaza_como_no_declarativo() {
             .to_string();
         h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
 
-        let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+        let published = h
+            .post(&format!("/api/v1/bridges/{id}/versions"), None)
+            .await;
         let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
         let errors = problem["errors"].as_array().expect("errors");
         assert!(
             errors.iter().any(|e| {
                 e["field"] == json!("blocks[1].when")
-                    && e["message"]
-                        .as_str()
-                        .unwrap_or("")
-                        .contains("declarativas")
+                    && e["message"].as_str().unwrap_or("").contains("declarativas")
             }),
             "{cuando}: {problem:?}"
         );
@@ -804,13 +815,24 @@ async fn el_trigger_cron_se_valida_al_publicar_y_se_congela_en_el_snapshot() {
         "trigger": { "type": "cron", "schedule": "0 9 * * 1-5", "timezone": "Europe/Madrid" },
         "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
     });
-    let id = h.create_bridge("cron-ok").await["id"].as_str().unwrap().to_string();
+    let id = h.create_bridge("cron-ok").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
-    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let published = h
+        .post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
     assert_eq!(published.status, StatusCode::CREATED, "{}", published.body);
     let version = published.json();
-    assert_eq!(version["definition"]["trigger"]["schedule"], json!("0 9 * * 1-5"));
-    assert_eq!(version["definition"]["trigger"]["timezone"], json!("Europe/Madrid"));
+    assert_eq!(
+        version["definition"]["trigger"]["schedule"],
+        json!("0 9 * * 1-5")
+    );
+    assert_eq!(
+        version["definition"]["trigger"]["timezone"],
+        json!("Europe/Madrid")
+    );
     h.delete(&format!("/api/v1/bridges/{id}")).await;
 
     // Schedule que no es cron de 5 campos.
@@ -818,12 +840,21 @@ async fn el_trigger_cron_se_valida_al_publicar_y_se_congela_en_el_snapshot() {
         "trigger": { "type": "cron", "schedule": "no-es-cron", "timezone": "UTC" },
         "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
     });
-    let id = h.create_bridge("cron-malo").await["id"].as_str().unwrap().to_string();
+    let id = h.create_bridge("cron-malo").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
-    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let published = h
+        .post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
     let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
     assert!(
-        problem["errors"].as_array().expect("errors").iter().any(|e| e["field"] == json!("trigger.schedule")),
+        problem["errors"]
+            .as_array()
+            .expect("errors")
+            .iter()
+            .any(|e| e["field"] == json!("trigger.schedule")),
         "{problem:?}"
     );
     h.delete(&format!("/api/v1/bridges/{id}")).await;
@@ -833,12 +864,21 @@ async fn el_trigger_cron_se_valida_al_publicar_y_se_congela_en_el_snapshot() {
         "trigger": { "type": "cron", "schedule": "*/5 * * * *", "timezone": "Marte/Olympus" },
         "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
     });
-    let id = h.create_bridge("cron-tz").await["id"].as_str().unwrap().to_string();
+    let id = h.create_bridge("cron-tz").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
-    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let published = h
+        .post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
     let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
     assert!(
-        problem["errors"].as_array().expect("errors").iter().any(|e| e["field"] == json!("trigger.timezone")),
+        problem["errors"]
+            .as_array()
+            .expect("errors")
+            .iter()
+            .any(|e| e["field"] == json!("trigger.timezone")),
         "{problem:?}"
     );
 
@@ -847,9 +887,14 @@ async fn el_trigger_cron_se_valida_al_publicar_y_se_congela_en_el_snapshot() {
         "trigger": { "type": "cron" },
         "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
     });
-    let id = h.create_bridge("cron-vacio").await["id"].as_str().unwrap().to_string();
+    let id = h.create_bridge("cron-vacio").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
-    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let published = h
+        .post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
     let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
     let fields: Vec<&str> = problem["errors"]
         .as_array()
@@ -873,10 +918,15 @@ async fn publica_puente_con_webhook_https_congela_la_url_y_expone_el_secreto_por
         "webhook": { "url": "https://receptor.example.com/hook" },
         "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
     });
-    let id = h.create_bridge("webhook-ok").await["id"].as_str().unwrap().to_string();
+    let id = h.create_bridge("webhook-ok").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
 
-    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let published = h
+        .post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
     assert_eq!(published.status, StatusCode::CREATED, "{}", published.body);
     let version = published.json();
     assert_eq!(
@@ -894,7 +944,8 @@ async fn publica_puente_con_webhook_https_congela_la_url_y_expone_el_secreto_por
     assert!(secreto.chars().all(|c| c.is_ascii_hexdigit()));
 
     // Estable entre publicaciones (regenerarlo rompería a los consumidores).
-    h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    h.post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
     let secreto2 = h.get(&format!("/api/v1/bridges/{id}/webhook-secret")).await;
     assert_eq!(secreto2.status, StatusCode::OK);
     assert_eq!(
@@ -939,7 +990,9 @@ async fn una_webhook_sin_https_bloquea_la_publicacion() {
             .to_string();
         h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
 
-        let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+        let published = h
+            .post(&format!("/api/v1/bridges/{id}/versions"), None)
+            .await;
         let problem = published.problem(StatusCode::UNPROCESSABLE_ENTITY);
         assert!(
             problem["errors"]
@@ -962,9 +1015,13 @@ async fn el_secreto_de_un_puente_sin_webhook_es_404() {
         "trigger": { "type": "http", "method": "POST", "path": "/x/sin-hook" },
         "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
     });
-    let id = h.create_bridge("sin-webhook").await["id"].as_str().unwrap().to_string();
+    let id = h.create_bridge("sin-webhook").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
-    h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    h.post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
 
     let respuesta = h.get(&format!("/api/v1/bridges/{id}/webhook-secret")).await;
     respuesta.problem(StatusCode::NOT_FOUND);
@@ -981,9 +1038,13 @@ async fn run_encola_un_disparo_manual_inmediato_de_la_version_publicada() {
         "trigger": { "type": "cron", "schedule": "0 9 * * 1-5", "timezone": "Europe/Madrid" },
         "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
     });
-    let id = h.create_bridge("runnable").await["id"].as_str().unwrap().to_string();
+    let id = h.create_bridge("runnable").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
-    h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    h.post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
 
     let response = h.post(&format!("/api/v1/bridges/{id}/run"), None).await;
     assert_eq!(response.status, StatusCode::ACCEPTED, "{}", response.body);
@@ -991,13 +1052,12 @@ async fn run_encola_un_disparo_manual_inmediato_de_la_version_publicada() {
     let execution_id = sobre["executionId"].as_str().expect("executionId");
 
     // La ejecución nace `manual`, `pending`, con run_at inmediato.
-    let (tipo, estado): (String, String) = sqlx::query_as(
-        "SELECT trigger_type, status FROM executions WHERE id = $1",
-    )
-    .bind(execution_id.parse::<Uuid>().expect("uuid"))
-    .fetch_one(&h.pool)
-    .await
-    .expect("ejecución");
+    let (tipo, estado): (String, String) =
+        sqlx::query_as("SELECT trigger_type, status FROM executions WHERE id = $1")
+            .bind(execution_id.parse::<Uuid>().expect("uuid"))
+            .fetch_one(&h.pool)
+            .await
+            .expect("ejecución");
     assert_eq!((tipo.as_str(), estado.as_str()), ("manual", "pending"));
 }
 
@@ -1011,7 +1071,10 @@ async fn run_sin_version_publicada_es_409() {
     let response = h.post(&format!("/api/v1/bridges/{id}/run"), None).await;
     let problem = response.problem(StatusCode::CONFLICT);
     assert!(
-        problem["detail"].as_str().unwrap_or("").contains("versión publicada"),
+        problem["detail"]
+            .as_str()
+            .unwrap_or("")
+            .contains("versión publicada"),
         "{problem:?}"
     );
 }
@@ -1025,9 +1088,14 @@ async fn un_puente_cron_publicado_no_se_expone_en_x() {
         "trigger": { "type": "cron", "schedule": "*/5 * * * *", "timezone": "UTC" },
         "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
     });
-    let id = h.create_bridge("solo-cron").await["id"].as_str().unwrap().to_string();
+    let id = h.create_bridge("solo-cron").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
     h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
-    let published = h.post(&format!("/api/v1/bridges/{id}/versions"), None).await;
+    let published = h
+        .post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
     assert_eq!(published.status, StatusCode::CREATED, "{}", published.body);
 
     // Ni POST ni GET: el cron no registra ruta de invocación.

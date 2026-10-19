@@ -161,13 +161,8 @@ impl<I: BlockInvoker> Executor<I> {
                         continue;
                     }
                     Err(error) => {
-                        let step = failed_step(
-                            seq,
-                            block,
-                            json!({}),
-                            condition_error(block, error),
-                            None,
-                        );
+                        let step =
+                            failed_step(seq, block, json!({}), condition_error(block, error), None);
                         return failed_outcome(steps, step, context);
                     }
                 }
@@ -220,7 +215,12 @@ impl<I: BlockInvoker> Executor<I> {
                 // El objetivo debe existir y ser posterior (sin ciclos).
                 let jump_to = match &chosen {
                     Some(target_id) => {
-                        match run.definition.blocks.iter().position(|b| &b.id == target_id) {
+                        match run
+                            .definition
+                            .blocks
+                            .iter()
+                            .position(|b| &b.id == target_id)
+                        {
                             Some(at) if at > index => Some(at),
                             _ => {
                                 let error = ErrorPayload::new(
@@ -1079,7 +1079,11 @@ mod tests {
         let outcome = executor.run(run(&definition)).await;
 
         assert!(outcome.is_success(), "{:?}", outcome.error);
-        assert_eq!(executor.invoker().calls(), 2, "el bloque saltado no se invoca");
+        assert_eq!(
+            executor.invoker().calls(),
+            2,
+            "el bloque saltado no se invoca"
+        );
         assert_eq!(outcome.steps.len(), 3);
         assert_eq!(outcome.steps[1].seq, 2);
         assert_eq!(outcome.steps[1].block_name, "medio");
@@ -1118,12 +1122,20 @@ mod tests {
         let executor = Executor::new(invoker);
         let outcome = executor.run(run(&definition)).await;
 
-        assert_eq!(executor.invoker().calls(), 0, "la condición falla antes de invocar");
+        assert_eq!(
+            executor.invoker().calls(),
+            0,
+            "la condición falla antes de invocar"
+        );
         let error = outcome.error.expect("error estructurado");
         assert_eq!(error.code, ErrorCode::RefUnresolved);
         assert_eq!(error.code.as_str(), "REF_UNRESOLVED");
         assert_eq!(error.block.as_deref(), Some("cond"));
-        assert!(error.message.contains("$.cliente.pais"), "{}", error.message);
+        assert!(
+            error.message.contains("$.cliente.pais"),
+            "{}",
+            error.message
+        );
         assert_eq!(outcome.steps[0].status, StepStatus::Failed);
     }
 
@@ -1149,12 +1161,19 @@ mod tests {
         let outcome = executor.run(run(&definition)).await;
 
         assert!(outcome.is_success(), "{:?}", outcome.error);
-        assert_eq!(executor.invoker().calls(), 1, "solo la ruta tomada se invoca");
+        assert_eq!(
+            executor.invoker().calls(),
+            1,
+            "solo la ruta tomada se invoca"
+        );
         assert_eq!(outcome.steps.len(), 3);
         // El switch registra su decisión sin invocar el sandbox.
         assert_eq!(outcome.steps[0].status, StepStatus::Succeeded);
         assert_eq!(outcome.steps[0].duration_ms, None);
-        assert_eq!(outcome.steps[0].output, Some(json!({ "to": "instancia-normal" })));
+        assert_eq!(
+            outcome.steps[0].output,
+            Some(json!({ "to": "instancia-normal" }))
+        );
         // La ruta vip queda skipped en su seq original.
         assert_eq!(outcome.steps[1].block_name, "vip");
         assert_eq!(outcome.steps[1].status, StepStatus::Skipped);
@@ -1187,9 +1206,20 @@ mod tests {
 
         assert!(outcome.is_success(), "{:?}", outcome.error);
         assert_eq!(executor.invoker().calls(), 1);
-        assert_eq!(outcome.steps[0].output, Some(json!({ "to": "instancia-normal" })));
-        assert_eq!(outcome.steps[1].status, StepStatus::Skipped, "vip (ruta no tomada)");
-        assert_eq!(outcome.steps[2].status, StepStatus::Skipped, "media (intermedio saltado)");
+        assert_eq!(
+            outcome.steps[0].output,
+            Some(json!({ "to": "instancia-normal" }))
+        );
+        assert_eq!(
+            outcome.steps[1].status,
+            StepStatus::Skipped,
+            "vip (ruta no tomada)"
+        );
+        assert_eq!(
+            outcome.steps[2].status,
+            StepStatus::Skipped,
+            "media (intermedio saltado)"
+        );
         assert_eq!(outcome.steps[3].block_name, "normal");
         assert_eq!(outcome.steps[3].status, StepStatus::Succeeded);
     }
@@ -1239,7 +1269,9 @@ mod tests {
             block("despues", "code-despues", json!({}), json!({})),
         ]);
         let invoker = MockInvoker::new(vec![
-            Err(SandboxError::JsError { message: "boom".to_string() }),
+            Err(SandboxError::JsError {
+                message: "boom".to_string(),
+            }),
             ok(json!({ "nunca": true })),
         ]);
         let executor = Executor::new(invoker);
@@ -1247,7 +1279,11 @@ mod tests {
         let outcome = executor.run(run(&definition)).await;
 
         assert!(!outcome.is_success());
-        assert_eq!(executor.invoker().calls(), 1, "fail-fast: nada tras el error");
+        assert_eq!(
+            executor.invoker().calls(),
+            1,
+            "fail-fast: nada tras el error"
+        );
         let error = outcome.error.expect("error estructurado");
         assert_eq!(error.code, ErrorCode::BlockFailed);
         assert_eq!(error.block.as_deref(), Some("destino"));
@@ -1273,7 +1309,11 @@ mod tests {
         let error = outcome.error.expect("error estructurado");
         assert_eq!(error.code, ErrorCode::RefUnresolved);
         assert_eq!(error.block.as_deref(), Some("switch"));
-        assert!(error.message.contains("$.cliente.pais"), "{}", error.message);
+        assert!(
+            error.message.contains("$.cliente.pais"),
+            "{}",
+            error.message
+        );
     }
 
     #[tokio::test]
@@ -1284,10 +1324,7 @@ mod tests {
             None,
         );
         switch.when = Some(json!({ "eq": ["$.trigger.body.cantidad", 999] }));
-        let definition = definition(vec![
-            switch,
-            block("vip", "code-vip", json!({}), json!({})),
-        ]);
+        let definition = definition(vec![switch, block("vip", "code-vip", json!({}), json!({}))]);
         let invoker = MockInvoker::new(vec![ok(json!({ "vip": true }))]);
         let outcome = Executor::new(invoker).run(run(&definition)).await;
 
