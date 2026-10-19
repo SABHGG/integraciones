@@ -144,6 +144,101 @@ curl -s -X POST localhost:8080/x/registro-cliente \
      -H 'content-type: application/json' -d '{"items": ["cafe", "mate"]}'
 ```
 
+## MVP2: asíncrono, polling, webhook firmado, cron y condicionales
+
+Todo lo de la sección anterior sigue igual; esto se añade por encima.
+
+### Disparo asíncrono y polling
+
+Con `Prefer: respond-async` (RFC 7240) el disparo responde `202` en cuanto la
+ejecución queda encolada, con el `Location` del recurso de resultado:
+
+```bash
+curl -si -X POST localhost:8080/x/registro-cliente \
+     -H 'content-type: application/json' \
+     -H 'prefer: respond-async' \
+     -d '{"items": ["cafe"]}'
+# HTTP/1.1 202
+# Location: /x/registro-cliente/executions/<executionId>
+# {"success":true,"executionId":"..."}
+
+curl -s localhost:8080/x/registro-cliente/executions/<executionId>
+# en curso:  {"success":true,"executionId":"...","status":"running"}
+# terminado: {"success":true,"data":{...},"executionId":"..."} (idéntico al síncrono)
+```
+
+La ejecución la corre el worker interno (cola `executions` con SKIP LOCKED).
+`Idempotency-Key` funciona igual en async: la repetición devuelve `202` con el
+`executionId` original. Los errores de transporte (404/405/413/415) no cambian.
+
+### Webhook de resultado firmado
+
+Si el borrador del puente declara `webhook: {"url": "https://..."}`, al
+terminar cada ejecución — con éxito o con fallo — el sistema entrega el sobre
+final a esa URL con:
+
+- `X-Integraciones-Signature: sha256=<hex>` — HMAC-SHA256 **del body crudo**
+  con el secreto del puente.
+- `X-Integraciones-Timestamp` (unix) y `X-Integraciones-Delivery` (estable por
+  entrega, para deduplicar reintentos).
+
+El secreto se genera al publicar y solo se expone por el plano admin:
+
+```bash
+curl -s -H "$K" localhost:8080/api/v1/bridges/<id>/webhook-secret   # {"secret":"<64 hex>"}
+```
+
+Verificación en el receptor (Python):
+
+```python
+import hmac, hashlib
+esperada = "sha256=" + hmac.new(SECRETO.encode(), body_crudo, hashlib.sha256).hexdigest()
+assert hmac.compare_digest(esperada, request.headers["X-Integraciones-Signature"])
+```
+
+Reintentos persistentes con backoff fijo: 30 s → 2 min → 10 min → 1 h → 6 h
+(5 intentos; éxito solo con 2xx). El estado vive en `webhook_deliveries`
+(`pending → delivered | failed`, con `attempts`, `response_status`).
+
+### Puentes cron
+
+El trigger admite `{ "type": "cron", "schedule": "0 9 * * 1-5",
+"timezone": "Europe/Madrid" }` (cron de 5 campos + zona IANA, validados al
+publicar; horarios de verano respetados). El scheduler interno pre-encola cada
+ocurrencia con `run_at` exacto; si una ejecución anterior sigue viva, la
+ocurrencia se salta y queda en `missed_triggers` (`overlap`); tras una caída
+se recupera solo la ocurrencia más reciente (`downtime` para el resto). Un
+puente cron **no** se expone en `/x`. Para probarlo a demanda:
+
+```bash
+curl -s -X POST -H "$K" localhost:8080/api/v1/bridges/<id>/run
+# 202 {"executionId":"..."}  (409 si el puente no tiene versión publicada)
+```
+
+### Puentes condicionales (`when` y `switch`)
+
+Cada instancia puede declarar `when` — una condición **declarativa** sobre
+refs `$.` (nada de JS) — y la cadena admite el bloque built-in `switch` con
+rutas nombradas a instancias posteriores:
+
+```json
+{
+  "id": "b-switch", "name": "enrutador", "blockId": "<switch>", "blockVersionId": "<v>",
+  "input": {}, "config": {
+    "routes": [
+      { "when": { "gte": ["$.trigger.body.total", 10] }, "to": "b-vip" },
+      { "when": { "eq": ["$.cliente.pais", "ES"] }, "to": "b-iberia" }
+    ],
+    "default": "b-normal"
+  }
+}
+```
+
+Gramática de condiciones: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `exists`,
+`contains`, combinables con `and` / `or` / `not`. La ruta no tomada queda en
+el trace como `skipped` (en su `seq`, sin IO). El primer error en la ruta
+tomada corta la ejecución (fail-fast, como siempre).
+
 ## Seguridad del sandbox
 
 Los bloques `custom_logic` corren en un isolate QuickJS con límite de memoria
