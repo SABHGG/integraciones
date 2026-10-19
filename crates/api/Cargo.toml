@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 rust-embed = "8"
+argon2 = "0.5"
 mime_guess = "2"
 domain.workspace = true
 sandbox.workspace = true

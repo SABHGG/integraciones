@@ -1,5 +1,10 @@
-//! Auth del plano de administración: `Authorization: Bearer <api key>`.
-//! El key crudo nunca se guarda: se compara SHA-256 contra `api_keys.key_hash`.
+//! Auth del plano de administración con dos identidades por `Bearer`:
+//!
+//! - **token de sesión de usuario** (`user_sessions`, MVP4): resuelve al
+//!   usuario y su rol en el workspace vía `workspace_members`;
+//! - **API key de workspace** (MVP1, compatibilidad): actúa como `owner`.
+//!
+//! Ni los tokens ni las keys se guardan en crudo: se compara SHA-256.
 
 use axum::extract::{Request, State};
 use axum::http::header::AUTHORIZATION;
@@ -12,20 +17,66 @@ use uuid::Uuid;
 use crate::problem;
 use crate::state::AppState;
 
-/// Identidad de la API key autenticada, disponible para los handlers vía
+/// Rol del miembro en el workspace (`workspace_members.role`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    Owner,
+    Editor,
+    Runner,
+    Viewer,
+}
+
+impl Role {
+    /// El rol desde la BD (`text` con CHECK) — inválido es error de servidor.
+    pub fn from_db(raw: &str) -> Result<Role, String> {
+        match raw {
+            "owner" => Ok(Role::Owner),
+            "editor" => Ok(Role::Editor),
+            "runner" => Ok(Role::Runner),
+            "viewer" => Ok(Role::Viewer),
+            otro => Err(format!("rol desconocido en workspace_members: {otro}")),
+        }
+    }
+
+    /// Etiqueta canónica para mensajes de error (403).
+    pub fn etiqueta(&self) -> &'static str {
+        match self {
+            Role::Owner => "owner",
+            Role::Editor => "editor",
+            Role::Runner => "runner",
+            Role::Viewer => "viewer",
+        }
+    }
+}
+
+/// Quién está detrás del `Bearer` (auditoría y `whoami`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Principal {
+    /// Token de sesión de usuario (MVP4).
+    User { user_id: Uuid, email: String },
+    /// API key de workspace (MVP1): automatización, rol `owner`.
+    ApiKey,
+}
+
+/// Identidad autenticada, disponible para los handlers vía
 /// `Extension<AuthedKey>`.
 ///
-/// `workspace_id` es opcional porque la FK de `api_keys` lo es: una key sin
-/// workspace sigue siendo válida para rutas globales, pero los recursos de
-/// biblioteca (bloques) exigen workspace ([`AuthedKey::workspace`]).
+/// `workspace_id` es opcional porque la FK de `api_keys` lo es y las sesiones
+/// multi-workspace nacen sin workspace fijado (exigen `X-Workspace`).
 #[derive(Debug, Clone, Serialize)]
 pub struct AuthedKey {
-    /// Id de la fila en `api_keys`.
+    /// Id de la fila origen (`user_sessions` o `api_keys`).
     pub id: Uuid,
-    /// Nombre legible de la key.
+    /// Email (usuario) o nombre legible (API key).
     pub name: String,
-    /// Workspace al que está vinculada la key, si lo tiene.
+    /// Workspace al que está vinculada la identidad, si lo tiene.
     pub workspace_id: Option<Uuid>,
+    /// Rol efectivo en ese workspace (keys = `owner`).
+    pub role: Role,
+    /// Quién es (auditoría).
+    pub principal: Principal,
 }
 
 impl AuthedKey {
@@ -37,10 +88,18 @@ impl AuthedKey {
     pub fn workspace(&self) -> Result<Uuid, problem::Problem> {
         self.workspace_id.ok_or_else(|| {
             problem::forbidden(
-                "la api key no está vinculada a un workspace; \
-                 vincula la key (api_keys.workspace_id) para usar los recursos",
+                "la identidad no está vinculada a un workspace; \
+                 vincula la key o entra con `X-Workspace` para usar los recursos",
             )
         })
+    }
+
+    /// Email si el principal es usuario (auditoría del disparador).
+    pub fn email(&self) -> Option<&str> {
+        match &self.principal {
+            Principal::User { email, .. } => Some(email),
+            Principal::ApiKey => None,
+        }
     }
 }
 
@@ -48,11 +107,21 @@ pub fn hash_key(raw: &str) -> String {
     hex::encode(Sha256::digest(raw.as_bytes()))
 }
 
-/// Middleware del plano `/api/v1`: exige Bearer válido y no revocado.
+/// Sesión de usuario resuelta del token (antes de fijar workspace).
+struct Sesion {
+    id: Uuid,
+    user_id: Uuid,
+    email: String,
+    workspace_id: Option<Uuid>,
+}
+
+/// Middleware del plano `/api/v1`: exige `Bearer` válido (token de usuario o
+/// API key) y anota el principal con su rol. Las sesiones sin workspace fijado
+/// exigen el header `X-Workspace` (slug o id) y resuelven el rol por petición.
 // axum idiomático: el middleware devuelve Response tanto en éxito como en error;
 // Response supera los 128 bytes, así que silenciamos el lint en lugar de boxear.
 #[allow(clippy::result_large_err)]
-pub async fn require_api_key(
+pub async fn require_auth(
     State(state): State<AppState>,
     mut req: Request,
     next: Next,
@@ -69,44 +138,198 @@ pub async fn require_api_key(
     let token = match token {
         Some(t) => t,
         None => {
-            return Err(
-                problem::unauthorized("Falta el header Authorization: Bearer <api key>")
-                    .into_response(),
-            );
+            return Err(problem::unauthorized(
+                "Falta el header Authorization: Bearer <token o api key>",
+            )
+            .into_response());
         }
     };
 
     let hash = hash_key(token);
-    let row = sqlx::query_as::<_, (Uuid, String, Option<Uuid>)>(
-        "SELECT id, name, workspace_id FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL",
+
+    // 1) ¿Sesión de usuario? (los tokens nacen con el mismo formato que las
+    //    keys: el hash decide — una colisión entre tablas es imposible a la
+    //    práctica y ambas tablas se consultan en orden fijo).
+    let sesion = sqlx::query_as::<_, (Uuid, Uuid, String, Option<Uuid>)>(
+        "SELECT s.id, s.user_id, u.email, s.workspace_id \
+         FROM user_sessions s JOIN users u ON u.id = s.user_id \
+         WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()",
     )
     .bind(&hash)
     .fetch_optional(&state.pool)
     .await;
 
-    let row = match row {
-        Ok(Some(row)) => row,
-        Ok(None) => {
-            return Err(problem::unauthorized("API key inválida o revocada").into_response());
-        }
+    let sesion = match sesion {
+        Ok(Some((id, user_id, email, workspace_id))) => Some(Sesion {
+            id,
+            user_id,
+            email,
+            workspace_id,
+        }),
+        Ok(None) => None,
         Err(e) => {
-            tracing::error!(error = %e, "fallo al validar api key");
-            return Err(problem::internal("fallo al validar la api key").into_response());
+            tracing::error!(error = %e, "fallo al validar la sesión");
+            return Err(problem::internal("fallo al validar la sesión").into_response());
         }
     };
 
-    // best-effort: actualizar último uso sin bloquear la petición si falla
-    let _ = sqlx::query("UPDATE api_keys SET last_used_at = now() WHERE id = $1")
-        .bind(row.0)
-        .execute(&state.pool)
+    let autenticada = if let Some(sesion) = sesion {
+        // best-effort: actualizar último uso sin bloquear la petición si falla
+        let _ = sqlx::query("UPDATE user_sessions SET last_used_at = now() WHERE id = $1")
+            .bind(sesion.id)
+            .execute(&state.pool)
+            .await;
+
+        // Workspace fijado en la sesión o exigido por header (multi-workspace).
+        let (workspace_id, role) = match sesion.workspace_id {
+            Some(workspace_id) => {
+                let rol = rol_en_workspace(&state, sesion.user_id, workspace_id).await?;
+                (Some(workspace_id), rol)
+            }
+            None => {
+                let pedido = req
+                    .headers()
+                    .get("x-workspace")
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty());
+                match pedido {
+                    None => {
+                        return Err(problem::unauthorized(
+                            "la sesión no tiene workspace fijado: indica X-Workspace \
+                             (o vuelve a entrar eligiendo workspace)",
+                        )
+                        .into_response());
+                    }
+                    Some(crudo) => resolver_por_header(&state, sesion.user_id, crudo).await?,
+                }
+            }
+        };
+
+        AuthedKey {
+            id: sesion.id,
+            name: sesion.email.clone(),
+            workspace_id,
+            role,
+            principal: Principal::User {
+                user_id: sesion.user_id,
+                email: sesion.email,
+            },
+        }
+    } else {
+        // 2) ¿API key? (compatibilidad MVP1: automatización como owner).
+        let row = sqlx::query_as::<_, (Uuid, String, Option<Uuid>)>(
+            "SELECT id, name, workspace_id FROM api_keys \
+             WHERE key_hash = $1 AND revoked_at IS NULL",
+        )
+        .bind(&hash)
+        .fetch_optional(&state.pool)
         .await;
 
-    req.extensions_mut().insert(AuthedKey {
-        id: row.0,
-        name: row.1,
-        workspace_id: row.2,
-    });
+        match row {
+            Ok(Some(row)) => {
+                let _ = sqlx::query("UPDATE api_keys SET last_used_at = now() WHERE id = $1")
+                    .bind(row.0)
+                    .execute(&state.pool)
+                    .await;
+                AuthedKey {
+                    id: row.0,
+                    name: row.1,
+                    workspace_id: row.2,
+                    role: Role::Owner,
+                    principal: Principal::ApiKey,
+                }
+            }
+            Ok(None) => {
+                return Err(
+                    problem::unauthorized("token o API key inválida o revocada").into_response()
+                );
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "fallo al validar api key");
+                return Err(problem::internal("fallo al validar la api key").into_response());
+            }
+        }
+    };
+
+    req.extensions_mut().insert(autenticada);
     Ok(next.run(req).await)
+}
+
+/// Rol vigente del usuario en un workspace (por petición: un cambio de rol es
+/// efectivo al instante). Sin membresía → la sesión ya no sirve ahí (401/403).
+#[allow(clippy::result_large_err)]
+async fn rol_en_workspace(
+    state: &AppState,
+    user_id: Uuid,
+    workspace_id: Uuid,
+) -> Result<Role, Response> {
+    let fila: Result<Option<String>, _> = sqlx::query_scalar(
+        "SELECT role FROM workspace_members WHERE user_id = $1 AND workspace_id = $2",
+    )
+    .bind(user_id)
+    .bind(workspace_id)
+    .fetch_optional(&state.pool)
+    .await;
+    match fila {
+        Ok(Some(rol)) => Role::from_db(&rol).map_err(|e| problem::internal(e).into_response()),
+        Ok(None) => {
+            Err(problem::unauthorized("ya no eres miembro de este workspace").into_response())
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "fallo al resolver el rol");
+            Err(problem::internal("fallo al resolver el rol").into_response())
+        }
+    }
+}
+
+/// Resuelve `X-Workspace` (slug o id) contra las membresías del usuario.
+#[allow(clippy::result_large_err)]
+async fn resolver_por_header(
+    state: &AppState,
+    user_id: Uuid,
+    crudo: &str,
+) -> Result<(Option<Uuid>, Role), Response> {
+    let por_slug = sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT w.id, m.role FROM workspaces w \
+         JOIN workspace_members m ON m.workspace_id = w.id \
+         WHERE m.user_id = $1 AND w.slug = $2",
+    )
+    .bind(user_id)
+    .bind(crudo)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "fallo al resolver X-Workspace");
+        problem::internal("fallo al resolver el workspace").into_response()
+    })?;
+    let fila = if let Some(par) = por_slug {
+        Some(par)
+    } else if let Ok(id) = Uuid::parse_str(crudo) {
+        sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT w.id, m.role FROM workspaces w \
+             JOIN workspace_members m ON m.workspace_id = w.id \
+             WHERE m.user_id = $1 AND w.id = $2",
+        )
+        .bind(user_id)
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "fallo al resolver X-Workspace");
+            problem::internal("fallo al resolver el workspace").into_response()
+        })?
+    } else {
+        None
+    };
+    match fila {
+        Some((id, rol_texto)) => {
+            let role =
+                Role::from_db(&rol_texto).map_err(|e| problem::internal(e).into_response())?;
+            Ok((Some(id), role))
+        }
+        None => Err(problem::unauthorized("no eres miembro de ese workspace").into_response()),
+    }
 }
 
 #[cfg(test)]
@@ -119,6 +342,8 @@ mod tests {
             id: Uuid::now_v7(),
             name: "dev".to_string(),
             workspace_id,
+            role: Role::Owner,
+            principal: Principal::ApiKey,
         }
     }
 
@@ -156,5 +381,28 @@ mod tests {
             authed(Some(workspace_id)).workspace().unwrap(),
             workspace_id
         );
+    }
+
+    #[test]
+    fn los_roles_se_resuelven_desde_la_bd_y_rechazan_lo_desconocido() {
+        assert_eq!(Role::from_db("owner"), Ok(Role::Owner));
+        assert_eq!(Role::from_db("viewer"), Ok(Role::Viewer));
+        assert!(Role::from_db("emperador").is_err());
+    }
+
+    #[test]
+    fn el_email_solo_existe_en_el_principal_de_usuario() {
+        let usuario = AuthedKey {
+            id: Uuid::now_v7(),
+            name: "ada@ejemplo.dev".to_string(),
+            workspace_id: Some(Uuid::now_v7()),
+            role: Role::Editor,
+            principal: Principal::User {
+                user_id: Uuid::now_v7(),
+                email: "ada@ejemplo.dev".to_string(),
+            },
+        };
+        assert_eq!(usuario.email(), Some("ada@ejemplo.dev"));
+        assert_eq!(authed(Some(Uuid::now_v7())).email(), None);
     }
 }

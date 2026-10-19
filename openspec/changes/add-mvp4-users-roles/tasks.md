@@ -2,10 +2,10 @@
 
 ## 1. Fase 1 — Sesiones de usuario
 
-- [ ] 1.1 Migración `0006`: `users.password_hash` (nullable) + `user_sessions` (token hash único, workspace, expiración, revocación); aplicable sobre el schema existente; tests RED/GREEN
-- [ ] 1.2 `POST /auth/register` (argon2id, email único, contraseña ≥ 10) y `POST /auth/login` (401 uniforme, sesión por workspace: implícito con uno, elegido con varios); tests
-- [ ] 1.3 `POST /auth/logout` (revoca) + expiración 30 días; `whoami` revela email/rol/tipo de principal; tests
-- [ ] 1.4 Middleware `Principal`: token de usuario o API key → `AuthedKey { workspace, role, principal }` con rol resuelto por petición; los handlers existentes intactos; tests
+- [x] 1.1 Migración `0006`: `users.password_hash` (nullable) + `user_sessions` (token hash único, workspace, expiración, revocación); aplicable sobre el schema existente; tests RED/GREEN
+- [x] 1.2 `POST /auth/register` (argon2id, email único, contraseña ≥ 10) y `POST /auth/login` (401 uniforme, sesión por workspace: implícito con uno, elegido con varios); tests
+- [x] 1.3 `POST /auth/logout` (revoca) + expiración 30 días; `whoami` revela email/rol/tipo de principal; tests
+- [x] 1.4 Middleware `Principal`: token de usuario o API key → `AuthedKey { workspace, role, principal }` con rol resuelto por petición; los handlers existentes intactos; tests
 
 ## 2. Fase 2 — Matriz de roles
 

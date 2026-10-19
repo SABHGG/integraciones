@@ -404,6 +404,17 @@ async fn e2e_puente_condicional_async_con_polling_y_webhook_firmado() {
             .expect("entrega");
     assert_eq!(d_estado, "delivered");
     let _ = bridge_id;
+
+    // Higiene: drena la cola global y las entregas pendientes para no
+    // contaminar al test cron (y a otros binarios que comparten la BD).
+    while api::worker::procesar_pendiente(&mundo.state)
+        .await
+        .expect("worker")
+    {}
+    while api::webhooks::procesar_una_entrega(&mundo.state)
+        .await
+        .expect("entregas")
+    {}
 }
 
 #[tokio::test]
@@ -468,4 +479,16 @@ async fn e2e_puente_cron_con_solape_simulado() {
     .expect("missed");
     assert_eq!(reason, "overlap");
     assert_eq!(scheduled, json!("2026-03-04T09:06:00+00:00"));
+
+    // Higiene: las ocurrencias cron pre-encoladas tienen run_at ya pasado y
+    // son reclamables por la cola global: drenarlas para que el otro test de
+    // este binario (y los e2e siguientes) reclamen SOLO sus filas.
+    while api::worker::procesar_pendiente(&mundo.state)
+        .await
+        .expect("worker")
+    {}
+    while api::webhooks::procesar_una_entrega(&mundo.state)
+        .await
+        .expect("entregas")
+    {}
 }

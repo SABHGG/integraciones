@@ -22,6 +22,7 @@ pub mod scheduler;
 pub mod state;
 pub mod transpile;
 pub mod ui;
+pub mod users;
 pub mod vault;
 pub mod webhooks;
 pub mod worker;
@@ -65,7 +66,7 @@ pub fn app(state: AppState) -> Router {
         .fallback(|| async { problem::not_found("la ruta no existe en la API") })
         .layer(middleware::from_fn_with_state(
             state.clone(),
-            auth::require_api_key,
+            auth::require_auth,
         ));
 
     // Plano de invocación: sin auth de administración en v1 (spec
@@ -81,6 +82,9 @@ pub fn app(state: AppState) -> Router {
         .route("/healthz", get(|| async { "ok" }))
         .merge(docs)
         .merge(console::router())
+        // auth (register/login/logout) es público: se monta junto al admin
+        // bajo /api/v1 pero FUERA del middleware de identidad.
+        .nest("/api/v1", users::router())
         .nest("/api/v1", admin)
         .nest("/x", invocation)
         .with_state(state)
@@ -89,8 +93,10 @@ pub fn app(state: AppState) -> Router {
 /// Identidad autenticada (útil para diagnosticar la key y su workspace).
 async fn whoami(Extension(key): Extension<auth::AuthedKey>) -> Json<serde_json::Value> {
     Json(json!({
+        "principal": users::principal_json(&key.principal, &key.role),
         "id": key.id,
         "name": key.name,
         "workspaceId": key.workspace_id,
+        "role": key.role,
     }))
 }
