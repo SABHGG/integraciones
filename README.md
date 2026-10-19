@@ -239,6 +239,12 @@ Gramática de condiciones: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `exists`,
 el trace como `skipped` (en su `seq`, sin IO). El primer error en la ruta
 tomada corta la ejecución (fail-fast, como siempre).
 
+### Eventos: suscripción por topic, fan-out y `emit` (MVP3)
+
+Un puente puede suscribirse a un topic (`{"trigger": {"type": "event", "topic": "pedido.creado"}}`) y publicarse eventos por API (`POST /api/v1/events/pedido.creado` con el payload como body; `202` con el número de ejecuciones encoladas, cero si no hay suscriptores — el evento no se retiene). Un puente también puede emitir eventos al terminar (`"emit": {"onSuccess": ["topic"], "onFailure": ["topic"]}`) con el sobre final como payload, enriquecido con `bridgeSlug` y `executionId` del emisor: así se encadenan puentes sin acoplarlos.
+
+**Límites documentados**: el fan-out no garantiza orden ni entrega entre suscriptores — cada suscriptor es una ejecución independiente con su propio fail-fast y trace; si un suscriptor no tiene versión publicada en el instante del fan-out, pierde ese evento. No hay cola de eventos persistida: el evento ES el conjunto de ejecuciones creadas (D1). Un topic con cientos de suscriptores alarga la transacción de publicación: es un límite práctico conocido.
+
 ## Seguridad del sandbox
 
 Los bloques `custom_logic` corren en un isolate QuickJS con límite de memoria

@@ -66,6 +66,10 @@ pub struct BridgeDefinition {
     /// forma irreversible al persistir el IO (spec `io-masking`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mask: Vec<String>,
+    /// Eventos a emitir al completar (MVP3, spec `event-triggers`),
+    /// congelado en el snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emit: Option<EmitDefinition>,
 }
 
 impl BridgeDefinition {
@@ -95,6 +99,36 @@ pub struct TriggerDefinition {
     /// Zona horaria IANA del schedule (solo disparador `cron`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timezone: Option<String>,
+    /// Topic de suscripción (solo disparador `event`, MVP3), validado al
+    /// publicar y congelado en el snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topic: Option<String>,
+}
+
+/// Emisión de eventos al completar (MVP3): topics que el sistema publica con
+/// el sobre final como payload (enriquecido con `bridgeSlug`/`executionId`)
+/// cuando la ejecución termina con éxito o con fallo, respectivamente.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmitDefinition {
+    /// Topics a emitir cuando la ejecución termina `succeeded`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub on_success: Vec<String>,
+    /// Topics a emitir cuando la ejecución termina `failed`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub on_failure: Vec<String>,
+}
+
+/// Valida el formato de topic: slug de minúsculas, dígitos, puntos y
+/// guiones; sin separadores al principio, al final ni consecutivos.
+pub fn validar_topic(topic: &str) -> bool {
+    !topic.is_empty()
+        && topic.split(['.', '-']).all(|parte| {
+            !parte.is_empty()
+                && parte
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        })
 }
 
 /// Tipos de disparador soportados por el contrato del trigger.

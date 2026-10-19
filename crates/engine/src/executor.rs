@@ -791,11 +791,13 @@ mod tests {
                 path: Some("/x/demo".to_string()),
                 schedule: None,
                 timezone: None,
+                topic: None,
             },
             input_schema: None,
             blocks,
             webhook: None,
             mask: Vec::new(),
+            emit: None,
         }
     }
 

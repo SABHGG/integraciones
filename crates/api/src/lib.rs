@@ -11,6 +11,7 @@ pub mod bridges;
 pub mod credentials;
 pub mod cursor;
 pub mod docs;
+mod events;
 pub mod executions;
 pub mod invoke;
 pub mod problem;
@@ -57,6 +58,7 @@ pub fn app(state: AppState) -> Router {
         .merge(credentials::router())
         .merge(bridges::router())
         .merge(executions::router())
+        .merge(events::router())
         // Cualquier ruta /api/v1 desconocida responde Problem Details: el
         // cliente del plano admin solo habla application/problem+json.
         .fallback(|| async { problem::not_found("la ruta no existe en la API") })

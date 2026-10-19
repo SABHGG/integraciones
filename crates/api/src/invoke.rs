@@ -444,6 +444,7 @@ pub(crate) async fn ejecutar_encolada(
     // (definition/trigger) y el enmascaramiento (MVP3) reescribe estas
     // copias antes del UPDATE.
     let mask_reglas_snapshot = definition.mask.clone();
+    let emit_snapshot = definition.emit.clone();
     let mut trigger_para_persistir = trigger_data.clone();
 
     // MVP3: registro de credenciales usadas (auditoría de la bóveda
@@ -506,6 +507,7 @@ pub(crate) async fn ejecutar_encolada(
         &outcome,
         credentials_used,
         Some(trigger_para_persistir),
+        emit_snapshot.as_ref(),
     )
     .await
     .map_err(|error| problem::internal(format!("persistir el resultado: {error}")))?;
@@ -786,6 +788,7 @@ async fn persist_outcome(
     outcome: &ExecutionOutcome,
     credentials_used: Option<Value>,
     trigger_data_enmascarado: Option<Value>,
+    emit: Option<&domain::definition::EmitDefinition>,
 ) -> Result<(), sqlx::Error> {
     let status_final = outcome.status.as_str();
     let execution_error = outcome
@@ -840,6 +843,48 @@ async fn persist_outcome(
     .bind(trigger_data_enmascarado)
     .execute(&mut *tx)
     .await?;
+
+    // Emisión de eventos al completar (MVP3, D1b): dentro de la MISMA
+    // transacción de finalización. El payload es el sobre final enriquecido
+    // con `bridgeSlug` y `executionId` del emisor.
+    if let Some(emit) = emit {
+        let topics = if outcome.is_success() {
+            &emit.on_success
+        } else {
+            &emit.on_failure
+        };
+        if !topics.is_empty() {
+            let (bridge_slug, workspace_id): (String, Uuid) = sqlx::query_as(
+                "SELECT b.slug, e.workspace_id FROM executions e \
+                 JOIN bridges b ON b.id = e.bridge_id WHERE e.id = $1",
+            )
+            .bind(execution_id)
+            .fetch_one(&mut *tx)
+            .await?;
+            let exito = outcome.is_success();
+            let sobre = if exito {
+                json!({
+                    "success": true,
+                    "data": outcome.output.clone().unwrap_or(Value::Null),
+                    "executionId": execution_id,
+                    "bridgeSlug": bridge_slug,
+                })
+            } else {
+                json!({
+                    "success": false,
+                    "error": outcome.error.as_ref().map(|error| {
+                        serde_json::to_value(error).unwrap_or(Value::Null)
+                    }).unwrap_or(Value::Null),
+                    "executionId": execution_id,
+                    "bridgeSlug": bridge_slug,
+                })
+            };
+            for topic in topics {
+                crate::events::encolar_fanout(&mut tx, workspace_id, topic, &sobre).await?;
+            }
+        }
+    }
+
     tx.commit().await?;
     Ok(())
 }

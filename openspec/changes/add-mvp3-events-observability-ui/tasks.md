@@ -15,10 +15,10 @@
 
 ## 3. Fase 3 — Eventos/colas
 
-- [ ] 3.1 Validador: trigger `{type: "event", topic}` con formato de topic, congelado en snapshot; suscripción múltiple al mismo topic; tests
-- [ ] 3.2 `POST /api/v1/events/{topic}`: fan-out transaccional (una ejecución por suscriptor publicado, `trigger_data` con payload + eventId), `202` sin suscriptores; test contra Postgres real
-- [ ] 3.3 `emit: {onSuccess, onFailure}` congelado en snapshot y publicado dentro de la transacción de finalización, con sobre final + `bridgeSlug` + `executionId`; tests de encadenado A→B y de emisión solo en fallo
-- [ ] 3.4 Documentar límites: sin orden ni entrega garantizada entre suscriptores (README)
+- [x] 3.1 Validador: trigger `{type: "event", topic}` con formato de topic, congelado en snapshot; suscripción múltiple al mismo topic; tests
+- [x] 3.2 `POST /api/v1/events/{topic}`: fan-out transaccional (una ejecución por suscriptor publicado, `trigger_data` con payload + eventId), `202` sin suscriptores; test contra Postgres real
+- [x] 3.3 `emit: {onSuccess, onFailure}` congelado en snapshot y publicado dentro de la transacción de finalización, con sobre final + `bridgeSlug` + `executionId`; tests de encadenado A→B y de emisión solo en fallo
+- [x] 3.4 Documentar límites: sin orden ni entrega garantizada entre suscriptores (README)
 
 ## 4. Fase 4 — Dry-run y replay
 

@@ -161,6 +161,22 @@ fn validate_trigger(trigger: Option<&Value>) -> Vec<Issue> {
                 }
             }
         }
+    } else if kind == "event" {
+        // MVP3: el topic de suscripción se valida al publicar y queda
+        // congelado en el snapshot.
+        match trigger.get("topic").and_then(Value::as_str) {
+            None => issues.push(Issue::new(
+                "trigger.topic",
+                "un disparador event necesita \"topic\" (el canal al que se suscribe el puente)",
+            )),
+            Some(topic) if !domain::definition::validar_topic(topic) => issues.push(Issue::new(
+                "trigger.topic",
+                format!(
+                    "\"{topic}\" no es un topic válido (minúsculas, dígitos, puntos y guiones; sin separadores al inicio, al final ni consecutivos)"
+                ),
+            )),
+            Some(_) => {}
+        }
     } else if kind != "event" && kind != "manual" {
         issues.push(Issue::new(
             "trigger.type",
@@ -1000,6 +1016,9 @@ struct PatchBridge {
     /// Reglas de enmascaramiento (MVP3): array de rutas `$.`. `null` = no tocar.
     #[serde(default)]
     mask: Option<Value>,
+    /// Eventos a emitir al completar (MVP3): `{onSuccess, onFailure}`. `null` = no tocar.
+    #[serde(default)]
+    emit: Option<Value>,
     /// Webhook de resultado (MVP2): `{url}` https. `null` = no tocar.
     #[serde(default)]
     webhook: Option<Value>,
@@ -1049,6 +1068,7 @@ async fn patch_bridge(
         ("inputSchema", request.input_schema),
         ("blocks", request.blocks),
         ("mask", request.mask),
+        ("emit", request.emit),
         ("webhook", request.webhook),
     ] {
         if let Some(value) = value.filter(|value| !value.is_null()) {
@@ -1159,7 +1179,62 @@ async fn validar_borrador(
         .map(|instancia| instancia.name.as_str())
         .collect();
     issues.extend(validate_mask(draft.get("mask"), &nombres));
+    issues.extend(validate_emit(draft.get("emit")));
     Ok((issues, instances))
+}
+
+/// MVP3 (spec `event-triggers`): los topics de `emit` siguen el mismo
+/// formato de slug que los triggers event; solo se aceptan las claves
+/// `onSuccess`/`onFailure` con arrays de cadenas.
+fn validate_emit(emit: Option<&Value>) -> Vec<Issue> {
+    let Some(emit) = emit.filter(|valor| !valor.is_null()) else {
+        return Vec::new();
+    };
+    let Some(objeto) = emit.as_object() else {
+        return vec![Issue::new(
+            "emit",
+            "debe ser un objeto con \"onSuccess\"/\"onFailure\" (arrays de topics)",
+        )];
+    };
+    let mut issues = Vec::new();
+    for clave in objeto.keys() {
+        if clave != "onSuccess" && clave != "onFailure" {
+            issues.push(Issue::new(
+                "emit",
+                format!(
+                    "\"{clave}\" no es una clave de emit (usa \"onSuccess\" y/o \"onFailure\")"
+                ),
+            ));
+        }
+    }
+    for (clave, topics) in objeto {
+        if clave != "onSuccess" && clave != "onFailure" {
+            continue;
+        }
+        let Some(lista) = topics.as_array() else {
+            issues.push(Issue::new(
+                format!("emit.{clave}"),
+                "debe ser un array de topics",
+            ));
+            continue;
+        };
+        for (indice, topic) in lista.iter().enumerate() {
+            let campo = format!("emit.{clave}.{indice}");
+            let Some(raw) = topic.as_str() else {
+                issues.push(Issue::new(&campo, "cada topic debe ser una cadena"));
+                continue;
+            };
+            if !domain::definition::validar_topic(raw) {
+                issues.push(Issue::new(
+                    &campo,
+                    format!(
+                        "\"{raw}\" no es un topic válido (minúsculas, dígitos, puntos y guiones)"
+                    ),
+                ));
+            }
+        }
+    }
+    issues
 }
 
 /// MVP3 (spec `io-masking`): las reglas `mask` son un array de rutas `$.`
@@ -1333,6 +1408,17 @@ async fn publish_version(
             )
         })?
         .unwrap_or_default();
+    let emit: Option<domain::definition::EmitDefinition> = draft
+        .get("emit")
+        .filter(|value| !value.is_null())
+        .map(|valor| serde_json::from_value::<domain::definition::EmitDefinition>(valor.clone()))
+        .transpose()
+        .map_err(|error| {
+            rest::invalid_body(
+                "el borrador no pasa la validación",
+                vec![rest::field_error("emit", error.to_string())],
+            )
+        })?;
     let definition = BridgeDefinition {
         trigger,
         input_schema: draft
@@ -1342,6 +1428,7 @@ async fn publish_version(
         blocks,
         webhook: webhook.clone(),
         mask,
+        emit,
     };
     let definition = serde_json::to_value(&definition)
         .map_err(|error| problem::internal(format!("snapshot no serializable: {error}")))?;
@@ -1675,8 +1762,34 @@ mod tests {
 
     #[test]
     fn los_disparadores_no_http_solo_exigen_el_tipo() {
-        for trigger in [json!({ "type": "event" }), json!({ "type": "manual" })] {
+        // MVP3: el trigger event además exige topic con formato slug (MVP3).
+        for trigger in [
+            json!({ "type": "manual" }),
+            json!({ "type": "event", "topic": "pedido.creado" }),
+        ] {
             assert_sin_errores(&validate_trigger(Some(&trigger)));
+        }
+    }
+
+    #[test]
+    fn el_disparador_event_exige_topic_con_formato_slug() {
+        assert_sin_errores(&validate_trigger(Some(&json!({
+            "type": "event",
+            "topic": "pedido.creado"
+        }))));
+
+        for trigger in [
+            json!({ "type": "event" }),
+            json!({ "type": "event", "topic": "Pedido Creado!!" }),
+            json!({ "type": "event", "topic": ".empieza.punto" }),
+            json!({ "type": "event", "topic": "doble..punto" }),
+        ] {
+            let issues = validate_trigger(Some(&trigger));
+            assert!(
+                issues.iter().any(|issue| issue.field == "trigger.topic"),
+                "{trigger} debió exigir topic: {}",
+                mensajes(&issues)
+            );
         }
     }
 

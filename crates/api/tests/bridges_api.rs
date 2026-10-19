@@ -1165,3 +1165,63 @@ async fn mask_se_valida_con_raices_trigger_o_bloques_existentes() {
         );
     }
 }
+
+#[tokio::test]
+async fn trigger_event_exige_topic_con_formato_slug() {
+    let Some(h) = begin().await else { return };
+    let origen = bloque_origen(&h, "evento").await;
+    let bridge = h.create_bridge("evento-topic").await;
+    let id = bridge["id"].as_str().unwrap().to_string();
+
+    // Sin topic: issue de validación.
+    let draft = json!({
+        "trigger": { "type": "event" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+    });
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+    let validated = h
+        .post(&format!("/api/v1/bridges/{id}/validate"), None)
+        .await;
+    assert_eq!(validated.json()["valid"], false, "{}", validated.body);
+    assert!(
+        validated.body.contains("trigger.topic"),
+        "{}",
+        validated.body
+    );
+
+    // Topic con formato inválido: issue que señala el formato.
+    let draft = json!({
+        "trigger": { "type": "event", "topic": "Pedido Creado!!" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+    });
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+    let validated = h
+        .post(&format!("/api/v1/bridges/{id}/validate"), None)
+        .await;
+    assert_eq!(validated.json()["valid"], false, "{}", validated.body);
+    assert!(
+        validated.body.contains("no es un topic válido"),
+        "{}",
+        validated.body
+    );
+
+    // Topic válido: la publicación congela el trigger completo.
+    let draft = json!({
+        "trigger": { "type": "event", "topic": "pedido.creado" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))]
+    });
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+    let validated = h
+        .post(&format!("/api/v1/bridges/{id}/validate"), None)
+        .await;
+    assert_eq!(validated.json()["valid"], true, "{}", validated.body);
+    let published = h
+        .post(&format!("/api/v1/bridges/{id}/versions"), None)
+        .await;
+    assert_eq!(published.status, StatusCode::CREATED, "{}", published.body);
+    assert_eq!(
+        published.json()["definition"]["trigger"]["topic"],
+        json!("pedido.creado"),
+        "el topic queda congelado en el snapshot"
+    );
+}

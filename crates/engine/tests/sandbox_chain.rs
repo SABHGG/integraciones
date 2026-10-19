@@ -29,6 +29,7 @@ fn definition(blocks: Vec<BlockInstance>) -> BridgeDefinition {
         trigger: TriggerDefinition {
             schedule: None,
             timezone: None,
+            topic: None,
             trigger_type: TriggerType::Http,
             method: Some("POST".to_string()),
             path: Some("/x/demo".to_string()),
@@ -37,6 +38,7 @@ fn definition(blocks: Vec<BlockInstance>) -> BridgeDefinition {
         blocks,
         webhook: None,
         mask: Vec::new(),
+        emit: None,
     }
 }
 
