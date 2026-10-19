@@ -9,6 +9,12 @@ import type { Paso } from "./executions";
 import { EditorCodigo } from "./codeeditor";
 import { puede, type Rol } from "./roles";
 import { PanelVersiones } from "./versiones";
+import {
+  artefactoExport,
+  validarImport,
+  sufijarSlug,
+  type ArtefactoPuente,
+} from "./transferir";
 
 interface Puente {
   id: string;
@@ -43,9 +49,13 @@ interface Bloque {
   blockType: string;
 }
 
-export function ListaPuentes(props: { navegar: (ruta: string) => void }) {
+export function ListaPuentes(props: { navegar: (ruta: string) => void; rol: Rol | null }) {
   const [puentes, setPuentes] = useState<Puente[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [textoImport, setTextoImport] = useState("");
+  const [publicarAlImportar, setPublicarAlImportar] = useState(false);
+  const [erroresValidacion, setErroresValidacion] = useState<string[]>([]);
 
   useEffect(() => {
     void api<Page<Puente>>("GET", "/bridges?limit=100")
@@ -53,14 +63,144 @@ export function ListaPuentes(props: { navegar: (ruta: string) => void }) {
       .catch((e) => setError(e instanceof Error ? e.message : "error al listar"));
   }, []);
 
+  const administra = puede(props.rol, "administrar-recursos");
+
+  const descargar = (artefacto: ArtefactoPuente) => {
+    const blob = new Blob([artefactoExport(artefacto)], { type: "application/json" });
+    const enlace = document.createElement("a");
+    enlace.href = URL.createObjectURL(blob);
+    enlace.download = `${artefacto.slug}.puente.json`;
+    enlace.click();
+    URL.revokeObjectURL(enlace.href);
+  };
+
+  // Export del borrador (lectura: cualquier rol).
+  const exportarBorrador = async (puente: Puente) => {
+    setError(null);
+    try {
+      const detalle = await api<Puente>("GET", `/bridges/${puente.id}`);
+      descargar({
+        name: detalle.name,
+        slug: detalle.slug,
+        definition: detalle.draft ?? {},
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "no se pudo exportar");
+    }
+  };
+
+  // Duplicar: export interno → nuevo puente con slug sufijado (editor).
+  const duplicar = async (puente: Puente) => {
+    setAviso(null);
+    setError(null);
+    try {
+      const detalle = await api<Puente>("GET", `/bridges/${puente.id}`);
+      const nuevo = await api<Puente>("POST", "/bridges", {
+        slug: sufijarSlug(detalle.slug),
+        name: `${detalle.name} (copia)`,
+      });
+      const secciones = ["trigger", "inputSchema", "blocks", "mask", "emit", "webhook"];
+      const cuerpo: Record<string, unknown> = {};
+      const definicion = (detalle.draft ?? {}) as Record<string, unknown>;
+      for (const clave of secciones) {
+        if (clave in definicion) cuerpo[clave] = definicion[clave];
+      }
+      await api("PATCH", `/bridges/${nuevo.id}`, cuerpo);
+      setAviso(`duplicado como ${nuevo.slug} (borrador listo; publica cuando quieras)`);
+      void api<Page<Puente>>("GET", "/bridges?limit=100").then((pagina) =>
+        setPuentes(pagina.items),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "no se pudo duplicar");
+    }
+  };
+
+  // Import (task 6.2): crear → PATCH del borrador → validate del plano →
+  // publicación SOLO si el usuario la marcó y la validación pasa.
+  const importar = async (evento: Event) => {
+    evento.preventDefault();
+    setAviso(null);
+    setError(null);
+    setErroresValidacion([]);
+    const resultado = validarImport(textoImport);
+    if (!resultado.ok) {
+      setError(resultado.error);
+      return;
+    }
+    const { datos } = resultado;
+    try {
+      const creado = await api<Puente>("POST", "/bridges", {
+        slug: datos.slug,
+        name: datos.name,
+      });
+      const secciones = ["trigger", "inputSchema", "blocks", "mask", "emit", "webhook"];
+      const cuerpo: Record<string, unknown> = {};
+      const definicion = datos.definition as Record<string, unknown>;
+      for (const clave of secciones) {
+        if (clave in definicion) cuerpo[clave] = definicion[clave];
+      }
+      await api("PATCH", `/bridges/${creado.id}`, cuerpo);
+      await api("POST", `/bridges/${creado.id}/validate`);
+      if (publicarAlImportar) {
+        await api("POST", `/bridges/${creado.id}/versions`);
+        setAviso(`importado y publicado como ${creado.slug}`);
+      } else {
+        setAviso(`importado como ${creado.slug} (borrador validado; publica en su editor)`);
+      }
+      setTextoImport("");
+      void api<Page<Puente>>("GET", "/bridges?limit=100").then((pagina) =>
+        setPuentes(pagina.items),
+      );
+    } catch (e) {
+      if (e instanceof Error && "fields" in e) {
+        const campos = (e as { fields: { field: string; message: string }[] }).fields;
+        setErroresValidacion(campos.map((f) => `${f.field}: ${f.message}`));
+      }
+      setError(e instanceof Error ? e.message : "no se pudo importar");
+    }
+  };
+
   return (
     <div>
       <h1>Puentes</h1>
+      {aviso && <p class="ayuda">{aviso}</p>}
       {error && <p class="error-global">{error}</p>}
+
+      {administra && (
+        <form class="tarjeta" onSubmit={importar}>
+          <h3>importar puente</h3>
+          <p class="ayuda">Pega un artefacto exportado {"{name, slug, definition}"}:</p>
+          <textarea
+            rows={6}
+            style="width: 100%; font-family: monospace;"
+            placeholder='{"name": "…", "slug": "…", "definition": {…}}'
+            value={textoImport}
+            onInput={(e) => setTextoImport((e.target as HTMLTextAreaElement).value)}
+          />
+          {erroresValidacion.length > 0 && (
+            <div class="error-global">
+              {erroresValidacion.map((mensaje) => (
+                <p key={mensaje} class="error-campo">{mensaje}</p>
+              ))}
+            </div>
+          )}
+          <label class="ayuda">
+            <input
+              type="checkbox"
+              checked={publicarAlImportar}
+              onChange={(e) => setPublicarAlImportar((e.target as HTMLInputElement).checked)}
+            />{" "}publicar versión tras validar (nunca publica un borrador inválido)
+          </label>
+          <div class="acciones">
+            <button type="submit" disabled={textoImport.trim() === ""}>importar</button>
+          </div>
+        </form>
+      )}
+
       <div class="tarjeta">
         <table>
           <thead>
-            <tr><th>slug</th><th>nombre</th><th>versión publicada</th></tr>
+            <tr><th>slug</th><th>nombre</th><th>versión publicada</th><th>export / duplicar</th></tr>
           </thead>
           <tbody>
             {puentes.map((puente) => (
@@ -68,10 +208,25 @@ export function ListaPuentes(props: { navegar: (ruta: string) => void }) {
                 <td>{puente.slug}</td>
                 <td>{puente.name}</td>
                 <td>{puente.latestVersion ?? "—"}</td>
+                <td onClick={(e) => e.stopPropagation()}>
+                  <div class="acciones">
+                    <button class="secundario" onClick={() => void exportarBorrador(puente)}>
+                      exportar
+                    </button>
+                    {administra && (
+                      <button class="secundario" onClick={() => void duplicar(puente)}>
+                        duplicar
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {!administra && (
+          <p class="ayuda">exportar es lectura; solo un editor puede importar o duplicar</p>
+        )}
       </div>
     </div>
   );
@@ -371,6 +526,8 @@ export function EditorPuente(props: { id: string; rol: Rol | null }) {
       <PanelVersiones
         puenteId={puente.id}
         draft={draft}
+        nombrePuente={puente.name}
+        slugPuente={puente.slug}
         administra={administra}
         alCambiarBorrador={() => void recargar()}
       />

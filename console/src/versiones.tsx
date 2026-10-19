@@ -6,6 +6,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { api, type Page } from "./api";
 import { diffEstructural, resumenDiff } from "./diff";
+import { artefactoExport } from "./transferir";
 
 interface VersionMeta {
   id: string;
@@ -17,6 +18,9 @@ interface Props {
   puenteId: string;
   /** Borrador ACTUAL del editor (para el diff y la adopción). */
   draft: unknown;
+  /** Metadatos del puente para el artefacto de export (sin ids). */
+  nombrePuente: string;
+  slugPuente: string;
   administra: boolean;
   /** El editor recarga el puente cuando el borrador cambia en el servidor. */
   alCambiarBorrador: () => void;
@@ -132,6 +136,23 @@ export function PanelVersiones(props: Props) {
     }
   };
 
+  const exportarVersion = (version: number) => {
+    const definicion = definiciones[String(version)];
+    if (definicion === undefined) {
+      setError("la definición aún no está cargada");
+      return;
+    }
+    const blob = new Blob(
+      [artefactoExport({ name: props.nombrePuente, slug: props.slugPuente, definition: definicion })],
+      { type: "application/json" },
+    );
+    const enlace = document.createElement("a");
+    enlace.href = URL.createObjectURL(blob);
+    enlace.download = `${props.slugPuente}-v${version}.puente.json`;
+    enlace.click();
+    URL.revokeObjectURL(enlace.href);
+  };
+
   const selector = (valor: Lado, alCambiar: (lado: Lado) => void) => (
     <select
       value={String(valor)}
@@ -157,16 +178,25 @@ export function PanelVersiones(props: Props) {
 
       <table>
         <thead>
-          <tr><th>versión</th><th>creada</th></tr>
+          <tr><th>versión</th><th>creada</th><th></th></tr>
         </thead>
         <tbody>
           {versiones.map((version) => (
             <tr key={version.id}>
               <td>v{version.version}</td>
               <td>{new Date(version.createdAt).toLocaleString()}</td>
+              <td>
+                <button
+                  class="secundario"
+                  onClick={() => exportarVersion(version.version)}
+                  title="descarga {name, slug, definition} congelado"
+                >
+                  exportar
+                </button>
+              </td>
             </tr>
           ))}
-          {versiones.length === 0 && <tr><td colspan={2}>sin versiones publicadas</td></tr>}
+          {versiones.length === 0 && <tr><td colspan={3}>sin versiones publicadas</td></tr>}
         </tbody>
       </table>
 

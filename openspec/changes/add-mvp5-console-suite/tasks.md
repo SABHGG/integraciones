@@ -31,9 +31,9 @@
 
 ## 6. Fase 6 — Export, import y duplicar
 
-- [ ] 6.1 Export de borrador o de una versión congelada como JSON descargable (sin ids de workspace); test del artefacto
-- [ ] 6.2 Import con creación de puente → PATCH de borrador → validate con errores en línea → publicación explícita; importar/duplicar visibles solo a editor; test con JSON inválido
-- [ ] 6.3 Duplicar puente con slug/nombre sufijados y publicación opcional; test
+- [x] 6.1 Export de borrador o de una versión congelada como JSON descargable (sin ids de workspace); test del artefacto
+- [x] 6.2 Import con creación de puente → PATCH de borrador → validate con errores en línea → publicación explícita; importar/duplicar visibles solo a editor; test con JSON inválido
+- [x] 6.3 Duplicar puente con slug/nombre sufijados y publicación opcional; test
 
 ## 7. Fase 7 — Cierre
 

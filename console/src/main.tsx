@@ -101,7 +101,7 @@ function App(): preact.ComponentChildren {
       <main>
         {ruta.pantalla === "ejecuciones" && <Ejecuciones navegar={navegar} />}
         {ruta.pantalla === "ejecucion" && <DetalleEjecucion id={ruta.id} />}
-        {ruta.pantalla === "puentes" && <ListaPuentes navegar={navegar} />}
+        {ruta.pantalla === "puentes" && <ListaPuentes navegar={navegar} rol={rol} />}
         {ruta.pantalla === "puente" && <EditorPuente id={ruta.id} rol={rol} />}
         {ruta.pantalla === "miembros" && <Miembros rol={rol} />}
         {ruta.pantalla === "credenciales" && <Credenciales rol={rol} />}
