@@ -20,8 +20,11 @@ La especificación completa vive en [`openspec/`](openspec/) — empezar por `op
 ```bash
 ./scripts/dev-postgres.sh     # Postgres portátil en 127.0.0.1:5433 (sin docker)
 cargo test --workspace        # pruebas (la API y el engine necesitan DATABASE_URL)
-cargo run -p api              # servidor (puerto 8080)
+./scripts/dev.sh              # todo en uno: postgres + .env + consola + servidor + seed demo
+./scripts/dev.sh --console-watch   # además reconstruye la consola al editar console/src
 ```
+
+`dev.sh` deja la API en `http://127.0.0.1:8080` con la consola en `/console` (login con la API key del workspace; con el seed: `demo-key-1`). En DEBUG, rust-embed lee `console/dist/` del disco: tras editar la consola basta `npm run build` (o el watch) y refrescar el navegador — sin recompilar el binario.
 
 ### Variables de entorno (crear `.env` local)
 

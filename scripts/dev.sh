@@ -1,27 +1,35 @@
 #!/usr/bin/env bash
-# Entorno de desarrollo completo en un comando: Postgres portátil, .env local
-# y el servidor API con su documentación de Scalar. Idempotente: seguro de
-# relanzar; un .env existente NUNCA se sobrescribe (el VAULT_KEY cifra la
-# bóveda: regenerarlo dejaría las credenciales ilegibles).
+# Entorno de desarrollo completo en un comando: Postgres portátil, .env local,
+# la consola web y el servidor API con su documentación de Scalar. Idempotente:
+# seguro de relanzar; un .env existente NUNCA se sobrescribe (el VAULT_KEY
+# cifra la bóveda: regenerarlo dejaría las credenciales ilegibles).
 #
 # Uso:
-#   ./scripts/dev.sh              # postgres + .env + servidor + seed demo
-#   ./scripts/dev.sh --no-seed    # lo mismo, sin sembrar el puente demo
+#   ./scripts/dev.sh                  # postgres + .env + consola + servidor + seed demo
+#   ./scripts/dev.sh --no-seed        # lo mismo, sin sembrar el puente demo
+#   ./scripts/dev.sh --console-watch  # además reconstruye la consola al vuelo
 #
 # Al quedar listo expone:
+#   http://127.0.0.1:8080/console       consola web (login con la API key)
 #   http://127.0.0.1:8080/docs          UI de Scalar
 #   http://127.0.0.1:8080/openapi.json  documento OpenAPI 3.1
 #   http://127.0.0.1:8080/x/registro-cliente  (tras el seed)
 # Ctrl+C detiene el servidor (Postgres queda corriendo para el próximo arranque).
+#
+# Nota de desarrollo de la consola: rust-embed en DEBUG lee console/dist/ del
+# DISCO en cada petición — `npm run build` + refrescar el navegador, sin
+# recompilar el binario. Con --console-watch ni eso: se reconstruye sola.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 SEED=1
+CONSOLE_WATCH=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-seed) SEED=0 ;;
-        *) echo "uso: $0 [--no-seed]" >&2; exit 2 ;;
+        --console-watch) CONSOLE_WATCH=1 ;;
+        *) echo "uso: $0 [--no-seed] [--console-watch]" >&2; exit 2 ;;
     esac
     shift
 done
@@ -80,11 +88,53 @@ if command -v ss >/dev/null 2>&1 \
     exit 1
 fi
 
-# ── 3. Servidor: compila la 1.ª vez (~1 min) y arranca en background ───
+# ── 3. Consola web (MVP3): assets de console/dist bajo /console ──────────
+# Sin Node el binario sigue compilando (build.rs genera un stub) y /console
+# sirve una página que lo explica; con Node, la consola se construye aquí.
+if ! command -v npm >/dev/null 2>&1; then
+    echo ">> AVISO: sin npm no se construye la consola; /console servirá el stub." >&2
+elif [ ! -d console/node_modules ]; then
+    echo ">> instalando dependencias de la consola (primera vez)..."
+    if ! (cd console && npm ci --no-audit --no-fund) \
+        && ! (cd console && npm install --no-audit --no-fund); then
+        echo ">> AVISO: npm install falló; /console servirá el stub." >&2
+    fi
+fi
+
+if command -v npm >/dev/null 2>&1 && [ -d console/node_modules ]; then
+    if [ ! -f console/dist/index.html ] \
+        || [ -n "$(find console/src console/index.html console/vite.config.ts \
+                    console/tsconfig.json -newer console/dist/index.html \
+                    -print -quit 2>/dev/null)" ]; then
+        echo ">> construyendo la consola..."
+        if ! (cd console && npm run build); then
+            echo ">> AVISO: el build de la consola falló; /console servirá la última versión" >&2
+            echo ">> buena (o el stub si nunca se construyó)." >&2
+        fi
+    else
+        echo ">> consola al día (console/dist)."
+    fi
+fi
+
+if [ "$CONSOLE_WATCH" = 1 ]; then
+    if command -v npm >/dev/null 2>&1 && [ -d console/node_modules ]; then
+        echo ">> watch de la consola activo: al editar console/src se reconstruye sola."
+        echo ">> (refresca el navegador; el binario NO se recompila.)"
+        (cd console && npx vite build --watch) &
+        CONSOLE_PID=$!
+    else
+        echo ">> AVISO: --console-watch sin npm/node_modules: se ignora." >&2
+        CONSOLE_PID=""
+    fi
+else
+    CONSOLE_PID=""
+fi
+
+# ── 4. Servidor: compila la 1.ª vez (~1 min) y arranca en background ───
 echo ">> compilando y arrancando el servidor en ${BASE_URL}..."
 cargo run -p api &
 SERVIDOR=$!
-trap 'kill "$SERVIDOR" 2>/dev/null || true' EXIT INT TERM
+trap 'kill "$SERVIDOR" "${CONSOLE_PID:-}" 2>/dev/null || true' EXIT INT TERM
 
 # Espera al health check sin bloquear más de 3 minutos (compilación fría).
 LISTO=0
@@ -106,6 +156,7 @@ fi
 
 echo
 echo ">> API lista:   ${BASE_URL}"
+echo ">> Consola:     ${BASE_URL}/console   (login con la API key del workspace)"
 echo ">> Docs Scalar: ${BASE_URL}/docs"
 echo ">> OpenAPI:     ${BASE_URL}/openapi.json"
 echo
@@ -117,10 +168,11 @@ if [ "$SEED" = 1 ]; then
     }
     echo
     echo ">> key demo: 'Authorization: Bearer demo-key-1' (workspace 'demo')"
+    echo ">> consola:  entra en ${BASE_URL}/console con la key demo 'demo-key-1'"
     echo ">> prueba:   curl -s -X POST ${BASE_URL}/x/registro-cliente \\"
     echo "               -H 'content-type: application/json' -d '{\"items\": [\"cafe\", \"mate\"]}'"
     echo
 fi
 
-echo ">> Ctrl+C para detener el servidor."
+echo ">> Ctrl+C para detener el servidor." 
 wait "$SERVIDOR"
