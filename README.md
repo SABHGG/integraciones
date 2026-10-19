@@ -288,6 +288,20 @@ curl -X POST /api/v1/members -H "Authorization: Bearer $TOKEN_OWNER" \
 
 **Auditoría del disparador**: cada ejecución guarda `triggerPrincipal` — `{"type":"user","email":…}` en disparos y replays de usuario, `{"type":"api_key","name":…}` con keys y `{"type":"system","motivo":"cron"|"emit"}` en los internos (`null` en el ingestor sin identidad). La consola refleja el rol del `whoami`: oculta lo que el rol no permite y muestra los 403 del servidor donde ocurren; la página **Miembros** es editable solo para owners y de lectura para el resto.
 
+## La consola completa: credenciales, bloques, versiones, métricas y transferencia (MVP5)
+
+Todo lo que el plano sabe hacer es ahora operable desde `/console` — sin endpoints de negocio nuevos: solo dos lecturas que faltaban (`GET /stats`, definición congelada de una versión) y orquestación en cliente sobre el plano existente. Cada página respeta la matriz de roles: el rol que puede operar va entre paréntesis.
+
+**Credenciales (editor; viewer lee)**: listado con versión vigente, creación, rotación en línea e historial por credencial (ids y fechas, jamás valores). La eliminación exige **teclear el nombre** — irreversible no se confirma con un clic.
+
+**Biblioteca de bloques (editor crea/publica; viewer inspecciona)**: listado con filtros combinables (texto, tipo, categoría), detalle de versiones con sus schemas y metadatos `ui`, y creación/edición de `custom_logic` con el editor de código: un error de transpile anota la línea del validador y bloquea la publicación.
+
+**Versiones con diff y rollback (diff para todos; rollback editor)**: cada puente lista sus versiones y compara lado a lado —versión contra versión o borrador contra versión— con un diff estructural por rutas (`blocks.0.config.url`), en cliente y sin dependencias. El **rollback** re-aplica la definición congelada al borrador y la publica como versión nueva (confirmación en dos pasos, etiquetado «rollback de la N»): el pasado jamás se reescribe, las ejecuciones históricas siguen ancladas a su versión.
+
+**Métricas y auto-refresh (lectura)**: el dashboard muestra total, estados, duración media y tendencia diaria con huecos rellenados para un rango de 7/30/90 días (`GET /stats`, una sola consulta agregada, máx. 90 días), con desglose por puente navegable al listado filtrado. El listado ofrece **auto-refresh** por polling cada 5 s — apagado por defecto, pausado con la pestaña oculta y sin peticiones solapadas.
+
+**Export/import/duplicar (export para todos; importar y duplicar editor)**: exporta un puente (borrador o versión congelada) como `{name, slug, definition}` sin ids de workspace; impórtalo en cualquier workspace pegando el JSON — el plano valida (errores en línea) y la publicación es una casilla explícita que jamás publica un borrador inválido. Duplicar crea `slug-copia` con el borrador listo en un clic.
+
 ## Seguridad del sandbox
 
 Los bloques `custom_logic` corren en un isolate QuickJS con límite de memoria
