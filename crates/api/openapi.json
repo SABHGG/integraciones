@@ -435,7 +435,8 @@
           "404": {
             "$ref": "#/components/responses/Problem404"
           }
-        }
+        },
+        "description": "Desde MVP3 el detalle incluye `currentVersionId`: la versión vigente que resuelve `ctx.credential`."
       },
       "patch": {
         "tags": [
@@ -843,7 +844,7 @@
           "Admin"
         ],
         "summary": "Detalle de una ejecución",
-        "description": "Incluye el `triggerData`, el estado, fechas y la versión exacta de la definición con la que corrió.",
+        "description": "Incluye el `triggerData`, el estado, fechas y la versión exacta de la definición con la que corrió. Desde MVP3 incluye `credentialsUsed` (pares credential/version usados, sin valores) y `replays` (ejecuciones derivadas con su estado).",
         "parameters": [
           {
             "$ref": "#/components/parameters/id"
@@ -1218,6 +1219,294 @@
           },
           "404": {
             "$ref": "#/components/responses/Problem404"
+          }
+        }
+      }
+    },
+    "/api/v1/events/{topic}": {
+      "post": {
+        "summary": "Publica un evento en un topic (fan-out a los suscriptores)",
+        "description": "Encola una ejecución por cada puente suscrito activo con el body como payload (`$.trigger = {topic, eventId, payload, receivedAt}`). Sin suscriptores responde 202 con cero ejecuciones: el evento no se retiene.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+            },
+            "description": "Topic del evento (slug de minúsculas, dígitos, puntos y guiones)."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Evento aceptado; `executions` = ejecuciones encoladas (0 sin suscriptores).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "topic": {
+                      "type": "string"
+                    },
+                    "eventId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "executions": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "topic",
+                    "eventId",
+                    "executions"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Topic inválido",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bridges/{id}/dry-run": {
+      "post": {
+        "summary": "Ejecuta el borrador sin efectos (dry-run)",
+        "description": "Corre el borrador actual — sin requerir versión publicada — con las mismas reglas del ejecutor y devuelve el trace en la respuesta. Sin filas en executions/execution_steps, sin webhook y sin emit. `mocks` declara salidas fijas por instancia (id o nombre): el bloque mockeado no se invoca.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "triggerData": {
+                    "description": "Datos de prueba para `$.trigger`."
+                  },
+                  "mocks": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "output": {}
+                      },
+                      "required": [
+                        "output"
+                      ]
+                    },
+                    "description": "Mapa {id|nombre de instancia: {output}}."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trace del ensayo: status final, output y pasos con IO y duración.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El puente no existe en este workspace",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "El borrador no pasa la validación",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/executions/{id}/replay": {
+      "post": {
+        "summary": "Re-ejecuta una ejecución con su misma versión y entrada",
+        "description": "Crea una ejecución nueva con la misma versión congelada y la misma entrada del trigger (`triggerData.replayOf` = id original), encolada `pending` para el worker: mismo timeout, mismo masking, misma entrega webhook. El original no se muta.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Replay encolado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "executionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "replayOf": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "executionId",
+                    "replayOf",
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "La ejecución no existe en este workspace",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/credentials/{id}/versions": {
+      "get": {
+        "summary": "Historial de versiones de una credencial (metadatos)",
+        "description": "Lista las versiones (ids y fechas) en orden de rotación. Jamás devuelve valores: la bóveda es write-only en todas las superficies.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Historial de versiones.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "versions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "rotatedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "rotatedAt",
+                          "createdAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "versions"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "La credencial no existe en este workspace",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       }

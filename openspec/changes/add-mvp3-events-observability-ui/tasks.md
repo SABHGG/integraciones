@@ -39,5 +39,5 @@
 ## 6. Fase 6 — Cierre
 
 - [x] 6.1 E2E punta a punta: puente A emite `onSuccess` → puente B suscrito se ejecuta; dry-run con mock; replay verificable; mask visible en trace y webhook
-- [ ] 6.2 README: secciones de eventos, dry-run, replay, bóveda versionada, mask y consola (`/console`), con ejemplos
-- [ ] 6.3 OpenAPI actualizado (eventos, dry-run, replay, historial de credenciales) y validado en Scalar; CI verde (`cargo test --workspace`, `clippy -D warnings`); commits por unidad de trabajo
+- [x] 6.2 README: secciones de eventos, dry-run, replay, bóveda versionada, mask y consola (`/console`), con ejemplos
+- [x] 6.3 OpenAPI actualizado (eventos, dry-run, replay, historial de credenciales) y validado en Scalar; CI verde (`cargo test --workspace`, `clippy -D warnings`); commits por unidad de trabajo

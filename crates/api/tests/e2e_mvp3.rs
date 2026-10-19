@@ -394,11 +394,10 @@ async fn e2e_mvp3_mask_emit_evento_dry_run_y_replay() {
 
     // ── 4. Dry-run del borrador con mock: cero ejecuciones nuevas ────────
     let ejecuciones_pre_dry = mundo.total_ejecuciones().await;
-    let bridge_a: Uuid =
-        sqlx::query_scalar("SELECT id FROM bridges WHERE slug = 'captura'")
-            .fetch_one(&mundo.pool)
-            .await
-            .expect("puente A");
+    let bridge_a: Uuid = sqlx::query_scalar("SELECT id FROM bridges WHERE slug = 'captura'")
+        .fetch_one(&mundo.pool)
+        .await
+        .expect("puente A");
     // El dry-run exige el mismo estándar que la publicación: bloque de
     // biblioteca real y borrador sin webhook http (el receptor local no es
     // https). El bloque se mockea, así que su código no llega a correr.
@@ -530,5 +529,18 @@ async fn e2e_mvp3_mask_emit_evento_dry_run_y_replay() {
     assert_eq!(status, StatusCode::ACCEPTED, "{publicacion}");
     assert_eq!(publicacion["executions"], json!(1));
 
-    let _ = ejecuciones_antes; // marcado como usado en el escenario completo
+    // Higiene: drena la cola completa Y las entregas webhook pendientes
+    // (el replay de A re-emite la entrega) para no contaminar al binario de
+    // e2e_mvp2, que comparte esta BD dedicada.
+    while api::worker::procesar_pendiente(&mundo.state)
+        .await
+        .expect("worker")
+    {}
+    while api::webhooks::procesar_una_entrega(&mundo.state)
+        .await
+        .expect("entregas")
+    {}
+    // 5: A, B (emit de A), replay de A, B (el replay re-emite onSuccess) y
+    // B (fan-out directo por API).
+    assert_eq!(mundo.total_ejecuciones().await, ejecuciones_antes + 5);
 }

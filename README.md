@@ -245,6 +245,24 @@ Un puente puede suscribirse a un topic (`{"trigger": {"type": "event", "topic": 
 
 **Límites documentados**: el fan-out no garantiza orden ni entrega entre suscriptores — cada suscriptor es una ejecución independiente con su propio fail-fast y trace; si un suscriptor no tiene versión publicada en el instante del fan-out, pierde ese evento. No hay cola de eventos persistida: el evento ES el conjunto de ejecuciones creadas (D1). Un topic con cientos de suscriptores alarga la transacción de publicación: es un límite práctico conocido.
 
+### Bóveda versionada, mask, dry-run, replay y consola (MVP3)
+
+**Bóveda versionada con rotación**: `POST /api/v1/credentials` crea la versión 1; `PATCH` con `secret` crea una versión inmutable y mueve la vigente — los puentes no se tocan. `GET /api/v1/credentials/{id}/versions` lista el historial (ids y fechas, jamás valores) y cada ejecución audita en `credentialsUsed` qué versión usó (verificable contra el historial).
+
+**Enmascaramiento declarativo**: añade `"mask": ["$.trigger.body.tarjeta", "$.capturar.recibido.tarjeta"]` a la definición (raíces `trigger` o nombre de bloque; congelado por versión). Todo valor bajo esas rutas se sustituye por `***` **antes de persistir** — irreversible, sin flag de revelado: trace, listado, detalle y webhook entregan el dato ya enmascarado. Editar las reglas solo afecta a ejecuciones posteriores.
+
+**Dry-run sin efectos**: `POST /api/v1/bridges/{id}/dry-run` ejecuta el borrador actual (sin publicar) con datos de prueba y devuelve el trace completo en la respuesta — sin filas en `executions`, sin webhook y sin `emit`. Por instancia puedes declarar `"mocks": {"capturar": {"output": {...}}}`: el bloque mockeado no se invoca y su salida fija alimenta la cadena; los demás bloques corren de verdad.
+
+```bash
+curl -X POST /api/v1/bridges/$ID/dry-run \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"triggerData": {"total": 7}, "mocks": {"capturar": {"output": {"total": 42}}}}'
+```
+
+**Replay controlado**: `POST /api/v1/executions/{id}/replay` re-ejecuta con la misma versión congelada y la misma entrada (con `replayOf` en `triggerData`), por la cola normal — mismo masking, mismo webhook. El detalle del original lista sus replays; el del replay enlaza al original.
+
+**Consola web**: el mismo binario sirve una SPA en `/console` — entra con tu API key: dashboard de ejecuciones con trace paso a paso, editor visual de puentes (formularios generados desde los metadatos `ui` de cada bloque, errores del validador sobre el canvas, editor de código con los errores de transpile), dry-run con un clic y publicación. Sin backend nuevo: la consola habla exclusivamente con el plano admin.
+
 ## Seguridad del sandbox
 
 Los bloques `custom_logic` corren en un isolate QuickJS con límite de memoria
