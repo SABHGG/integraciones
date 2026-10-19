@@ -21,9 +21,9 @@
 
 ## 4. Fase 4 — Consola
 
-- [ ] 4.1 Login con email+contraseña (token de sesión en vez de key), logout que revoca en servidor; pantalla de elección de workspace si el login lo requiere; tests del flujo con el plano real
-- [ ] 4.2 UI por rol: ocultar/deshabilitar acciones según rol del `whoami`; errores `403` del servidor visibles donde se intenten; tests de render por rol
-- [ ] 4.3 Página de miembros (lista + añadir/cambiar rol/expulsar) con errores del servidor en línea; solo owner edita; tests
+- [x] 4.1 Login con email+contraseña (token de sesión en vez de key), logout que revoca en servidor; pantalla de elección de workspace si el login lo requiere; tests del flujo con el plano real
+- [x] 4.2 UI por rol: ocultar/deshabilitar acciones según rol del `whoami`; errores `403` del servidor visibles donde se intenten; tests de render por rol
+- [x] 4.3 Página de miembros (lista + añadir/cambiar rol/expulsar) con errores del servidor en línea; solo owner edita; tests
 
 ## 5. Fase 5 — Cierre
 

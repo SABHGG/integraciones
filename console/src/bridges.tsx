@@ -7,6 +7,7 @@ import { mapearErrores, type Issue } from "./errors";
 import { FormularioInstancia } from "./blockform";
 import type { Paso } from "./executions";
 import { EditorCodigo } from "./codeeditor";
+import { puede, type Rol } from "./roles";
 
 interface Puente {
   id: string;
@@ -75,7 +76,7 @@ export function ListaPuentes(props: { navegar: (ruta: string) => void }) {
   );
 }
 
-export function EditorPuente(props: { id: string }) {
+export function EditorPuente(props: { id: string; rol: Rol | null }) {
   const [puente, setPuente] = useState<Puente | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [bloques, setBloques] = useState<Bloque[]>([]);
@@ -104,6 +105,8 @@ export function EditorPuente(props: { id: string }) {
   }, [props.id]);
 
   if (!puente) return <p class="ayuda">cargando…</p>;
+  const administra = puede(props.rol, "administrar-recursos");
+  const ejecuta = puede(props.rol, "ejecutar");
 
   const instancias = (draft.blocks as Instancia[] | undefined) ?? [];
 
@@ -287,40 +290,45 @@ export function EditorPuente(props: { id: string }) {
                 .map((issue) => (
                   <p class="error-campo">{issue.message}</p>
                 ))}
-              <div class="acciones">
-                <button class="secundario" onClick={() => moverInstancia(indice, -1)} disabled={indice === 0}>↑</button>
-                <button class="secundario" onClick={() => moverInstancia(indice, 1)} disabled={indice === instancias.length - 1}>↓</button>
-                <button
-                  class="peligro"
-                  onClick={() => actualizar({ blocks: instancias.filter((_, i) => i !== indice) })}
-                >
-                  quitar
-                </button>
-              </div>
+              {administra && (
+                <div class="acciones">
+                  <button class="secundario" onClick={() => moverInstancia(indice, -1)} disabled={indice === 0}>↑</button>
+                  <button class="secundario" onClick={() => moverInstancia(indice, 1)} disabled={indice === instancias.length - 1}>↓</button>
+                  <button
+                    class="peligro"
+                    onClick={() => actualizar({ blocks: instancias.filter((_, i) => i !== indice) })}
+                  >
+                    quitar
+                  </button>
+                </div>
+              )}
             </div>
             {indice < instancias.length - 1 && <p class="flecha">↓</p>}
           </div>
         );
       })}
 
+      {administra && (
       <div class="tarjeta">
         <h3>añadir instancia</h3>
-        <div class="acciones">
-          {bloques.map((bloque) => (
-            <button class="secundario" key={bloque.id} onClick={() => anadirInstancia(bloque)}>
-              + {bloque.slug}
-            </button>
-          ))}
+          <div class="acciones">
+            {bloques.map((bloque) => (
+              <button class="secundario" key={bloque.id} onClick={() => anadirInstancia(bloque)}>
+                + {bloque.slug}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
+      {ejecuta && (
       <div class="tarjeta">
         <h3>dry-run (sin efectos)</h3>
         <label>datos de prueba para $.trigger (JSON)</label>
         <textarea value={datosDryRun} onInput={(e) => setDatosDryRun((e.target as HTMLTextAreaElement).value)} rows={3} />
-        <div class="acciones">
-          <button class="secundario" onClick={ensayar}>ensayar</button>
-        </div>
+            <div class="acciones">
+              <button class="secundario" onClick={ensayar}>ensayar</button>
+            </div>
         {dryRun && (
           <div>
             <p>
@@ -345,12 +353,15 @@ export function EditorPuente(props: { id: string }) {
           </div>
         )}
       </div>
+      )}
 
+      {administra && (
       <div class="acciones" style="margin: 16px 0;">
         <button onClick={guardar}>guardar borrador</button>
         <button class="secundario" onClick={validar}>validar</button>
         <button class="secundario" onClick={publicar}>publicar versión</button>
       </div>
+      )}
     </div>
   );
 }
