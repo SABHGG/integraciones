@@ -143,3 +143,29 @@ tr.clickeable:hover { background: var(--borde); }
 .instancia .cabecera .nombre { font-weight: 700; }
 .flecha { text-align: center; color: var(--texto-suave); margin: -4px 0 4px; }
 .acciones { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+/* Dashboard: métricas (MVP5) */
+.metrica {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  padding: 8px 16px;
+  min-width: 90px;
+}
+.metrica strong { font-size: 1.4em; }
+.barras {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 70px;
+  margin: 8px 0;
+}
+.barra { flex: 1; display: flex; align-items: flex-end; }
+.barra-relleno {
+  width: 100%;
+  min-height: 2px;
+  background: var(--acento);
+  border-radius: 2px 2px 0 0;
+}

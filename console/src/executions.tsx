@@ -1,7 +1,9 @@
 //! Dashboard de ejecuciones: listado con filtros y cursor, detalle con
 //! trace paso a paso (incluye `skipped`), IO ya enmascarado por el servidor.
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { api, type Page } from "./api";
+import { Metricas } from "./dashboard";
+import { crearPolling, INTERVALO_REFRESCO_MS } from "./metricas";
 
 interface Ejecucion {
   id: string;
@@ -38,6 +40,8 @@ export function Ejecuciones(props: { navegar: (ruta: string) => void }) {
   const [estado, setEstado] = useState("");
   const [desde, setDesde] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [autoRefresco, setAutoRefresco] = useState(false);
+  const [ultima, setUltima] = useState<Date | null>(null);
 
   const filtros = () => {
     const parametros = new URLSearchParams();
@@ -57,6 +61,20 @@ export function Ejecuciones(props: { navegar: (ruta: string) => void }) {
       setError(e instanceof Error ? e.message : "error al listar");
     }
   };
+
+  // El polling siempre llama a la última versión de cargar (filtros frescos).
+  const cargarRef = useRef(cargar);
+  cargarRef.current = cargar;
+
+  useEffect(() => {
+    if (!autoRefresco) return;
+    const polling = crearPolling(INTERVALO_REFRESCO_MS, async () => {
+      await cargarRef.current();
+      setUltima(new Date());
+    }, { estaOculto: () => document.hidden });
+    polling.arrancar();
+    return () => polling.parar();
+  }, [autoRefresco]);
 
   useEffect(() => {
     void cargar();
@@ -78,7 +96,8 @@ export function Ejecuciones(props: { navegar: (ruta: string) => void }) {
   return (
     <div>
       <h1>Ejecuciones</h1>
-      <div class="tarjeta" style="display: flex; gap: 10px; flex-wrap: wrap;">
+      <Metricas alFiltrarPuente={setPuenteId} />
+      <div class="tarjeta" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
         <select value={puenteId} onChange={(e) => setPuenteId((e.target as HTMLSelectElement).value)} style="max-width: 220px;">
           <option value="">todos los puentes</option>
           {puentes.map((p) => (
@@ -93,6 +112,14 @@ export function Ejecuciones(props: { navegar: (ruta: string) => void }) {
           <option value="failed">failed</option>
         </select>
         <input type="datetime-local" value={desde} onChange={(e) => setDesde((e.target as HTMLInputElement).value)} style="max-width: 220px;" />
+        <label class="ayuda" style="margin-left: auto;">
+          <input
+            type="checkbox"
+            checked={autoRefresco}
+            onChange={(e) => setAutoRefresco((e.target as HTMLInputElement).checked)}
+          />{" "}auto-refresh (5 s, apagado por defecto)
+        </label>
+        {ultima && <span class="ayuda">última: {ultima.toLocaleTimeString()}</span>}
       </div>
       {error && <p class="error-global">{error}</p>}
       <div class="tarjeta">

@@ -25,9 +25,9 @@
 
 ## 5. Fase 5 — Dashboard: métricas y auto-refresh
 
-- [ ] 5.1 Sección de métricas en el dashboard: total/estados, serie diaria con huecos rellenados, duración media, filtro de rango; tests de formateo/serie
-- [ ] 5.2 Desglose por puente navegable al listado filtrado por ese puente; test
-- [ ] 5.3 Auto-refresh configurado (5s, apagado por defecto, pausa en pestaña oculta, sin peticiones solapadas); test del temporizador
+- [x] 5.1 Sección de métricas en el dashboard: total/estados, serie diaria con huecos rellenados, duración media, filtro de rango; tests de formateo/serie
+- [x] 5.2 Desglose por puente navegable al listado filtrado por ese puente; test
+- [x] 5.3 Auto-refresh configurado (5s, apagado por defecto, pausa en pestaña oculta, sin peticiones solapadas); test del temporizador
 
 ## 6. Fase 6 — Export, import y duplicar
 
