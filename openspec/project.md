@@ -11,17 +11,17 @@ El backend está escrito en **Rust** y ejecuta los bloques (JavaScript/TypeScrip
 
 ## Current State
 
-**MVP1 construido y en producción local** (change `add-mvp1-core` archivado el 2026-10-18, CI verde, repo privado en GitHub): sandbox rquickjs, ejecutor lineal fail-fast, store de ejecuciones, biblioteca de bloques, bóveda mínima, API autodocumentada (OpenAPI 3.1 + Scalar).
+**MVP2 construido** (change `add-mvp2-async-cron-conditionals` archivado el 2026-10-19; 26/26 tareas, 278 tests, clippy limpio, CI verde, repo privado en GitHub): todo el MVP1 más disparo asíncrono con polling, webhook de resultado firmado (HMAC-SHA256 con reintentos), triggers cron (scheduler con solape y recuperación de caída, disparo manual) y puentes condicionales (`when`/`switch` con pasos `skipped`).
 
 La base de conocimiento vive en:
 
-- `openspec/specs/` — las 6 capacidades vigentes sincronizadas del MVP1
-- `openspec/changes/archive/2026-10-18-add-mvp1-core/` — propuesta, diseño y tareas del MVP1 (23/23 tareas)
-- Memoria Engram del proyecto (topic_keys `integraciones-*`) — acta de las 9 rondas de decisiones
+- `openspec/specs/` — las 9 capacidades vigentes sincronizadas (6 del MVP1 + async-invocation, webhook-delivery y cron-triggers del MVP2)
+- `openspec/changes/archive/2026-10-18-add-mvp1-core/` — MVP1 (23/23 tareas)
+- `openspec/changes/archive/2026-10-19-add-mvp2-async-cron-conditionals/` — MVP2 (26/26 tareas)
+- Memoria Engram del proyecto (topic_keys `integraciones-*`) — acta de las decisiones
 
-Próximos hitos documentados como changes activos:
+Próximo hito documentado como change activo:
 
-- **MVP2** → `changes/add-mvp2-async-cron-conditionals/` (async 202 + polling, webhook HMAC, cron, condicionales)
 - **MVP3** → `changes/add-mvp3-events-observability-ui/` (eventos, dry-run, replay, bóveda versionada, mask, consola web; asume MVP2 aplicado)
 
 ## Key Decisions (resumen ejecutivo)
@@ -101,5 +101,5 @@ docker compose up -d          # Postgres (cuando exista compose)
 ## Roadmap
 
 - **MVP1** ✅ archivado (`2026-10-18-add-mvp1-core`) — ejecutor + HTTP sync + store de ejecuciones + biblioteca de bloques + bóveda mínima
-- **MVP2** → `add-mvp2-async-cron-conditionals` — async 202 + polling + webhook de resultado (HMAC) + cron + **puentes condicionales** (`when` por instancia o bloque `switch` con rutas nombradas; pasos no ejecutados `skipped`; condiciones deterministas sobre `$.`, sin JS arbitrario; prevención de ciclos — el MVP1 permanece estrictamente lineal)
+- **MVP2** ✅ archivado (`2026-10-19-add-mvp2-async-cron-conditionals`) — async 202 + polling + webhook de resultado (HMAC con reintentos) + cron (scheduler, solape, recuperación de caída, disparo manual) + **puentes condicionales** (`when` por instancia o bloque `switch` con rutas nombradas; pasos no ejecutados `skipped`; condiciones deterministas sobre `$.`, sin JS arbitrario; prevención de ciclos)
 - **MVP3** → `add-mvp3-events-observability-ui` (asume MVP2) — eventos/colas, dry-run con mocks, replay, bóveda completa (versiones + rotación), enmascaramiento de IO, UI (dashboard, formularios + editor de código)
