@@ -13,9 +13,9 @@
 
 ## 3. Fase 3 — Biblioteca de bloques en la consola
 
-- [ ] 3.1 Listado con filtros (tipo, categoría) y detalle de versiones (schemas, `ui`); sin controles de escritura para viewer; tests
-- [ ] 3.2 Crear/editar `custom_logic`: editor de código con errores de transpile en línea y publicación bloqueada con 422 visible; test de error de sintaxis mostrado
-- [ ] 3.3 Detalle de bloques built-in (http/switch) con sus schemas y metadatos `ui`; test
+- [x] 3.1 Listado con filtros (tipo, categoría) y detalle de versiones (schemas, `ui`); sin controles de escritura para viewer; tests
+- [x] 3.2 Crear/editar `custom_logic`: editor de código con errores de transpile en línea y publicación bloqueada con 422 visible; test de error de sintaxis mostrado
+- [x] 3.3 Detalle de bloques built-in (http/switch) con sus schemas y metadatos `ui`; test
 
 ## 4. Fase 4 — Versiones: diff y rollback
 

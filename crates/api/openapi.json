@@ -2257,7 +2257,18 @@
       },
       "BlockVersion": {
         "type": "object",
-        "description": "Versión inmutable de un bloque. `code` es el JS transpilado (null solo en bloques built-in históricos).",
+        "description": "Versión inmutable de un bloque. `code` es el JS transpilado (null solo en históricos built-in).",
+        "required": [
+          "id",
+          "blockId",
+          "version",
+          "code",
+          "configSchema",
+          "inputSchema",
+          "outputSchema",
+          "ui",
+          "createdAt"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -2276,19 +2287,24 @@
               "null"
             ]
           },
+          "configSchema": {
+            "$ref": "#/components/schemas/JsonSchema"
+          },
           "inputSchema": {
             "$ref": "#/components/schemas/JsonSchema"
+          },
+          "outputSchema": {
+            "$ref": "#/components/schemas/JsonSchema"
+          },
+          "ui": {
+            "type": "object",
+            "description": "Metadatos `ui` que generan los formularios de instancias."
           },
           "createdAt": {
             "type": "string",
             "format": "date-time"
           }
-        },
-        "required": [
-          "id",
-          "blockId",
-          "version"
-        ]
+        }
       },
       "CreateCredential": {
         "type": "object",
