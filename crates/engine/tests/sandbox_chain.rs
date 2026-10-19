@@ -36,6 +36,7 @@ fn definition(blocks: Vec<BlockInstance>) -> BridgeDefinition {
         input_schema: None,
         blocks,
         webhook: None,
+        mask: Vec::new(),
     }
 }
 

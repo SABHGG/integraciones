@@ -9,9 +9,9 @@
 
 ## 2. Fase 2 — Enmascaramiento
 
-- [ ] 2.1 Validador de publicación: `mask: [paths]` con la gramática `$.` existente, congelado en snapshot; tests del validador
-- [ ] 2.2 Ejecutor: sustitución `***` sobre IO de pasos y sobre final antes de persistir, en la misma transacción del trace; test de irreversibilidad (no queda valor en ninguna tabla)
-- [ ] 2.3 Superficies: trace/detalle/listado y webhook entregan el dato enmascarado; editar reglas no reescribe ejecuciones de versiones previas; tests
+- [x] 2.1 Validador de publicación: `mask: [paths]` con la gramática `$.` existente, congelado en snapshot; tests del validador
+- [x] 2.2 Ejecutor: sustitución `***` sobre IO de pasos y sobre final antes de persistir, en la misma transacción del trace; test de irreversibilidad (no queda valor en ninguna tabla)
+- [x] 2.3 Superficies: trace/detalle/listado y webhook entregan el dato enmascarado; editar reglas no reescribe ejecuciones de versiones previas; tests
 
 ## 3. Fase 3 — Eventos/colas
 

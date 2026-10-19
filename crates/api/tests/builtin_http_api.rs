@@ -276,11 +276,17 @@ impl Harness {
     /// Siembra un puente publicado (v1) con las instancias dadas (los bloques
     /// `http` llevan `code: null`: su comportamiento es del host).
     async fn bridge(&self, slug: &str, blocks: Value) {
-        let bridge_id = Uuid::now_v7();
         let definition = json!({
             "trigger": { "type": "http", "method": "POST", "path": format!("/{slug}") },
             "blocks": blocks,
         });
+        self.bridge_definition(slug, definition).await;
+    }
+
+    /// Siembra un puente publicado (v1) con una definición arbitraria
+    /// (trigger, blocks, mask…).
+    async fn bridge_definition(&self, slug: &str, definition: Value) {
+        let bridge_id = Uuid::now_v7();
 
         sqlx::query("INSERT INTO bridges (id, workspace_id, slug, name) VALUES ($1, $2, $3, $4)")
             .bind(bridge_id)
@@ -306,6 +312,41 @@ impl Harness {
             .execute(&self.pool)
             .await
             .expect("latest_version");
+    }
+
+    /// Publica la versión 2 del puente `slug`: la definición de la v1 con
+    /// `mask` añadida (simula editar las reglas y publicar).
+    async fn publicar_version_con_mask(&self, slug: &str, mask: Value) {
+        let bridge_id: Uuid =
+            sqlx::query_scalar("SELECT id FROM bridges WHERE workspace_id = $1 AND slug = $2")
+                .bind(self.workspace_id)
+                .bind(slug)
+                .fetch_one(&self.pool)
+                .await
+                .expect("puente sembrado");
+        let mut definition: Value = sqlx::query_scalar(
+            "SELECT definition FROM bridge_versions WHERE bridge_id = $1 AND version = 1",
+        )
+        .bind(bridge_id)
+        .fetch_one(&self.pool)
+        .await
+        .expect("definición v1");
+        definition["mask"] = mask;
+        sqlx::query(
+            "INSERT INTO bridge_versions (id, bridge_id, version, definition) \
+             VALUES ($1, $2, 2, $3)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(bridge_id)
+        .bind(&definition)
+        .execute(&self.pool)
+        .await
+        .expect("bridge_version 2");
+        sqlx::query("UPDATE bridges SET latest_version = 2 WHERE id = $1")
+            .bind(bridge_id)
+            .execute(&self.pool)
+            .await
+            .expect("latest_version 2");
     }
 
     /// Trace de una ejecución.
@@ -510,5 +551,142 @@ async fn ctx_credential_resuelve_desde_la_boveda_en_custom_logic() {
         sobre["data"],
         json!({ "largo": SECRETO.len(), "prefijo": &SECRETO[..8] }),
         "ctx.credential resuelve el secreto de la bóveda del workspace"
+    );
+}
+
+// ── enmascaramiento (MVP3, tasks 2.1-2.3) ──────────────────────────────
+
+/// Instancia JS que produce un dato sensible de cliente.
+const BLOQUE_CLIENTE: &str = "export default (input) => ({ cliente: { tarjeta: \"4242-1111-1111-1111\", titular: \"Ada\" } })";
+
+#[tokio::test]
+async fn mask_enmascara_io_y_trigger_de_forma_irreversible() {
+    let Some(h) = begin().await else { return };
+
+    h.bridge_definition(
+        "enmascarado",
+        json!({
+            "trigger": { "type": "http", "method": "POST", "path": "/x/enmascarado" },
+            "blocks": [{
+                "id": "b1",
+                "name": "consulta",
+                "code": BLOQUE_CLIENTE,
+                "config": {},
+                "input": {},
+                "inputSchema": {},
+                "outputSchema": {}
+            }],
+            "mask": ["$.consulta.cliente.tarjeta", "$.trigger.body.password"]
+        }),
+    )
+    .await;
+
+    let sobre = h
+        .x(
+            Method::POST,
+            "enmascarado",
+            Some(json!({ "password": "supersecreto-77" })),
+        )
+        .await;
+    assert_eq!(sobre.status, StatusCode::OK, "{}", sobre.body);
+    let cuerpo = sobre.json();
+    // El sobre ya sale enmascarado; el resto del IO íntegro.
+    assert_eq!(
+        cuerpo["data"]["cliente"]["tarjeta"],
+        json!("***"),
+        "{}",
+        cuerpo
+    );
+    assert_eq!(cuerpo["data"]["cliente"]["titular"], json!("Ada"));
+    let execution_id = cuerpo["executionId"].as_str().unwrap().to_string();
+
+    // El trace persistido entrega el dato enmascarado.
+    let trace = h
+        .admin_get(&format!("/api/v1/executions/{execution_id}/trace"))
+        .await
+        .json();
+    assert_eq!(
+        trace["steps"][0]["output"]["cliente"]["tarjeta"],
+        json!("***"),
+        "{}",
+        trace
+    );
+
+    // El detalle expone el trigger enmascarado.
+    let detalle = h
+        .admin_get(&format!("/api/v1/executions/{execution_id}"))
+        .await
+        .json();
+    assert_eq!(detalle["triggerData"]["body"]["password"], json!("***"));
+
+    // Irreversibilidad: el valor original no vive en ninguna tabla.
+    let con_valor_tarjeta = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM execution_steps WHERE output::text LIKE '%4242-1111%'",
+    )
+    .fetch_one(&h.pool)
+    .await
+    .expect("conteo de pasos");
+    assert_eq!(
+        con_valor_tarjeta, 0,
+        "el valor real sobrevivió en execution_steps"
+    );
+    let con_valor_trigger = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM executions WHERE trigger_data::text LIKE '%supersecreto-77%'",
+    )
+    .fetch_one(&h.pool)
+    .await
+    .expect("conteo de ejecuciones");
+    assert_eq!(
+        con_valor_trigger, 0,
+        "el valor real sobrevivió en trigger_data"
+    );
+}
+
+#[tokio::test]
+async fn editar_mask_no_reescribe_ejecuciones_previas() {
+    let Some(h) = begin().await else { return };
+
+    // v1 SIN mask: el trace persiste el valor real.
+    h.bridge(
+        "reglas-moviles",
+        json!([{
+            "id": "b1",
+            "name": "consulta",
+            "code": BLOQUE_CLIENTE,
+            "config": {},
+            "input": {},
+            "inputSchema": {},
+            "outputSchema": {}
+        }]),
+    )
+    .await;
+    let sobre_v1 = h.x(Method::POST, "reglas-moviles", Some(json!({}))).await;
+    assert_eq!(sobre_v1.status, StatusCode::OK, "{}", sobre_v1.body);
+    let execution_v1 = sobre_v1.json()["executionId"].as_str().unwrap().to_string();
+
+    // v2 CON mask: solo afecta a ejecuciones posteriores.
+    h.publicar_version_con_mask("reglas-moviles", json!(["$.consulta.cliente.tarjeta"]))
+        .await;
+    let sobre_v2 = h.x(Method::POST, "reglas-moviles", Some(json!({}))).await;
+    assert_eq!(sobre_v2.status, StatusCode::OK, "{}", sobre_v2.body);
+    let execution_v2 = sobre_v2.json()["executionId"].as_str().unwrap().to_string();
+
+    let salida = async |id: &str| {
+        sqlx::query_scalar::<_, Value>(
+            "SELECT output FROM execution_steps WHERE execution_id = $1 AND seq = 1",
+        )
+        .bind(Uuid::parse_str(id).expect("uuid"))
+        .fetch_one(&h.pool)
+        .await
+        .expect("paso 1")
+    };
+    assert_eq!(
+        salida(&execution_v1).await["cliente"]["tarjeta"],
+        json!("4242-1111-1111-1111"),
+        "las reglas nuevas no reescriben el pasado"
+    );
+    assert_eq!(
+        salida(&execution_v2).await["cliente"]["tarjeta"],
+        json!("***")
     );
 }

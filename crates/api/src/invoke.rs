@@ -32,6 +32,7 @@ use axum::response::Response;
 use axum::routing::{any, get};
 use domain::definition::BridgeDefinition;
 use domain::execution::ErrorPayload;
+use domain::execution::StepStatus;
 use engine::executor::{ChainRun, ExecutionOutcome, Executor};
 use engine::invoker::SandboxInvoker;
 use serde_json::{Value, json};
@@ -439,6 +440,12 @@ pub(crate) async fn ejecutar_encolada(
         .await
         .map_err(|error| problem::internal(format!("cargar la bóveda: {error}")))?;
 
+    // Copias para la persistencia: la corrida consume el original
+    // (definition/trigger) y el enmascaramiento (MVP3) reescribe estas
+    // copias antes del UPDATE.
+    let mask_reglas_snapshot = definition.mask.clone();
+    let mut trigger_para_persistir = trigger_data.clone();
+
     // MVP3: registro de credenciales usadas (auditoría de la bóveda
     // versionada). El resolutor es síncrono: anota cada resolución real en un
     // mapa compartido; se persiste con el trace, sin valores.
@@ -448,7 +455,7 @@ pub(crate) async fn ejecutar_encolada(
 
     // La corrida: el futuro del ejecutor no es Send (rquickjs full-async),
     // así que corre en un hilo blocking con runtime current-thread + LocalSet.
-    let outcome = tokio::task::spawn_blocking(move || {
+    let mut outcome = tokio::task::spawn_blocking(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -475,12 +482,33 @@ pub(crate) async fn ejecutar_encolada(
     .await
     .expect("hilo blocking de la ejecución");
 
+    // Enmascaramiento irreversible en el límite de persistencia (MVP3, D5):
+    // las reglas viajan congeladas en el snapshot; el valor original nunca
+    // toca el store. El ejecutor corre SIN mask (el dry-run es la vía de
+    // ensayo con valores reales).
+    if !mask_reglas_snapshot.is_empty() {
+        let reglas = domain::masking::parsear_mask(&mask_reglas_snapshot)
+            .map_err(|error| problem::internal(format!("reglas de mask inválidas: {error}")))?;
+        enmascarar_outcome(&mut outcome, &reglas);
+        for regla in &reglas {
+            if regla.raiz == "trigger" {
+                domain::masking::enmascarar_ruta(&mut trigger_para_persistir, &regla.segmentos);
+            }
+        }
+    }
+
     // Persistencia: pasos con IO completo + cierre en UNA transacción (spec
     // `execution-store`: los pasos se persisten con la avanzación de estado).
     let credentials_used = credential_usadas_json(&usadas);
-    persist_outcome(&state.pool, execution_id, &outcome, credentials_used)
-        .await
-        .map_err(|error| problem::internal(format!("persistir el resultado: {error}")))?;
+    persist_outcome(
+        &state.pool,
+        execution_id,
+        &outcome,
+        credentials_used,
+        Some(trigger_para_persistir),
+    )
+    .await
+    .map_err(|error| problem::internal(format!("persistir el resultado: {error}")))?;
 
     // Webhook de resultado (MVP2): si el puente lo declara, la URL congelada
     // se copia a la ejecución (semántica de snapshot: la versión que corrió es
@@ -681,6 +709,34 @@ async fn cargar_boveda(
     Ok(boveda)
 }
 
+/// Aplica las reglas de mask al resultado de la corrida: `$.<bloque>.rest`
+/// cubre la salida del paso; `$.trigger.rest` cubre el trigger persistido y
+/// los inputs donde el valor se interpoló; el sobre final sale del último
+/// paso exitoso, ya enmascarado en el trace. Sin valores originales.
+fn enmascarar_outcome(outcome: &mut ExecutionOutcome, reglas: &[domain::masking::ReglaMask]) {
+    for paso in &mut outcome.steps {
+        // `$.<bloque>.rest`: la salida del paso (el contexto resuelve el
+        // bloque directo: `$.consulta.tarjeta` es `salida.tarjeta`).
+        for regla in reglas.iter().filter(|regla| regla.raiz == paso.block_name) {
+            if let Some(output) = &mut paso.output {
+                domain::masking::enmascarar_ruta(output, &regla.segmentos);
+            }
+        }
+        // `$.trigger.rest`: valores interpolados en el input del paso.
+        for regla in reglas.iter().filter(|regla| regla.raiz == "trigger") {
+            domain::masking::enmascarar_ruta(&mut paso.input, &regla.segmentos);
+        }
+    }
+    if let Some(ultimo) = outcome
+        .steps
+        .iter()
+        .rev()
+        .find(|paso| paso.status == StepStatus::Succeeded)
+    {
+        outcome.output = ultimo.output.clone();
+    }
+}
+
 /// Serializa el registro de credenciales usadas (pares credential/version,
 /// con el nombre para lectura humana; jamás valores).
 fn credential_usadas_json(
@@ -729,6 +785,7 @@ async fn persist_outcome(
     execution_id: Uuid,
     outcome: &ExecutionOutcome,
     credentials_used: Option<Value>,
+    trigger_data_enmascarado: Option<Value>,
 ) -> Result<(), sqlx::Error> {
     let status_final = outcome.status.as_str();
     let execution_error = outcome
@@ -773,13 +830,14 @@ async fn persist_outcome(
     sqlx::query(
         "UPDATE executions \
          SET status = $2, error = $3, credentials_used = COALESCE($4, credentials_used), \
-             finished_at = now() \
+             trigger_data = COALESCE($5, trigger_data), finished_at = now() \
          WHERE id = $1",
     )
     .bind(execution_id)
     .bind(status_final)
     .bind(execution_error)
     .bind(credentials_used)
+    .bind(trigger_data_enmascarado)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;

@@ -61,6 +61,11 @@ pub struct BridgeDefinition {
     /// Webhook de resultado, si el puente lo declara (`{url}` https).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub webhook: Option<WebhookDefinition>,
+    /// Reglas de enmascaramiento declarativas (MVP3): rutas `$.` con raíz
+    /// `trigger` o nombre de bloque cuyo valor se sustituye por `***` de
+    /// forma irreversible al persistir el IO (spec `io-masking`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mask: Vec<String>,
 }
 
 impl BridgeDefinition {

@@ -6,5 +6,6 @@ pub mod conditions;
 pub mod cron;
 pub mod definition;
 pub mod execution;
+pub mod masking;
 pub mod refs;
 pub mod schema;

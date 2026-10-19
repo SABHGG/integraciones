@@ -997,6 +997,9 @@ struct PatchBridge {
     input_schema: Option<Value>,
     #[serde(default)]
     blocks: Option<Value>,
+    /// Reglas de enmascaramiento (MVP3): array de rutas `$.`. `null` = no tocar.
+    #[serde(default)]
+    mask: Option<Value>,
     /// Webhook de resultado (MVP2): `{url}` https. `null` = no tocar.
     #[serde(default)]
     webhook: Option<Value>,
@@ -1045,6 +1048,7 @@ async fn patch_bridge(
         ("trigger", request.trigger),
         ("inputSchema", request.input_schema),
         ("blocks", request.blocks),
+        ("mask", request.mask),
         ("webhook", request.webhook),
     ] {
         if let Some(value) = value.filter(|value| !value.is_null()) {
@@ -1150,7 +1154,60 @@ async fn validar_borrador(
     issues.extend(resolve_issues);
     issues.extend(validate_chain(&instances));
     issues.extend(validate_conditional(&instances));
+    let nombres: Vec<&str> = instances
+        .iter()
+        .map(|instancia| instancia.name.as_str())
+        .collect();
+    issues.extend(validate_mask(draft.get("mask"), &nombres));
     Ok((issues, instances))
+}
+
+/// MVP3 (spec `io-masking`): las reglas `mask` son un array de rutas `$.`
+/// cuya raíz es `trigger` o el nombre de un bloque de la cadena. Cualquier
+/// otra cosa (raíz desconocida, ruta rota, tipo equivocado) es un issue.
+fn validate_mask(mask: Option<&Value>, block_names: &[&str]) -> Vec<Issue> {
+    let Some(mask) = mask.filter(|valor| !valor.is_null()) else {
+        return Vec::new();
+    };
+    let Some(reglas) = mask.as_array() else {
+        return vec![Issue::new(
+            "mask",
+            "debe ser un array de rutas \"$.\" (por ejemplo \"$.trigger.password\")",
+        )];
+    };
+    let mut issues = Vec::new();
+    for (indice, regla) in reglas.iter().enumerate() {
+        let campo = format!("mask.{indice}");
+        let Some(raw) = regla.as_str() else {
+            issues.push(Issue::new(
+                &campo,
+                "cada regla debe ser una cadena con una ruta \"$.\"",
+            ));
+            continue;
+        };
+        let Ok(path) = RefPath::parse(raw) else {
+            issues.push(Issue::new(
+                &campo,
+                format!("\"{raw}\" no es una ruta \"$.\" válida (raíz y segmentos alfanuméricos)"),
+            ));
+            continue;
+        };
+        let raiz_ok = match path.segments().first() {
+            Some(Segment::Key(clave)) => {
+                clave == "trigger" || block_names.contains(&clave.as_str())
+            }
+            _ => false,
+        };
+        if !raiz_ok {
+            issues.push(Issue::new(
+                &campo,
+                format!(
+                    "la raíz de \"{raw}\" debe ser \"trigger\" o el nombre de un bloque de la cadena"
+                ),
+            ));
+        }
+    }
+    issues
 }
 
 /// `POST /api/v1/bridges/{id}/validate`: valida el borrador completo y
@@ -1264,6 +1321,18 @@ async fn publish_version(
                 vec![rest::field_error("webhook", error.to_string())],
             )
         })?;
+    let mask: Vec<String> = draft
+        .get("mask")
+        .filter(|value| !value.is_null())
+        .map(|value| serde_json::from_value::<Vec<String>>(value.clone()))
+        .transpose()
+        .map_err(|error| {
+            rest::invalid_body(
+                "el borrador no pasa la validación",
+                vec![rest::field_error("mask", error.to_string())],
+            )
+        })?
+        .unwrap_or_default();
     let definition = BridgeDefinition {
         trigger,
         input_schema: draft
@@ -1272,6 +1341,7 @@ async fn publish_version(
             .cloned(),
         blocks,
         webhook: webhook.clone(),
+        mask,
     };
     let definition = serde_json::to_value(&definition)
         .map_err(|error| problem::internal(format!("snapshot no serializable: {error}")))?;

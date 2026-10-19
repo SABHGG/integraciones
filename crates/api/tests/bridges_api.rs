@@ -1112,3 +1112,56 @@ async fn un_puente_cron_publicado_no_se_expone_en_x() {
     let get = h.send(Method::GET, "/x/solo-cron", None, None).await;
     get.problem(StatusCode::NOT_FOUND);
 }
+
+// ── validación de mask (MVP3, task 2.1) ────────────────────────────────
+
+#[tokio::test]
+async fn mask_se_valida_con_raices_trigger_o_bloques_existentes() {
+    let Some(h) = begin().await else { return };
+    let origen = bloque_origen(&h, "maskv").await;
+
+    let bridge = h.create_bridge("mask-valida").await;
+    let id = bridge["id"].as_str().unwrap().to_string();
+
+    // Válido: trigger y un bloque existente de la cadena.
+    let draft = json!({
+        "trigger": { "type": "http", "method": "POST", "path": "/x/maskv" },
+        "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))],
+        "mask": ["$.trigger.password", "$.origen.total"]
+    });
+    h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+    let validated = h
+        .post(&format!("/api/v1/bridges/{id}/validate"), None)
+        .await;
+    assert_eq!(validated.status, StatusCode::OK, "{}", validated.body);
+    assert_eq!(validated.json()["valid"], true, "{}", validated.body);
+
+    // Inválido: raíz desconocida, ruta sin `$.` y mask que no es array.
+    for (path, mask) in [
+        ("mask.0", json!(["$.bloque-inexistente.total"])),
+        ("mask.0", json!(["trigger.password"])),
+        ("mask", json!("$.trigger.password")),
+    ] {
+        let draft = json!({
+            "trigger": { "type": "http", "method": "POST", "path": "/x/maskv" },
+            "blocks": [h.instance("paso-origen", "origen", &origen, json!({}))],
+            "mask": mask
+        });
+        h.patch(&format!("/api/v1/bridges/{id}"), draft).await;
+        let validated = h
+            .post(&format!("/api/v1/bridges/{id}/validate"), None)
+            .await;
+        assert_eq!(validated.status, StatusCode::OK, "{}", validated.body);
+        assert_eq!(
+            validated.json()["valid"],
+            false,
+            "mask {mask} debió ser inválida: {}",
+            validated.body
+        );
+        assert!(
+            validated.body.contains("mask"),
+            "el error debe señalar la regla ofensiva ({path}): {}",
+            validated.body
+        );
+    }
+}
