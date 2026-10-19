@@ -794,6 +794,7 @@ mod tests {
             },
             input_schema: None,
             blocks,
+            webhook: None,
         }
     }
 
