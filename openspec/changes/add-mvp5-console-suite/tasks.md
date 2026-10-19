@@ -19,9 +19,9 @@
 
 ## 4. Fase 4 — Versiones: diff y rollback
 
-- [ ] 4.1 Módulo de diff estructural en cliente (rutas planas, lado a lado) con tests de Vitest
-- [ ] 4.2 Vista de versiones del puente: lista paginada, selector para diff versión↔versión y borrador↔versión, adopción del contenido publicado al borrador; test con ejecución real
-- [ ] 4.3 Rollback orquestado (definición → PATCH del borrador → publicar) etiquetado como «rollback de la N» con confirmación; acción visible solo a editor (viewer ve diff sin rollback); test de que las versiones previas y ejecuciones quedan intactas
+- [x] 4.1 Módulo de diff estructural en cliente (rutas planas, lado a lado) con tests de Vitest
+- [x] 4.2 Vista de versiones del puente: lista paginada, selector para diff versión↔versión y borrador↔versión, adopción del contenido publicado al borrador; test con ejecución real
+- [x] 4.3 Rollback orquestado (definición → PATCH del borrador → publicar) etiquetado como «rollback de la N» con confirmación; acción visible solo a editor (viewer ve diff sin rollback); test de que las versiones previas y ejecuciones quedan intactas
 
 ## 5. Fase 5 — Dashboard: métricas y auto-refresh
 

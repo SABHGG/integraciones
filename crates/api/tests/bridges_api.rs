@@ -1430,3 +1430,118 @@ async fn la_definicion_congelada_de_una_version_se_recupera_exacta() {
     assert_eq!(r.status, StatusCode::BAD_REQUEST, "{}", r.body);
     assert!(r.body.contains("entero"), "{}", r.body);
 }
+
+// ── rollback por re-publicación: el pasado queda intacto (MVP5, 4.3) ──
+
+#[tokio::test]
+async fn el_rollback_republica_sin_tocar_versiones_ni_ejecuciones_previas() {
+    let Some(h) = begin().await else { return };
+    let (block_id, version_id) = h
+        .published_block(
+            "rollback-eco",
+            json!({ "type": "object" }),
+            json!({ "type": "object" }),
+        )
+        .await;
+    let instancia = json!({
+        "id": "b1", "name": "eco",
+        "blockId": block_id, "blockVersionId": version_id,
+        "input": {}, "config": {}
+    });
+
+    // Puente con borrador y publicación de la v1.
+    let bridge_id = Uuid::now_v7();
+    sqlx::query("INSERT INTO bridges (id, workspace_id, slug, name, draft) VALUES ($1, $2, $3, $4, $5)")
+        .bind(bridge_id)
+        .bind(h.workspace_id)
+        .bind("rollback")
+        .bind("Puente rollback")
+        .bind(&json!({ "trigger": { "type": "http", "method": "POST", "path": "/x/rollback" }, "blocks": [instancia] }))
+        .execute(&h.pool)
+        .await
+        .expect("bridge");
+    let v1 = h
+        .post(&format!("/api/v1/bridges/{bridge_id}/versions"), None)
+        .await;
+    assert_eq!(v1.status, StatusCode::CREATED, "{}", v1.body);
+    let v1 = v1.json();
+    assert_eq!(v1["version"], json!(1));
+    let definicion_v1 = v1["definition"].clone();
+    let bridge_version_v1: Uuid = v1["id"].as_str().unwrap().parse().unwrap();
+
+    // Ejecución real sobre la v1.
+    let ejecucion = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO executions (id, workspace_id, bridge_id, bridge_version_id, \
+         trigger_type, status, created_at) \
+         VALUES ($1, $2, $3, $4, 'manual', 'succeeded', now())",
+    )
+    .bind(ejecucion)
+    .bind(h.workspace_id)
+    .bind(bridge_id)
+    .bind(bridge_version_v1)
+    .execute(&h.pool)
+    .await
+    .expect("ejecución");
+
+    // v2 con la cadena cambiada (lo que sería «romper» el puente).
+    let mut instancia_v2 = instancia.clone();
+    instancia_v2["name"] = json!("eco-v2");
+    let parche = h
+        .patch(
+            &format!("/api/v1/bridges/{bridge_id}"),
+            json!({ "blocks": [instancia_v2] }),
+        )
+        .await;
+    assert_eq!(parche.status, StatusCode::OK);
+    let v2 = h
+        .post(&format!("/api/v1/bridges/{bridge_id}/versions"), None)
+        .await;
+    assert_eq!(v2.status, StatusCode::CREATED, "{}", v2.body);
+    assert_eq!(v2.json()["version"], json!(2));
+
+    // ROLLBACK (lo que orquesta la consola): definición de la v1 → PATCH del
+    // borrador sección por sección → publicar.
+    for clave in [
+        "trigger",
+        "inputSchema",
+        "blocks",
+        "mask",
+        "emit",
+        "webhook",
+    ] {
+        if let Some(seccion) = definicion_v1.get(clave) {
+            let respuesta = h
+                .patch(
+                    &format!("/api/v1/bridges/{bridge_id}"),
+                    json!({ clave.clone(): seccion.clone() }),
+                )
+                .await;
+            assert_eq!(respuesta.status, StatusCode::OK);
+        }
+    }
+    let v3 = h
+        .post(&format!("/api/v1/bridges/{bridge_id}/versions"), None)
+        .await;
+    assert_eq!(v3.status, StatusCode::CREATED, "{}", v3.body);
+    let v3 = v3.json();
+    assert_eq!(v3["version"], json!(3));
+    assert_eq!(
+        v3["definition"], definicion_v1,
+        "v3 == contenido congelado de la v1"
+    );
+
+    // El pasado NO cambió: v1 idéntica y la ejecución sigue en la v1.
+    let detalle_v1 = h
+        .get(&format!("/api/v1/bridges/{bridge_id}/versions/1"))
+        .await;
+    assert_eq!(detalle_v1.status, StatusCode::OK, "{}", detalle_v1.body);
+    assert_eq!(detalle_v1.json()["definition"], definicion_v1);
+    let (ejecucion_version,): (Uuid,) =
+        sqlx::query_as("SELECT bridge_version_id FROM executions WHERE id = $1")
+            .bind(ejecucion)
+            .fetch_one(&h.pool)
+            .await
+            .expect("ejecución tras el rollback");
+    assert_eq!(ejecucion_version, bridge_version_v1);
+}

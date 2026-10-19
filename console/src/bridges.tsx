@@ -8,6 +8,7 @@ import { FormularioInstancia } from "./blockform";
 import type { Paso } from "./executions";
 import { EditorCodigo } from "./codeeditor";
 import { puede, type Rol } from "./roles";
+import { PanelVersiones } from "./versiones";
 
 interface Puente {
   id: string;
@@ -86,11 +87,15 @@ export function EditorPuente(props: { id: string; rol: Rol | null }) {
   const [datosDryRun, setDatosDryRun] = useState("{}");
   const [dryRun, setDryRun] = useState<Record<string, unknown> | null>(null);
 
+  const recargar = async () => {
+    const puente = await api<Puente>("GET", `/bridges/${props.id}`);
+    setPuente(puente);
+    setDraft((puente.draft ?? {}) as Record<string, unknown>);
+  };
+
   useEffect(() => {
     void (async () => {
-      const puente = await api<Puente>("GET", `/bridges/${props.id}`);
-      setPuente(puente);
-      setDraft((puente.draft ?? {}) as Record<string, unknown>);
+      await recargar();
       const pagina = await api<Page<Bloque>>("GET", "/blocks?limit=200");
       setBloques(pagina.items);
       // ui de la última versión de cada bloque (para los formularios).
@@ -362,6 +367,13 @@ export function EditorPuente(props: { id: string; rol: Rol | null }) {
         <button class="secundario" onClick={publicar}>publicar versión</button>
       </div>
       )}
+
+      <PanelVersiones
+        puenteId={puente.id}
+        draft={draft}
+        administra={administra}
+        alCambiarBorrador={() => void recargar()}
+      />
     </div>
   );
 }
