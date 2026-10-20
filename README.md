@@ -15,6 +15,10 @@ La especificación completa vive en [`openspec/`](openspec/) — empezar por `op
 | `crates/engine` | Ejecutor: cadena lineal, fail-fast, persistencia del trace |
 | `crates/api` | Servidor axum: plano admin `/api/v1` + plano invocación `/x` |
 
+## Cómo crear bloques y puentes
+
+Guía paso a paso con ejemplos reales: [`docs/guia-bloques-y-puentes.md`](docs/guia-bloques-y-puentes.md) — bloques built-in y `custom_logic` (sandbox, `ui`, `ctx.*`), disparadores http/cron/event, referencias `$.`, condiciones, `emit`/`webhook`/`mask` y el flujo borrador → validar → publicar.
+
 ## Desarrollo local
 
 ```bash
