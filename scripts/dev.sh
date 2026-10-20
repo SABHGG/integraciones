@@ -10,7 +10,7 @@
 #   ./scripts/dev.sh --console-watch  # además reconstruye la consola al vuelo
 #
 # Al quedar listo expone:
-#   http://127.0.0.1:8080/console       consola web (login con la API key)
+#   http://127.0.0.1:8080/console       consola web (email demo o API key)
 #   http://127.0.0.1:8080/docs          UI de Scalar
 #   http://127.0.0.1:8080/openapi.json  documento OpenAPI 3.1
 #   http://127.0.0.1:8080/x/registro-cliente  (tras el seed)
@@ -156,7 +156,9 @@ fi
 
 echo
 echo ">> API lista:   ${BASE_URL}"
-echo ">> Consola:     ${BASE_URL}/console   (login con la API key del workspace)"
+echo ">> Consola:     ${BASE_URL}/console"
+echo ">>   email: demo@integraciones.dev / demo-password-2026 (owner del workspace demo)"
+echo ">>   o API key: demo-key-1 (acceso de automatización, actúa como owner)"
 echo ">> Docs Scalar: ${BASE_URL}/docs"
 echo ">> OpenAPI:     ${BASE_URL}/openapi.json"
 echo
@@ -168,7 +170,8 @@ if [ "$SEED" = 1 ]; then
     }
     echo
     echo ">> key demo: 'Authorization: Bearer demo-key-1' (workspace 'demo')"
-    echo ">> consola:  entra en ${BASE_URL}/console con la key demo 'demo-key-1'"
+    echo ">> consola:  entra en ${BASE_URL}/console con demo@integraciones.dev /"
+    echo ">>           demo-password-2026 (owner) o la key demo 'demo-key-1'"
     echo ">> prueba:   curl -s -X POST ${BASE_URL}/x/registro-cliente \\"
     echo "               -H 'content-type: application/json' -d '{\"items\": [\"cafe\", \"mate\"]}'"
     echo

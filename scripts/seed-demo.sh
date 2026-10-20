@@ -58,6 +58,24 @@ $PSQL "$DATABASE_URL" -tAc "
     ON CONFLICT DO NOTHING" >/dev/null
 echo ">> workspace demo: $WORKSPACE_ID"
 
+# ── usuario demo (MVP4): la consola entra con email+contraseña ──────────
+# Registro público (201; 409 si ya existía) + membresía owner por SQL
+# (el bootstrap aún no tiene sesión). Idempotente.
+DEMO_EMAIL="demo@integraciones.dev"
+DEMO_PASSWORD="demo-password-2026"
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/api/v1/auth/register" \
+    -H "content-type: application/json" \
+    -d "{\"email\": \"$DEMO_EMAIL\", \"password\": \"$DEMO_PASSWORD\"}")
+case "$CODE" in
+    201) echo ">> usuario demo creado: $DEMO_EMAIL (owner)" ;;
+    409) echo ">> usuario demo ya existía: $DEMO_EMAIL" ;;
+    *)   echo ">> AVISO: registro del usuario demo devolvió $CODE" >&2 ;;
+esac
+$PSQL "$DATABASE_URL" -tAc "
+    INSERT INTO workspace_members (workspace_id, user_id, role)
+    SELECT '$WORKSPACE_ID', id, 'owner' FROM users WHERE email = '$DEMO_EMAIL'
+    ON CONFLICT DO NOTHING" >/dev/null
+
 AUTH="Authorization: Bearer $DEMO_KEY"
 CT="content-type: application/json"
 post() { $CURL -s -X POST "$BASE_URL$1" -H "$AUTH" -H "$CT" -d "$2"; }
@@ -78,7 +96,8 @@ BRIDGE_ID=$($PSQL "$DATABASE_URL" -tAc "
 if [ -n "$BRIDGE_ID" ] && [ -n "$($PSQL "$DATABASE_URL" -tAc "
         SELECT 1 FROM bridges WHERE id = '$BRIDGE_ID' AND latest_version IS NOT NULL")" ]; then
     echo ">> el puente demo ya está publicado (id $BRIDGE_ID): nada por hacer."
-    echo ">> key: $DEMO_KEY"
+    echo ">> consola: $BASE_URL/console — demo@integraciones.dev / demo-password-2026 (owner)"
+    echo ">> key:     $DEMO_KEY"
     exit 0
 fi
 
@@ -179,7 +198,9 @@ $CURL -s -X POST "$BASE_URL/api/v1/bridges/$BRIDGE_ID/versions" -H "$AUTH" -H "$
 echo ""
 echo "======================================================================"
 echo " Puente demo listo:  POST $BASE_URL/x/registro-cliente"
-echo " API key:            $DEMO_KEY"
+echo " Consola:            $BASE_URL/console"
+echo "   email demo:       $DEMO_EMAIL / $DEMO_PASSWORD (owner)"
+echo "   API key:          $DEMO_KEY"
 echo " Ejemplo:"
 echo "   curl -s -X POST $BASE_URL/x/registro-cliente \\"
 echo "        -H 'content-type: application/json' \\"
