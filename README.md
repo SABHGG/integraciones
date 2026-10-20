@@ -19,7 +19,7 @@ La especificación completa vive en [`openspec/`](openspec/) — empezar por `op
 
 | Guía | Para qué |
 |---|---|
-| [`docs/guia-consola.md`](docs/guia-consola.md) | Entrar, las cinco páginas, roles, leer un trace, flujos diarios |
+| [`docs/guia-consola.md`](docs/guia-consola.md) | Entrar, las cinco páginas, roles, leer un trace, flujos diarios, sistema visual El rastro y sus tokens |
 | [`docs/guia-bloques-y-puentes.md`](docs/guia-bloques-y-puentes.md) | Crear bloques (built-in y `custom_logic`, sandbox `ctx.*`) y puentes (disparadores, refs `$.`, condiciones, emit/webhook/mask) |
 | [`docs/errores-comunes.md`](docs/errores-comunes.md) | Diagnóstico rápido: 401/403/404/409/422, códigos de ejecución (`REF_UNRESOLVED`, `TIMEOUT`…), webhooks y eventos |
 

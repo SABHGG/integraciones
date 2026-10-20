@@ -80,6 +80,12 @@ El detalle de una ejecución muestra cada paso en su posición de la cadena:
 - [ ] Credenciales: ¿alguna lleva demasiado sin rotar? (el historial lo muestra sin valores)
 - [ ] Miembros: ¿alguien salió del equipo? (expulsar revoca su acceso al instante)
 
+## El sistema visual (MVP6)
+
+La consola usa el sistema **El rastro**: papel frío + tinta petróleo, donde el color solo significa estado (verde/`succeeded`, ladrillo/`failed`, ámbar/`pending`·`skipped`, azul/`running`) y la tipografía mono solo porta valores de máquina (slugs, triggers, JSON, duraciones). La firma está en Ejecuciones: cada fila dibuja su **rastro en miniatura** — un segmento por paso, proporcional a su duración real, coloreado por estado — para ver qué bloque es lento o falló sin abrir el detalle.
+
+Los tokens viven en `console/src/tema.css` (`@theme` de Tailwind v4) y los componentes compartidos en `console/src/ui.tsx` (`Boton`, `Insignia`, `Panel`, `Campo`, `Control`, `Esqueleto`). Para extender o ajustar: cambia el token en `tema.css` (el test de contraste AA `src/tema.test.ts` valida cada par y falla si algo baja de 4.5:1) y usa los componentes; las páginas no inventan estilos. Las fuentes (Schibsted Grotesk + Spline Sans Mono) van autoalojadas en `src/fonts/` — la consola funciona sin internet.
+
 ## Ver también
 
 - [`guia-bloques-y-puentes.md`](guia-bloques-y-puentes.md) — crear bloques y puentes paso a paso
