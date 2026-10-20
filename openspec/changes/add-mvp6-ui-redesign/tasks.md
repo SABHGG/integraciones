@@ -2,10 +2,10 @@
 
 ## 1. Fase 1 — Cimientos del sistema
 
-- [ ] 1.1 Copiar fuentes woff2 a `console/public/fonts/` con `@font-face` (swap, fallback system) y verificar carga sin red (build embebido)
-- [ ] 1.2 Añadir Tailwind v4 (`@tailwindcss/vite`) y definir `@theme` con los tokens de D2 (papel, tinta, estados, bordes, radios, tipografías)
-- [ ] 1.3 Extraer componentes base compartidos: botón (primario tinta / secundario borde / peligro), insignia de estado con LED, panel, campo con etiqueta y error, esqueleto de carga
-- [ ] 1.4 Verificar contraste AA de cada par token (script o cálculo en test de Vitest)
+- [x] 1.1 Copiar fuentes woff2 a `console/public/fonts/` con `@font-face` (swap, fallback system) y verificar carga sin red (build embebido)
+- [x] 1.2 Añadir Tailwind v4 (`@tailwindcss/vite`) y definir `@theme` con los tokens de D2 (papel, tinta, estados, bordes, radios, tipografías)
+- [x] 1.3 Extraer componentes base compartidos: botón (primario tinta / secundario borde / peligro), insignia de estado con LED, panel, campo con etiqueta y error, esqueleto de carga
+- [x] 1.4 Verificar contraste AA de cada par token (script o cálculo en test de Vitest)
 
 ## 2. Fase 2 — Shell y acceso
 

@@ -1,5 +1,7 @@
+/* Estilos heredados (pre-MVP6), con alcance .legacy durante la migración.
+   Las páginas migradas a Tailwind no lo usan; se elimina en la tarea 6.4. */
 /* Consola: hoja base. Variables + layout mínimo, sin framework CSS. */
-:root {
+.legacy :root {
   --fondo: #0f1115;
   --panel: #171a21;
   --borde: #262b36;
@@ -12,15 +14,15 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
-* { box-sizing: border-box; }
-body {
+.legacy * { box-sizing: border-box; }
+.legacy body {
   margin: 0;
   background: var(--fondo);
   color: var(--texto);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-header {
+.legacy header {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -28,20 +30,20 @@ header {
   border-bottom: 1px solid var(--borde);
   background: var(--panel);
 }
-header .marca { font-weight: 700; letter-spacing: 0.3px; }
-header nav { display: flex; gap: 10px; }
-header nav a {
+.legacy header .marca { font-weight: 700; letter-spacing: 0.3px; }
+.legacy header nav { display: flex; gap: 10px; }
+.legacy header nav a {
   color: var(--texto-suave);
   text-decoration: none;
   padding: 4px 10px;
   border-radius: 6px;
 }
-header nav a.activo, header nav a:hover { color: var(--texto); background: var(--borde); }
-header .salir { margin-left: auto; }
+.legacy header nav a.activo, .legacy header nav a:hover { color: var(--texto); background: var(--borde); }
+.legacy header .salir { margin-left: auto; }
 
-main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.legacy main { max-width: 1100px; margin: 0 auto; padding: 20px; }
 
-.tarjeta {
+.legacy .tarjeta {
   background: var(--panel);
   border: 1px solid var(--borde);
   border-radius: 10px;
@@ -49,7 +51,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 20px; }
   margin-bottom: 12px;
 }
 
-button {
+.legacy button {
   background: var(--acento);
   color: #fff;
   border: 0;
@@ -58,11 +60,11 @@ button {
   font: inherit;
   cursor: pointer;
 }
-button.secundario { background: var(--borde); }
-button.peligro { background: var(--mal); }
-button:disabled { opacity: 0.5; cursor: default; }
+.legacy button.secundario { background: var(--borde); }
+.legacy button.peligro { background: var(--mal); }
+.legacy button:disabled { opacity: 0.5; cursor: default; }
 
-input, select, textarea {
+.legacy input, .legacy select, .legacy textarea {
   background: var(--fondo);
   color: var(--texto);
   border: 1px solid var(--borde);
@@ -71,12 +73,12 @@ input, select, textarea {
   font: inherit;
   width: 100%;
 }
-textarea { font-family: var(--mono); font-size: 13px; min-height: 70px; }
+.legacy textarea { font-family: var(--mono); font-size: 13px; min-height: 70px; }
 
-label { display: block; margin: 8px 0 2px; color: var(--texto-suave); font-size: 13px; }
-.ayuda { color: var(--texto-suave); font-size: 12px; margin: 2px 0 0; }
+.legacy label { display: block; margin: 8px 0 2px; color: var(--texto-suave); font-size: 13px; }
+.legacy .ayuda { color: var(--texto-suave); font-size: 12px; margin: 2px 0 0; }
 
-.error-campo {
+.legacy .error-campo {
   color: var(--mal);
   background: rgba(224, 86, 86, 0.08);
   border: 1px solid rgba(224, 86, 86, 0.4);
@@ -85,7 +87,7 @@ label { display: block; margin: 8px 0 2px; color: var(--texto-suave); font-size:
   margin-top: 6px;
   font-size: 13px;
 }
-.error-global {
+.legacy .error-global {
   color: var(--mal);
   border: 1px solid rgba(224, 86, 86, 0.4);
   border-radius: 8px;
@@ -93,13 +95,13 @@ label { display: block; margin: 8px 0 2px; color: var(--texto-suave); font-size:
   margin-bottom: 12px;
 }
 
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--borde); }
-th { color: var(--texto-suave); font-weight: 600; font-size: 13px; }
-tr.clickeable { cursor: pointer; }
-tr.clickeable:hover { background: var(--borde); }
+.legacy table { width: 100%; border-collapse: collapse; }
+.legacy th, .legacy td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--borde); }
+.legacy th { color: var(--texto-suave); font-weight: 600; font-size: 13px; }
+.legacy tr.clickeable { cursor: pointer; }
+.legacy tr.clickeable:hover { background: var(--borde); }
 
-.insignia {
+.legacy .insignia {
   display: inline-block;
   padding: 1px 9px;
   border-radius: 999px;
@@ -107,20 +109,20 @@ tr.clickeable:hover { background: var(--borde); }
   font-weight: 600;
   border: 1px solid var(--borde);
 }
-.insignia.succeeded { color: var(--ok); border-color: var(--ok); }
-.insignia.failed { color: var(--mal); border-color: var(--mal); }
-.insignia.pending, .insignia.skipped { color: var(--aviso); border-color: var(--aviso); }
-.insignia.running { color: var(--acento); border-color: var(--acento); }
+.legacy .insignia.succeeded { color: var(--ok); border-color: var(--ok); }
+.legacy .insignia.failed { color: var(--mal); border-color: var(--mal); }
+.legacy .insignia.pending, .legacy .insignia.skipped { color: var(--aviso); border-color: var(--aviso); }
+.legacy .insignia.running { color: var(--acento); border-color: var(--acento); }
 
-.paso {
+.legacy .paso {
   border-left: 3px solid var(--borde);
   padding: 8px 12px;
   margin: 8px 0;
 }
-.paso.failed { border-left-color: var(--mal); }
-.paso.skipped { border-left-color: var(--aviso); opacity: 0.75; }
-.paso details { margin-top: 6px; }
-.paso pre {
+.legacy .paso.failed { border-left-color: var(--mal); }
+.legacy .paso.skipped { border-left-color: var(--aviso); opacity: 0.75; }
+.legacy .paso details { margin-top: 6px; }
+.legacy .paso pre {
   background: var(--fondo);
   border: 1px solid var(--borde);
   border-radius: 6px;
@@ -130,7 +132,7 @@ tr.clickeable:hover { background: var(--borde); }
   max-height: 260px;
 }
 
-.instancia {
+.legacy .instancia {
   position: relative;
   border: 1px solid var(--borde);
   border-radius: 10px;
@@ -138,14 +140,14 @@ tr.clickeable:hover { background: var(--borde); }
   margin-bottom: 10px;
   background: var(--panel);
 }
-.instancia.invalida { border-color: var(--mal); }
-.instancia .cabecera { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
-.instancia .cabecera .nombre { font-weight: 700; }
-.flecha { text-align: center; color: var(--texto-suave); margin: -4px 0 4px; }
-.acciones { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.legacy .instancia.invalida { border-color: var(--mal); }
+.legacy .instancia .cabecera { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.legacy .instancia .cabecera .nombre { font-weight: 700; }
+.legacy .flecha { text-align: center; color: var(--texto-suave); margin: -4px 0 4px; }
+.legacy .acciones { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 
 /* Dashboard: métricas (MVP5) */
-.metrica {
+.legacy .metrica {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -154,16 +156,16 @@ tr.clickeable:hover { background: var(--borde); }
   padding: 8px 16px;
   min-width: 90px;
 }
-.metrica strong { font-size: 1.4em; }
-.barras {
+.legacy .metrica strong { font-size: 1.4em; }
+.legacy .barras {
   display: flex;
   align-items: flex-end;
   gap: 3px;
   height: 70px;
   margin: 8px 0;
 }
-.barra { flex: 1; display: flex; align-items: flex-end; }
-.barra-relleno {
+.legacy .barra { flex: 1; display: flex; align-items: flex-end; }
+.legacy .barra-relleno {
   width: 100%;
   min-height: 2px;
   background: var(--acento);

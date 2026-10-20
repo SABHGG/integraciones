@@ -11,6 +11,7 @@ import { EditorPuente, ListaPuentes } from "./bridges";
 import { Miembros } from "./members";
 import { Credenciales } from "./credentials";
 import { BibliotecaBloques } from "./blocks";
+import "./tema.css";
 import "./styles.css";
 
 type Ruta =
@@ -99,13 +100,17 @@ function App(): preact.ComponentChildren {
         <button class="secundario salir" onClick={() => void salir()}>Salir</button>
       </header>
       <main>
-        {ruta.pantalla === "ejecuciones" && <Ejecuciones navegar={navegar} />}
-        {ruta.pantalla === "ejecucion" && <DetalleEjecucion id={ruta.id} />}
-        {ruta.pantalla === "puentes" && <ListaPuentes navegar={navegar} rol={rol} />}
-        {ruta.pantalla === "puente" && <EditorPuente id={ruta.id} rol={rol} />}
-        {ruta.pantalla === "miembros" && <Miembros rol={rol} />}
-        {ruta.pantalla === "credenciales" && <Credenciales rol={rol} />}
-        {ruta.pantalla === "bloques" && <BibliotecaBloques rol={rol} />}
+        {/* Páginas aún no migradas al sistema El rastro: viven bajo .legacy
+            (alcance de styles.css). Se irán sacando del wrapper en F3-F5. */}
+        <div class="legacy">
+          {ruta.pantalla === "ejecuciones" && <Ejecuciones navegar={navegar} />}
+          {ruta.pantalla === "ejecucion" && <DetalleEjecucion id={ruta.id} />}
+          {ruta.pantalla === "puentes" && <ListaPuentes navegar={navegar} rol={rol} />}
+          {ruta.pantalla === "puente" && <EditorPuente id={ruta.id} rol={rol} />}
+          {ruta.pantalla === "miembros" && <Miembros rol={rol} />}
+          {ruta.pantalla === "credenciales" && <Credenciales rol={rol} />}
+          {ruta.pantalla === "bloques" && <BibliotecaBloques rol={rol} />}
+        </div>
       </main>
     </>
   );

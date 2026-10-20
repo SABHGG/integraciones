@@ -19,12 +19,12 @@ Limitación documentada: el modelo de esta sesión no tiene visión ni hay gener
 | `--papel` | `#F5F6F3` | fondo (frío, no crema) |
 | `--tinta` | `#14352D` | texto, sidebar, botón primario, gráficos de serie |
 | `--tinta-suave` | `#5B7169` | texto secundario, etiquetas de columna |
-| `--tinta-tenue` | `#8B9A93` | metadato terciario, ejes |
+| `--tinta-tenue` | `#64706B` | metadato terciario, ejes |
 | `--superficie` | `#FFFFFF` | paneles y tablas |
 | `--borde` / `--borde-fuerte` | `#E1E5DF` / `#CDD3CC` | reglas y controles |
 | estado ok | `#1E7A4E` | succeeded |
 | estado mal | `#B3402E` | failed |
-| estado aviso | `#9A6B10` | pending/skipped |
+| estado aviso | `#855D0E` | pending/skipped |
 | estado info | `#2B6CB0` | running |
 
 Reglas del sistema (no negociables): **el color solo significa datos** — verde/ladrillo/ámbar/azul expresan estado de ejecución o paso, nunca decoración; el accionar se comunica con tinta sólida. **Mono solo para valores de máquina** — slugs, triggers, estados literales, duraciones, JSON, códigos de error; cero etiquetas o cabeceras en mono. **Una audacia** — la sidebar de tinta; lo demás callado (radios moderados 6-10px, sin sombras decorativas, una sola elevación). **Sin movimiento automático** — cero animaciones al cargar; el movimiento solo confirma acciones, y cae con `prefers-reduced-motion`.
@@ -43,7 +43,7 @@ Schibsted Grotesk (400/500/600/700) para interfaz y Spline Sans Mono (400/500/60
 
 ### D6 — Estados de vista y responsive
 
-Cada página parte de tres estados: **carga** (esqueleto neutro en tinta-tenue, sin spinners decorativos), **vacío** (una frase que nombra qué falta y la acción que lo resuelve — "Aún no hay puentes. Crea el primero." con botón si el rol permite), **error** (el Problem del servidor, qué pasó y qué reintentar). Responsive: en <900px la navegación colapsa a barra superior con selector, las tablas pasan a filas apiladas (etiqueta: valor) y los KPIs a rejilla 2×2; los botones de acción se mantienen alcanzables. Contraste AA verificado por token; targets táctiles ≥ 40px; foco visible siempre.
+Cada página parte de tres estados: **carga** (esqueleto neutro en tinta-tenue, sin spinners decorativos), **vacío** (una frase que nombra qué falta y la acción que lo resuelve — "Aún no hay puentes. Crea el primero." con botón si el rol permite), **error** (el Problem del servidor, qué pasó y qué reintentar). Responsive: en <900px la navegación colapsa a barra superior con selector, las tablas pasan a filas apiladas (etiqueta: valor) y los KPIs a rejilla 2×2; los botones de acción se mantienen alcanzables. Contraste AA verificado por token (test Vitest `tema.test.ts`, fuente de verdad `tema.css`): el tuning final oscureció `aviso` (#9A6B10 → #855D0E, para pasar sobre su propio fondo de insignia) y `tinta-tenue` (#8B9A93 → #64706B, AA sobre papel y superficie). Targets táctiles ≥ 40px; foco visible siempre.
 
 ### D7 — Instrucciones de escritura
 

@@ -1,0 +1,81 @@
+/* Tema "El rastro": fuentes autoalojadas + tokens (@theme de Tailwind v4).
+   Reglas del sistema: el color solo significa datos (estados de ejecución/paso);
+   la mono solo para valores de máquina; sin movimiento automático.
+   Durante la migración se importa sin preflight (los CSS heredados de las
+   páginas aún no migradas dependen de los estilos por defecto del navegador);
+   preflight se activará en la tarea 6.4 al eliminar styles.css. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* ── Fuentes autoalojadas (sin CDN): Schibsted Grotesk (interfaz) y
+   Spline Sans Mono (valores de máquina). Archivos variables subset
+   latin/latin-ext; acentos del español cubiertos. ── */
+@font-face {
+  font-family: "Schibsted Grotesk";
+  src: url("./fonts/f1.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+20AC, U+2122;
+}
+@font-face {
+  font-family: "Schibsted Grotesk";
+  src: url("./fonts/f2.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0;
+}
+@font-face {
+  font-family: "Spline Sans Mono";
+  src: url("./fonts/f3.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+20AC, U+2122;
+}
+@font-face {
+  font-family: "Spline Sans Mono";
+  src: url("./fonts/f4.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: swap;
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0;
+}
+
+/* ── Tokens (D2 de design.md) ── */
+@theme {
+  /* cromo: papel + tinta petróleo */
+  --color-papel: #f5f6f3;
+  --color-superficie: #ffffff;
+  --color-tinta: #14352d;
+  --color-tinta-suave: #5b7169;
+  --color-tinta-tenue: #64706b;
+  --color-borde: #e1e5df;
+  --color-borde-fuerte: #cdd3cc;
+
+  /* estados: el único croma permitido */
+  --color-ok: #1e7a4e;
+  --color-ok-fondo: #e4f0e9;
+  --color-mal: #b3402e;
+  --color-mal-fondo: #f7e6e2;
+  --color-aviso: #855d0e;
+  --color-aviso-fondo: #f4ebd7;
+  --color-info: #2b6cb0;
+  --color-info-fondo: #e4edf8;
+
+  --font-sans: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-panel: 10px;
+  --radius-control: 7px;
+}
+
+/* Movimiento: solo responde al usuario y cae con prefers-reduced-motion.
+   Hoy no hay animaciones automáticas; esta regla queda como guardia. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Base mínima sin preflight (la migración aún convive con styles.css). */
+html, body { margin: 0; }
+body { background: var(--color-papel); color: var(--color-tinta); font-family: var(--font-sans); }
