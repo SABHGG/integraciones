@@ -41,8 +41,11 @@ al trace):
 }
 ```
 
-No hay nada que versionar tú: la biblioteca ya trae `http-get` y `http-post`
-publicados. El `timeoutMs` se define **por instancia** en el puente.
+No hay nada que versionar tú: el seed de desarrollo (`scripts/seed-demo.sh`,
+que `dev.sh` corre por defecto) deja `http-get` y `http-post` publicados. En
+una instalación limpia la biblioteca empieza vacía: créalos con
+`POST /api/v1/blocks` (`blockType: "http"`) y publica su versión sin código.
+El `timeoutMs` se define **por instancia** en el puente.
 
 ## Bloque `custom_logic` (tu código)
 

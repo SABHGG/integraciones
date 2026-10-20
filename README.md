@@ -10,7 +10,7 @@ La especificación completa vive en [`openspec/`](openspec/) — empezar por `op
 
 | Crate | Rol |
 |---|---|
-| `crates/domain` | Tipos del dominio, refs `$.`, validador JSON Schema (subconjunto) |
+| `crates/core` | Tipos del dominio, refs `$.`, validador JSON Schema (subconjunto) |
 | `crates/sandbox` | Wrapper rquickjs: isolate fresco, límites, host functions `ctx` |
 | `crates/engine` | Ejecutor: cadena lineal, fail-fast, persistencia del trace |
 | `crates/api` | Servidor axum: plano admin `/api/v1` + plano invocación `/x` |

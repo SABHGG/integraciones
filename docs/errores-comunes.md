@@ -28,7 +28,7 @@ ejecuciones llevan un `code` estable.
 | Síntoma | Causa | Qué hacer |
 |---|---|---|
 | `404` en `POST /x/{ruta}` (y el puente existe) | Dos causas **indistinguibles a propósito**: el despacho es por **slug del puente** (no por `trigger.path`) o el puente **no tiene versión publicada**. | Revisa que invocas `POST /x/{slug}` y que el puente tiene `latestVersion`. Los puentes `cron` **nunca** responden en `/x` (404 también). |
-| `422` al invocar: el body no pasa `inputSchema` | El disparo no cumple el schema del puente. | Corrige el body; el `detail` señala el campo. |
+| Invocas y recibes `200` con `error.code: VALIDATION_FAILED` (o la ejecución queda `failed`) | El body no pasa el `inputSchema` del puente. No es un `422`: el fallo llega en el sobre estructurado, sin ejecutar ningún bloque. | Corrige el body; `error.details[]` trae `path` y `message` por campo. |
 | La ejecución queda `pending` eternamente | En local, el worker no corre o la cola tiene filas viejas de otro test/BD. | En producción es la cola normal; en local revisa que el servidor está arriba (el worker vive en el mismo binario). |
 
 ## Ejecuciones `failed` (códigos estables)
