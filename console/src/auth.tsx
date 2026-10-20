@@ -1,8 +1,10 @@
 //! Login de la consola (MVP4): email+contraseña (primario, con token de
 //! sesión) o API key (acceso alternativo de automatización/demo). Si el
 //! usuario pertenece a varios workspaces, se elige cuál fijar en la sesión.
+//! Rediseño MVP6: sistema visual El rastro (ui.tsx); lógica intacta.
 import { useState } from "preact/hooks";
 import { entrar, setApiKey, type SesionLogin } from "./api";
+import { Boton, Campo, Control, Panel } from "./ui";
 
 interface Props {
   alEntrar: (rol: string) => void;
@@ -65,68 +67,100 @@ export function Login(props: Props) {
   if (pendiente) {
     // Elección de workspace: la sesión sin fijar exige re-login con slug.
     return (
-      <main>
-        <form class="tarjeta" style="max-width: 420px; margin: 80px auto;" onSubmit={(e) => e.preventDefault()}>
-          <h2>elige un workspace</h2>
-          <p class="ayuda">Perteneces a varios: la sesión se fijará al que elijas.</p>
-          <div class="acciones" style="flex-direction: column; align-items: stretch;">
+      <div class="flex min-h-screen flex-col items-center bg-papel px-4 pt-[16vh]">
+        <h1 class="mb-5 px-1 text-[22px] font-bold tracking-tight text-tinta">integraciones</h1>
+        <Panel class="w-full max-w-[420px] p-6">
+          <h2 class="text-[16px] font-semibold text-tinta">Elige un workspace</h2>
+          <p class="mt-1 text-[13px] text-tinta-suave">Perteneces a varios: la sesión se fijará al que elijas.</p>
+          <div class="mt-5 flex flex-col gap-2">
             {pendiente.workspaces.map((w) => (
-              <button
+              <Boton
                 key={w.slug}
+                variante="secundario"
+                class="justify-between"
                 onClick={() => void entrarConCredenciales(w.slug)}
               >
-                {w.name} ({w.slug}) — {w.role}
-              </button>
+                <span class="truncate">{w.name}</span>
+                <span class="ml-3 shrink-0 font-mono text-[11.5px] text-tinta-suave">
+                  {w.slug} ({w.role})
+                </span>
+              </Boton>
             ))}
           </div>
-          {error && <p class="error-campo">{error}</p>}
-        </form>
-      </main>
+          {error && (
+            <p class="mt-4 rounded-[6px] border border-mal/40 bg-mal/5 px-3 py-2 text-[13px] text-mal">{error}</p>
+          )}
+        </Panel>
+      </div>
     );
   }
 
   return (
-    <main>
-      <form class="tarjeta" style="max-width: 420px; margin: 80px auto;" onSubmit={modo === "usuario" ? enviarCredenciales : entrarConKey}>
-        <h2>integraciones</h2>
-        {modo === "usuario" ? (
-          <>
-            <label for="email">email</label>
-            <input id="email" type="email" autocomplete="username" value={email}
-              onInput={(e) => setEmail((e.target as HTMLInputElement).value)} />
-            <label for="password">contraseña</label>
-            <input id="password" type="password" autocomplete="current-password" value={password}
-              onInput={(e) => setPassword((e.target as HTMLInputElement).value)} />
-            <p class="ayuda">
-              ¿Sin cuenta? Regístrate por API:
-              {" "}<code>POST /api/v1/auth/register</code>
-            </p>
-          </>
-        ) : (
-          <>
-            <label for="clave">API key del workspace</label>
-            <input id="clave" type="password" autocomplete="current-password" value={clave}
-              onInput={(e) => setClave((e.target as HTMLInputElement).value)} placeholder="ik_…" />
-            <p class="ayuda">Acceso de automatización/demo: actúa como owner.</p>
-          </>
-        )}
-        {error && <p class="error-campo">{error}</p>}
-        <div class="acciones">
-          <button type="submit" disabled={cargando}>
-            {cargando ? "Validando…" : modo === "usuario" ? "Entrar" : "Entrar con key"}
-          </button>
-          <button
-            type="button"
-            class="secundario"
-            onClick={() => {
-              setModo(modo === "usuario" ? "api_key" : "usuario");
-              setError(null);
-            }}
-          >
-            {modo === "usuario" ? "usar API key" : "usar email y contraseña"}
-          </button>
-        </div>
-      </form>
-    </main>
+    <div class="flex min-h-screen flex-col items-center bg-papel px-4 pt-[16vh]">
+      <h1 class="mb-5 px-1 text-[22px] font-bold tracking-tight text-tinta">integraciones</h1>
+      <Panel class="w-full max-w-[420px] p-6">
+        <form onSubmit={modo === "usuario" ? enviarCredenciales : entrarConKey}>
+          {modo === "usuario" ? (
+            <>
+              <Campo etiqueta="Email">
+                <Control
+                  id="email"
+                  type="email"
+                  autocomplete="username"
+                  value={email}
+                  onInput={(e: Event) => setEmail((e.target as HTMLInputElement).value)}
+                />
+              </Campo>
+              <Campo etiqueta="Contraseña" class="mt-4">
+                <Control
+                  id="password"
+                  type="password"
+                  autocomplete="current-password"
+                  value={password}
+                  onInput={(e: Event) => setPassword((e.target as HTMLInputElement).value)}
+                />
+              </Campo>
+              <p class="mt-4 text-[12.5px] leading-relaxed text-tinta-suave">
+                ¿Sin cuenta? Regístrate por API:{" "}
+                <code class="font-mono text-[11.5px] text-tinta">POST /api/v1/auth/register</code>
+              </p>
+            </>
+          ) : (
+            <>
+              <Campo etiqueta="API key del workspace">
+                <Control
+                  id="clave"
+                  type="password"
+                  autocomplete="current-password"
+                  value={clave}
+                  placeholder="ik_…"
+                  onInput={(e: Event) => setClave((e.target as HTMLInputElement).value)}
+                />
+              </Campo>
+              <p class="mt-4 text-[12.5px] leading-relaxed text-tinta-suave">
+                Acceso de automatización y demo: actúa como owner.
+              </p>
+            </>
+          )}
+          {error && (
+            <p class="mt-4 rounded-[6px] border border-mal/40 bg-mal/5 px-3 py-2 text-[13px] text-mal">{error}</p>
+          )}
+          <div class="mt-6 flex items-center gap-2">
+            <Boton type="submit" deshabilitado={cargando}>
+              {cargando ? "Validando…" : modo === "usuario" ? "Entrar" : "Entrar con key"}
+            </Boton>
+            <Boton
+              variante="secundario"
+              onClick={() => {
+                setModo(modo === "usuario" ? "api_key" : "usuario");
+                setError(null);
+              }}
+            >
+              {modo === "usuario" ? "Usar API key" : "Usar email y contraseña"}
+            </Boton>
+          </div>
+        </form>
+      </Panel>
+    </div>
   );
 }

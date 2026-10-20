@@ -1,11 +1,14 @@
 //! Verificación de contraste WCAG de los tokens del tema (task 1.4): cada par
 //! cromo que usa la interfaz debe cumplir AA (4.5:1 en texto normal). Los
-//! tokens viven en tema.css; este test los lee de ahí (import ?raw de Vite)
-//! para que no puedan divergir del CSS real.
-import temaCss from "./tema.css?raw";
+//! tokens viven en tema.css; este test los lee de ahí (node:fs) para que no
+//! puedan divergir del CSS real.
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const css = temaCss;
+const raiz = join(dirname(fileURLToPath(import.meta.url)));
+const css = readFileSync(join(raiz, "tema.css"), "utf8");
 
 function token(nombre: string): string {
   const m = css.match(new RegExp(`--color-${nombre}:\\s*(#[0-9a-fA-F]{6})`));

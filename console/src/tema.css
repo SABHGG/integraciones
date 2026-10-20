@@ -77,5 +77,6 @@
 }
 
 /* Base mínima sin preflight (la migración aún convive con styles.css). */
+*, ::before, ::after { box-sizing: border-box; }
 html, body { margin: 0; }
 body { background: var(--color-papel); color: var(--color-tinta); font-family: var(--font-sans); }

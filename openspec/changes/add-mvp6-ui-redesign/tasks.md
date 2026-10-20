@@ -9,9 +9,9 @@
 
 ## 2. Fase 2 — Shell y acceso
 
-- [ ] 2.1 Rediseñar el shell: sidebar de tinta con marca, navegación, rol y salir; contenido a 1240px máx.
-- [ ] 2.2 Rediseñar login (email+contraseña / API key) con los mismos tokens y estados de error
-- [ ] 2.3 Colapso responsivo del shell <900px: barra superior con selector de sección; navegable a 390px
+- [x] 2.1 Rediseñar el shell: sidebar de tinta con marca, navegación, rol y salir; contenido a 1240px máx.
+- [x] 2.2 Rediseñar login (email+contraseña / API key) con los mismos tokens y estados de error
+- [x] 2.3 Colapso responsivo del shell <900px: barra superior con selector de sección; navegable a 390px
 
 ## 3. Fase 3 — Ejecuciones y el rastro (página target)
 
