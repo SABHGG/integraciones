@@ -61,7 +61,7 @@ El detalle de una ejecución muestra cada paso en su posición de la cadena:
 2. **Puente**: crea el puente, añade instancias desde la biblioteca
    (los formularios salen de los metadatos `ui`), conecta los datos con
    referencias `$.` (guía:
-   [`guia-bloques-y-puentes.md`](guia-bloques-y-puentes.md)).
+   [`guia-bloques.md`](guia-bloques.md) y [`guia-puentes.md`](guia-puentes.md)).
 3. **Ensayar (dry-run)**: ejecuta el borrador con datos de prueba, sin
    filas, sin webhook, sin eventos — con `mocks` por instancia si
    quieres fijar salidas.
@@ -88,5 +88,6 @@ Los tokens viven en `console/src/tema.css` (`@theme` de Tailwind v4) y los compo
 
 ## Ver también
 
-- [`guia-bloques-y-puentes.md`](guia-bloques-y-puentes.md) — crear bloques y puentes paso a paso
+- [`guia-bloques.md`](guia-bloques.md) — crear y publicar bloques paso a paso
+- [`guia-puentes.md`](guia-puentes.md) — crear y publicar puentes paso a paso
 - [`errores-comunes.md`](errores-comunes.md) — diagnóstico rápido de errores

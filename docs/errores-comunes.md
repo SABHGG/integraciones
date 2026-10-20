@@ -62,5 +62,5 @@ primero que falló, con su input tal como llegó (ya enmascarado).
 ## Ver también
 
 - [`guia-consola.md`](guia-consola.md) — páginas, roles y flujos de la consola
-- [`guia-bloques-y-puentes.md`](guia-bloques-y-puentes.md) — crear bloques y puentes
+- [`guia-bloques.md`](guia-bloques.md) — crear bloques · [`guia-puentes.md`](guia-puentes.md) — crear puentes
 - Referencia completa del API: `/docs` (Scalar) en tu instancia
