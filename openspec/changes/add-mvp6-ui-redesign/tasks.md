@@ -23,9 +23,9 @@
 
 ## 4. Fase 4 — Puentes, editor y versiones
 
-- [ ] 4.1 Lista de puentes: tabla con slug/nombre/versión, export/duplicar/import por rol (editor crea, viewer exporta)
-- [ ] 4.2 Editor de puente: cadena de instancias con conectores de rastro, formularios `ui` y errores de validación sobre el campo
-- [ ] 4.3 Versiones: listado, diff lado a lado en mono semántico, rollback etiquetado
+- [x] 4.1 Lista de puentes: tabla con slug/nombre/versión, export/duplicar/import por rol (editor crea, viewer exporta)
+- [x] 4.2 Editor de puente: cadena de instancias con conectores de rastro, formularios `ui` y errores de validación sobre el campo
+- [x] 4.3 Versiones: listado, diff lado a lado en mono semántico, rollback etiquetado
 
 ## 5. Fase 5 — Credenciales, bloques y miembros
 

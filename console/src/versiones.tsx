@@ -3,10 +3,12 @@
 //! estructural en cliente, adopción del contenido publicado al borrador y
 //! rollback orquestado (definición → PATCH del borrador → publicar).
 //! Lectura para todos; adoptar/rollback solo para `editor` (D8).
+//! Render El rastro (MVP6): rutas y valores del diff en mono.
 import { useEffect, useState } from "preact/hooks";
 import { api, type Page } from "./api";
 import { diffEstructural, resumenDiff } from "./diff";
 import { artefactoExport } from "./transferir";
+import { Boton, Control, Panel } from "./ui";
 
 interface VersionMeta {
   id: string;
@@ -111,7 +113,7 @@ export function PanelVersiones(props: Props) {
 
   const adoptar = async () => {
     if (await aplicarAlBorrador(ladoB)) {
-      setAviso(`contenido de ${etiqueta(ladoB)} adoptado al borrador (sin publicar)`);
+      setAviso(`Contenido de ${etiqueta(ladoB)} adoptado al borrador (sin publicar).`);
     }
   };
 
@@ -127,7 +129,7 @@ export function PanelVersiones(props: Props) {
         `/bridges/${props.puenteId}/versions`,
       );
       setAviso(
-        `versión ${publicada.version} publicada: rollback de la ${ladoB} — las versiones previas y sus ejecuciones quedan intactas`,
+        `Versión ${publicada.version} publicada: rollback de la ${ladoB}. Las versiones previas y sus ejecuciones quedan intactas.`,
       );
       setConfirmando(false);
       await cargar();
@@ -153,10 +155,13 @@ export function PanelVersiones(props: Props) {
     URL.revokeObjectURL(enlace.href);
   };
 
-  const selector = (valor: Lado, alCambiar: (lado: Lado) => void) => (
-    <select
+  const selector = (valor: Lado, alCambiar: (lado: Lado) => void, etiquetaAria: string) => (
+    <Control
+      as="select"
+      class="w-auto!"
       value={String(valor)}
-      onChange={(e) => {
+      aria-label={etiquetaAria}
+      onChange={(e: Event) => {
         const crudo = (e.target as HTMLSelectElement).value;
         alCambiar(crudo === "borrador" ? "borrador" : Number(crudo));
       }}
@@ -167,90 +172,123 @@ export function PanelVersiones(props: Props) {
           v{version.version}
         </option>
       ))}
-    </select>
+    </Control>
   );
 
   return (
-    <div class="tarjeta">
-      <h3>versiones</h3>
-      {error && <p class="error-global">{error}</p>}
-      {aviso && <p class="ayuda">{aviso}</p>}
-
-      <table>
-        <thead>
-          <tr><th>versión</th><th>creada</th><th></th></tr>
-        </thead>
-        <tbody>
-          {versiones.map((version) => (
-            <tr key={version.id}>
-              <td>v{version.version}</td>
-              <td>{new Date(version.createdAt).toLocaleString()}</td>
-              <td>
-                <button
-                  class="secundario"
-                  onClick={() => exportarVersion(version.version)}
-                  title="descarga {name, slug, definition} congelado"
-                >
-                  exportar
-                </button>
-              </td>
-            </tr>
-          ))}
-          {versiones.length === 0 && <tr><td colspan={3}>sin versiones publicadas</td></tr>}
-        </tbody>
-      </table>
-
-      <h4>comparar</h4>
-      <div class="acciones">
-        {selector(ladoA, setLadoA)}
-        <span>contra</span>
-        {selector(ladoB, setLadoB)}
-        <span class="insignia">{resumenDiff(lineas)}</span>
+    <Panel>
+      <div class="px-4 pt-3.5 text-[14px] font-semibold text-tinta">Versiones</div>
+      <div class="px-4 pb-1 pt-1">
+        {error && (
+          <p class="rounded-[6px] border border-mal/40 bg-mal/5 px-2.5 py-1.5 text-[12.5px] text-mal">{error}</p>
+        )}
+        {aviso && !error && (
+          <p class="rounded-[6px] border border-ok/30 bg-ok-fondo px-2.5 py-1.5 text-[12.5px] text-ok">{aviso}</p>
+        )}
       </div>
 
-      {lineas.length > 0 && (
-        <table>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[420px] border-collapse">
           <thead>
-            <tr><th>ruta</th><th>{etiqueta(ladoA)}</th><th>{etiqueta(ladoB)}</th></tr>
+            <tr class="border-b border-borde text-left text-[12px] font-semibold text-tinta-suave">
+              <th class="px-4 py-2 font-semibold">Versión</th>
+              <th class="px-4 py-2 font-semibold">Creada</th>
+              <th class="px-4 py-2" />
+            </tr>
           </thead>
           <tbody>
-            {lineas.map((linea) => (
-              <tr key={linea.ruta}>
-                <td><code>{linea.ruta}</code></td>
-                <td>{JSON.stringify(linea.izq)}</td>
-                <td>{JSON.stringify(linea.der)}</td>
+            {versiones.map((version) => (
+              <tr key={version.id} class="border-b border-borde last:border-0">
+                <td class="px-4 py-2 font-mono text-[12.5px]">v{version.version}</td>
+                <td class="px-4 py-2 text-[13px] text-tinta-suave">{new Date(version.createdAt).toLocaleString()}</td>
+                <td class="px-4 py-2 text-right">
+                  <Boton
+                    variante="secundario"
+                    chico
+                    onClick={() => exportarVersion(version.version)}
+                    title="Descarga {name, slug, definition} congelado"
+                  >
+                    Exportar
+                  </Boton>
+                </td>
               </tr>
             ))}
+            {versiones.length === 0 && (
+              <tr>
+                <td colspan={3} class="px-4 py-4 text-[13.5px] text-tinta-suave">
+                  Sin versiones publicadas todavía. Publica el borrador para crear la primera.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
-      )}
+      </div>
 
-      {props.administra && (
-        <div class="acciones" style="margin-top: 8px;">
-          <button class="secundario" onClick={() => void adoptar()}>
-            adoptar {etiqueta(ladoB)} al borrador
-          </button>
-          {ladoB !== "borrador" && (
-            confirmando ? (
-              <>
-                <button class="peligro" onClick={() => void rollback()}>
-                  confirmar rollback a la {ladoB}
-                </button>
-                <button class="secundario" onClick={() => setConfirmando(false)}>
-                  cancelar
-                </button>
-              </>
-            ) : (
-              <button class="peligro" onClick={() => setConfirmando(true)}>
-                rollback a la {ladoB}
-              </button>
-            )
-          )}
+      <div class="border-t border-borde px-4 py-3.5">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-[13.5px] font-medium text-tinta">Comparar</span>
+          {selector(ladoA, setLadoA, "Lado A")}
+          <span class="text-[12.5px] text-tinta-tenue">contra</span>
+          {selector(ladoB, setLadoB, "Lado B")}
+          <span class="rounded-[4px] border border-borde-fuerte bg-papel px-2 py-1 font-mono text-[11px] text-tinta-suave">
+            {resumenDiff(lineas)}
+          </span>
         </div>
-      )}
-      {!props.administra && (
-        <p class="ayuda">solo un editor puede adoptar contenido o hacer rollback</p>
-      )}
-    </div>
+
+        {lineas.length > 0 && (
+          <div class="mt-3 overflow-x-auto rounded-[6px] border border-borde">
+            <table class="w-full min-w-[560px] border-collapse">
+              <thead>
+                <tr class="border-b border-borde bg-papel text-left text-[11.5px] font-semibold text-tinta-suave">
+                  <th class="px-3 py-2 font-semibold">Ruta</th>
+                  <th class="px-3 py-2 font-semibold">{etiqueta(ladoA)}</th>
+                  <th class="px-3 py-2 font-semibold">{etiqueta(ladoB)}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lineas.map((linea) => (
+                  <tr key={linea.ruta} class="border-b border-borde last:border-0 align-top">
+                    <td class="px-3 py-2 font-mono text-[11.5px] text-tinta">{linea.ruta}</td>
+                    <td class="max-w-[320px] truncate px-3 py-2 font-mono text-[11.5px] text-tinta-suave" title={JSON.stringify(linea.izq)}>
+                      {JSON.stringify(linea.izq)}
+                    </td>
+                    <td class="max-w-[320px] truncate px-3 py-2 font-mono text-[11.5px] text-tinta" title={JSON.stringify(linea.der)}>
+                      {JSON.stringify(linea.der)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {props.administra && (
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <Boton variante="secundario" chico onClick={() => void adoptar()}>
+              Adoptar {etiqueta(ladoB)} al borrador
+            </Boton>
+            {ladoB !== "borrador" && (
+              confirmando ? (
+                <>
+                  <Boton variante="peligro" chico onClick={() => void rollback()}>
+                    Confirmar rollback a la {ladoB}
+                  </Boton>
+                  <Boton variante="secundario" chico onClick={() => setConfirmando(false)}>
+                    Cancelar
+                  </Boton>
+                </>
+              ) : (
+                <Boton variante="peligro" chico onClick={() => setConfirmando(true)}>
+                  Rollback a la {ladoB}
+                </Boton>
+              )
+            )}
+          </div>
+        )}
+        {!props.administra && (
+          <p class="mt-3 text-[12.5px] text-tinta-tenue">Solo un editor puede adoptar contenido o hacer rollback.</p>
+        )}
+      </div>
+    </Panel>
   );
 }

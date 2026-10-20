@@ -14,6 +14,7 @@ export function Boton(props: {
   class?: string;
   type?: "button" | "submit";
   deshabilitado?: boolean;
+  title?: string;
   onClick?: () => void;
 }) {
   const base =
@@ -29,6 +30,7 @@ export function Boton(props: {
     <button
       type={props.type ?? "button"}
       disabled={props.deshabilitado}
+      title={props.title}
       class={`${base} ${tamano} ${variantes[props.variante ?? "primario"]} ${props.class ?? ""}`}
       onClick={props.onClick}
     >
