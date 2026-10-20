@@ -43,4 +43,4 @@
 ## 7. Fase 7 — Verificación visual y cierre
 
 - [x] 7.1 Capturas Playwright (1440/1280/390) de todas las páginas y estados; comparación 1:1 de Ejecuciones contra `target/d-el-rastro.png` con registro de desviaciones y correcciones en lote
-- [ ] 7.2 CI verde (api + Vitest consola) y README actualizado (guía de consola con el sistema visual y cómo extender tokens)
+- [x] 7.2 CI verde (api + Vitest consola) y README actualizado (guía de consola con el sistema visual y cómo extender tokens)
