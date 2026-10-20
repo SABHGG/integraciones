@@ -15,7 +15,7 @@
 
 ## 3. Fase 3 — Ejecuciones y el rastro (página target)
 
-- [ ] 3.1 Backend aditivo: `GET /executions` incluye `pasos` (status, durationMs, sin IO) por ejecución; test de API del campo nuevo; openapi.json actualizado
+- [x] 3.1 Backend aditivo: `GET /executions` incluye `pasos` (status, durationMs, sin IO) por ejecución; test de API del campo nuevo; openapi.json actualizado
 - [ ] 3.2 Banda de métricas con divisores (total, éxito, fallos, duración media con p95) conectada a `GET /stats` con rango 7/30/90
 - [ ] 3.3 Serie diaria apilada correctas/fallidas con leyenda y eje de fechas
 - [ ] 3.4 Tabla de ejecuciones con rastro en miniatura por fila (segmentos proporcionales, total "N pasos · X ms" / "en curso" / "en cola"), filtros y auto-refresh

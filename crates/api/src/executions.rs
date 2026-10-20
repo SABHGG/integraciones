@@ -18,6 +18,7 @@ use axum::{Extension, Router};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::auth::AuthedKey;
@@ -54,6 +55,24 @@ struct ExecutionDto {
     started_at: Option<DateTime<Utc>>,
     finished_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
+}
+
+/// Resumen de un paso para el listado: estado y duración, sin IO (nada que
+/// enmascarar). Sostiene el rastro en miniatura de la consola (MVP6).
+#[derive(Debug, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+struct PasoResumenDto {
+    status: String,
+    duration_ms: Option<i32>,
+}
+
+/// Ítem del listado: la ejecución liviana más el resumen aditivo de sus pasos.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExecutionListItemDto {
+    #[serde(flatten)]
+    base: ExecutionDto,
+    pasos: Vec<PasoResumenDto>,
 }
 
 /// Detalle completo: estado, fechas, entrada del trigger y la versión exacta
@@ -130,7 +149,7 @@ async fn list_executions(
     State(state): State<AppState>,
     Extension(key): Extension<AuthedKey>,
     Query(query): Query<ExecutionQuery>,
-) -> Result<Json<Page<ExecutionDto>>, Problem> {
+) -> Result<Json<Page<ExecutionListItemDto>>, Problem> {
     let workspace_id = key.workspace()?;
     let limit = rest::page_limit(query.limit.as_deref())?;
     let after = match query.cursor.as_deref() {
@@ -207,8 +226,37 @@ async fn list_executions(
     let next_cursor = rest::next_cursor(&mut rows, limit, |execution| {
         cursor::encode_execution_cursor(execution.created_at, execution.id)
     });
+
+    // Resumen de pasos de la página (MVP6, aditivo): una consulta acotada a
+    // los ids de la página, con estado y duración por paso y SIN IO — nada
+    // que enmascarar. Vacío en ejecuciones sin pasos aún (pending).
+    let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
+    let mut pasos: HashMap<Uuid, Vec<PasoResumenDto>> = HashMap::new();
+    if !ids.is_empty() {
+        let filas: Vec<(Uuid, String, Option<i32>)> = sqlx::query_as(
+            "SELECT execution_id, status, duration_ms FROM execution_steps \
+             WHERE execution_id = ANY($1) ORDER BY execution_id, seq",
+        )
+        .bind(&ids)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(|error| rest::db_error("listar los pasos de la página", error))?;
+        for (execution_id, status, duration_ms) in filas {
+            pasos
+                .entry(execution_id)
+                .or_default()
+                .push(PasoResumenDto { status, duration_ms });
+        }
+    }
+
     Ok(Json(Page {
-        items: rows,
+        items: rows
+            .into_iter()
+            .map(|base| {
+                let pasos = pasos.remove(&base.id).unwrap_or_default();
+                ExecutionListItemDto { base, pasos }
+            })
+            .collect(),
         next_cursor,
     }))
 }

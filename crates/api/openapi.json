@@ -2547,6 +2547,13 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "pasos": {
+            "type": "array",
+            "description": "Resumen aditivo de los pasos en orden de cadena (sin IO). Vacío si la ejecución aún no tiene pasos.",
+            "items": {
+              "$ref": "#/components/schemas/PasoResumen"
+            }
           }
         },
         "required": [
@@ -2555,7 +2562,8 @@
           "bridgeVersionId",
           "triggerType",
           "status",
-          "createdAt"
+          "createdAt",
+          "pasos"
         ]
       },
       "ExecutionDetail": {
@@ -3132,6 +3140,30 @@
           "definition": {
             "type": "object",
             "description": "Snapshot congelado exacto con el que corrieron las ejecuciones de esa versión."
+          }
+        }
+      },
+      "PasoResumen": {
+        "type": "object",
+        "description": "Resumen de un paso del rastro: estado y duración, sin IO.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Estado del paso.",
+            "enum": [
+              "succeeded",
+              "failed",
+              "skipped"
+            ]
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true,
+            "description": "Duración del bloque en ms; null si el paso no llegó a correr."
           }
         }
       }
