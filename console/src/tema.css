@@ -72,6 +72,106 @@
   }
 }
 
+/* ── Tour guiado (driver.js empaquetado, nunca CDN: D1) ──
+   El popover y el resaltado se mapean a los tokens de El rastro (D5): papel y
+   superficie de fondo, tinta para el texto, bordes del sistema y la grotesca
+   de interfaz. Ningún color de estado entra aquí: el color solo significa
+   estado en la consola, y el tour no informa de ningún estado. Las clases son
+   las reales de `driver.js/dist/driver.css` (`.driver-popover*`, `.driver-overlay`)
+   y las variables que la biblioteca expone son `--driver-popover-font-family`
+   y `--driver-animation-duration`. */
+:root {
+  --driver-popover-font-family: var(--font-sans);
+  --driver-animation-duration: 0.18s;
+}
+
+.driver-popover.tour-rastro {
+  background-color: var(--color-superficie);
+  color: var(--color-tinta);
+  border: 1px solid var(--color-borde);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 12px 32px rgb(20 53 45 / 0.18);
+  max-width: 340px;
+  padding: 16px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+}
+
+.driver-popover.tour-rastro .driver-popover-title {
+  color: var(--color-tinta);
+  font-family: var(--font-sans);
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  padding-right: 26px;
+}
+
+.driver-popover.tour-rastro .driver-popover-description {
+  color: var(--color-tinta-suave);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+  margin-top: 6px;
+}
+
+.driver-popover.tour-rastro .driver-popover-progress-text {
+  color: var(--color-tinta-tenue);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.driver-popover.tour-rastro .driver-popover-close-btn {
+  color: var(--color-tinta-suave);
+  border-radius: var(--radius-control);
+  transition: color 0.15s ease;
+}
+
+.driver-popover.tour-rastro .driver-popover-close-btn:hover,
+.driver-popover.tour-rastro .driver-popover-close-btn:focus-visible {
+  color: var(--color-tinta);
+}
+
+.driver-popover.tour-rastro .driver-popover-footer-btn {
+  background-color: var(--color-superficie);
+  color: var(--color-tinta);
+  border: 1px solid var(--color-borde-fuerte);
+  border-radius: var(--radius-control);
+  padding: 4px 10px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  transition: background-color 0.15s ease;
+}
+
+.driver-popover.tour-rastro .driver-popover-footer-btn:hover {
+  background-color: var(--color-papel);
+}
+
+/* Foco visible en los controles del popover (teclado: flechas y Escape). */
+.driver-popover.tour-rastro .driver-popover-footer-btn:focus-visible,
+.driver-popover.tour-rastro .driver-popover-close-btn:focus-visible {
+  outline: 2px solid var(--color-tinta);
+  outline-offset: 2px;
+}
+
+/* El recorte del paso destacado sigue la geometría del sistema. */
+.driver-overlay {
+  border-radius: 0;
+}
+
+/* Con movimiento reducido el tour no anima el paso ni el velo. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --driver-animation-duration: 0.01ms;
+  }
+  .driver-popover.tour-rastro,
+  .driver-popover.tour-rastro * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Base mínima: el resto (márgenes, tipografía, box-sizing) lo pone el preflight. */
 html, body { margin: 0; }
 body { background: var(--color-papel); color: var(--color-tinta); font-family: var(--font-sans); }

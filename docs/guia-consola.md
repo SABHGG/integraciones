@@ -26,6 +26,36 @@ Tu rol aparece en la cabecera y define qué botones ves:
 Un cambio de rol o una expulsión surte efecto **al instante** — no hay
 que cerrar sesión.
 
+## El tour de bienvenida
+
+La consola se explica sola la primera vez: al entrar, un tour guiado
+señala el shell (navegación, tu rol, salir), el dashboard de Ejecuciones
+con su **rastro en miniatura** y el trace paso a paso, y las superficies
+que tu rol tiene delante.
+
+- **Arranca solo la primera vez** en ese navegador. Después ya no vuelve
+  a salir: el registro «ya lo vi» vive **solo en tu navegador**
+  (`localStorage`, una entrada por workspace y versión del tour). Si
+  borras los datos del sitio, volverás a verlo.
+- **Ver tutorial** (en el sidebar, junto a tu rol y *Salir*; en móvil, en
+  la barra superior) lo relanza **desde el primer paso** siempre que
+  quieras, esté o no marcado como visto.
+- **Se adapta a tu rol**: `viewer` y `runner` ven el shell, el dashboard
+  y el trace, pero no los pasos de gestión de miembros (`owner`) ni los
+  de edición y publicación de credenciales o puentes (`editor` y
+  superiores).
+- **Se adapta a la pantalla**: cada paso apunta a un elemento de la
+  página en la que estás; si ese elemento no existe (otra ruta, una
+  columna oculta en móvil), el paso se omite en lugar de romper el tour.
+  El tour no navega entre páginas: para ver el paso del trace, abre una
+  ejecución y relánzalo.
+- **No habla con el servidor**: no hay endpoint ni tabla detrás; el tour
+  entero viaja empaquetado con la consola y funciona sin internet. Navegar
+  o cerrar sesión lo cierra y limpia sin dejar nada colgado.
+- **Con teclado y con movimiento reducido**: `→`/`←` avanzan y
+  retroceden, `Esc` cierra, los controles muestran foco visible, y si tu
+  sistema pide movimiento reducido el tour no anima los cambios de paso.
+
 ## Las cinco páginas
 
 | Página | Qué encuentras |
