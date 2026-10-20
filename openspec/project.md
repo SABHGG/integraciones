@@ -11,6 +11,8 @@ El backend está escrito en **Rust** y ejecuta los bloques (JavaScript/TypeScrip
 
 ## Current State
 
+**MVP6 construido** (changes `add-mvp6-ui-redesign` y `add-blocks-detalle-ruta` archivados el 2026-10-20; 24/24 + 6/6 tareas, CI 7/7 verde): la consola viste el sistema visual **El rastro** — papel frío + tinta petróleo, el color solo significa estado, mono solo para valores de máquina, tipografías autoalojadas (Schibsted Grotesk + Spline Sans Mono, sin CDN), Tailwind v4 con tokens en `@theme` y componentes compartidos (`console/src/ui/`); contraste AA vigilado por test. La firma: el **rastro en miniatura** por fila en Ejecuciones (segmentos proporcionales a la duración real de cada paso, coloreados por estado) con soporte aditivo de solo lectura (`GET /executions` incluye `pasos` sin IO). El detalle de bloque es página propia (`/console/blocks/{id}`) con los filtros de la biblioteca en la URL. Estados de carga/vacío/error en todas las páginas, responsive hasta 390px, `prefers-reduced-motion` y foco visible. Elaborado con las skills ui-taste (image-first, target congelado en el change) y frontend-design (anti-tells).
+
 **MVP5 construido** (change `add-mvp5-console-suite` archivado el 2026-10-19; 19/19 tareas, 325 tests Rust + 55 de la consola, clippy limpio, CI verde): la consola cubre TODO el producto — credenciales (crear/rotar/historial, borrado con confirmación escrita), biblioteca de bloques (filtros, schemas/ui, custom_logic con errores de transpile en línea), versiones con diff estructural en cliente y rollback por re-publicación (el pasado jamás se reescribe), métricas del workspace (`GET /stats`, una consulta agregada, máx. 90 días) con auto-refresh (5 s, pausa en pestaña oculta) y export/import/duplicar (`{name, slug, definition}` sin ids, publicación explícita). Backend nuevo: solo dos lecturas (`/stats`, definición de versión). Cada página nace por rol (D8: espejo `puede()` para presentación, servidor como única fuente de verdad).
 
 **MVP4 construido** (change `add-mvp4-users-roles` archivado el 2026-10-19; 16/16 tareas, 319 tests + 16 de la consola, clippy limpio): identidad por persona — registro/login/logout con sesiones opacas (hash SHA-256, argon2id, 401 uniforme), matriz de roles declarativa en middleware (`owner > editor > runner > viewer`, 403 con el rol requerido, API keys = owner para backcompat), gestión de miembros por el owner (lista visible por cualquier identidad; añadir por email existente, último owner protegido con 409) y auditoría del disparador (`executions.trigger_principal`: user/api_key/system) — más la consola con login email+contraseña, UI por rol y página de miembros.
@@ -21,7 +23,7 @@ El backend está escrito en **Rust** y ejecuta los bloques (JavaScript/TypeScrip
 
 La base de conocimiento vive en:
 
-- `openspec/specs/` — las 18 capacidades vigentes sincronizadas (6 del MVP1 + 3 del MVP2 + 5 del MVP3 + 2 del MVP4 + workspace-stats y bridge-version-access del MVP5, con web-console ampliada en MVP4 y MVP5)
+- `openspec/specs/` — las 18 capacidades vigentes sincronizadas (6 del MVP1 + 3 del MVP2 + 5 del MVP3 + 2 del MVP4 + workspace-stats y bridge-version-access del MVP5, con web-console ampliada en MVP4, MVP5, MVP6 y el detalle de bloque en ruta)
 - `openspec/changes/archive/2026-10-18-add-mvp1-core/` — MVP1 (23/23 tareas)
 - `openspec/changes/archive/2026-10-19-add-mvp2-async-cron-conditionals/` — MVP2 (26/26 tareas)
 - `openspec/changes/archive/2026-10-19-add-mvp3-events-observability-ui/` — MVP3 (24/24 tareas)
