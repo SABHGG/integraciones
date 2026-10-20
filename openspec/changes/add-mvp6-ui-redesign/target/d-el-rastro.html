@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>integraciones — concepto D: el rastro</title>
+<style>
+  @font-face { font-family: 'Schibsted Grotesk'; src: url(fonts/f1.woff2) format('woff2'); font-weight: 400 500 600 700; font-display: swap; }
+  @font-face { font-family: 'Spline Sans Mono'; src: url(fonts/f3.woff2) format('woff2'); font-weight: 400 500 600; font-display: swap; }
+  /* Concepto D · "El rastro" — la firma es el waterfall de pasos por ejecución.
+     Reglas: el color solo significa datos · mono solo para valores de máquina ·
+     controles estándar · cero movimiento automático. */
+  :root {
+    --papel: #F5F6F3;
+    --tinta: #14352D;
+    --tinta-suave: #5B7169;
+    --tinta-tenue: #8B9A93;
+    --superficie: #FFFFFF;
+    --borde: #E1E5DF;
+    --borde-fuerte: #CDD3CC;
+    --ok: #1E7A4E;
+    --mal: #B3402E;
+    --aviso: #9A6B10;
+    --info: #2B6CB0;
+    --mono: 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    --sans: 'Schibsted Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--papel);
+    color: var(--tinta);
+    font: 14px/1.5 var(--sans);
+    display: grid;
+    grid-template-columns: 218px 1fr;
+  }
+  button:focus-visible, select:focus-visible, tr:focus-visible {
+    outline: 2px solid var(--tinta); outline-offset: 2px;
+  }
+
+  /* ── Sidebar tinta: el único elemento audaz ── */
+  aside {
+    background: var(--tinta);
+    color: var(--papel);
+    display: flex;
+    flex-direction: column;
+    padding: 22px 16px;
+  }
+  .marca { font-size: 16px; font-weight: 650; letter-spacing: -.2px; padding: 0 6px 22px; }
+  nav { display: flex; flex-direction: column; gap: 2px; }
+  nav span {
+    padding: 8px 10px;
+    border-radius: 7px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: rgba(245,246,243,.68);
+  }
+  nav span:hover { background: rgba(245,246,243,.06); }
+  nav span.activa { background: rgba(245,246,243,.12); color: var(--papel); font-weight: 600; }
+  .lado-inferior { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+  .rol {
+    font: 500 12px/1 var(--mono);
+    color: rgba(245,246,243,.75);
+    border: 1px solid rgba(245,246,243,.28);
+    border-radius: 7px;
+    padding: 6px 9px;
+    align-self: flex-start;
+  }
+  .salir {
+    background: none;
+    border: 1px solid rgba(245,246,243,.28);
+    color: rgba(245,246,243,.85);
+    border-radius: 7px;
+    padding: 7px 10px;
+    font: inherit; font-size: 13.5px;
+    text-align: left;
+  }
+
+  /* ── Principal ─────────────────────────── */
+  main { padding: 24px 28px; overflow: hidden; max-width: 1258px; }
+  .cabecera-pagina { display: flex; align-items: baseline; gap: 40px; margin-bottom: 16px; }
+  h1 { font-size: 22px; font-weight: 650; letter-spacing: -.25px; margin: 0; }
+  .sub { color: var(--tinta-suave); font-size: 13.5px; }
+  .controles { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .rango { display: flex; border: 1px solid var(--borde-fuerte); border-radius: 7px; overflow: hidden; background: var(--superficie); }
+  .rango b { font-size: 12.5px; font-weight: 550; color: var(--tinta-suave); padding: 6px 11px; }
+  .rango b + b { border-left: 1px solid var(--borde); }
+  .rango b.on { background: var(--tinta); color: var(--papel); }
+  select {
+    background: var(--superficie);
+    color: var(--tinta);
+    border: 1px solid var(--borde-fuerte);
+    border-radius: 7px;
+    padding: 6px 10px;
+    font: 13px var(--sans);
+  }
+
+  /* Banda KPI con divisores, no tarjetas */
+  .kpis {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr 1.1fr;
+    background: var(--superficie);
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+    margin-bottom: 12px;
+  }
+  .kpi { padding: 14px 18px 12px; border-left: 1px solid var(--borde); }
+  .kpi:first-child { border-left: 0; }
+  .kpi .etiqueta { font-size: 13px; color: var(--tinta-suave); }
+  .kpi .cifra {
+    font: 600 24px/1.15 var(--mono);
+    letter-spacing: -.4px;
+    margin: 5px 0 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi .cifra small { font-size: 13px; color: var(--tinta-suave); font-weight: 500; }
+  .kpi .cifra.ok { color: var(--ok); }
+  .kpi .cifra.mal { color: var(--mal); }
+  .kpi .detalle { font-size: 12px; color: var(--tinta-tenue); }
+
+  /* Serie diaria */
+  .serie {
+    background: var(--superficie);
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+    padding: 14px 18px 10px;
+    margin-bottom: 12px;
+  }
+  .fila-serie { display: flex; align-items: baseline; gap: 16px; }
+  .titulo-bloque { font-size: 14px; font-weight: 600; }
+  .leyenda { margin-left: auto; display: flex; gap: 14px; font-size: 12.5px; color: var(--tinta-suave); }
+  .leyenda i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .barras { display: flex; align-items: flex-end; gap: 4px; height: 96px; margin-top: 12px; }
+  .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 1.5px; }
+  .col i { display: block; border-radius: 1.5px 1.5px 0 0; }
+  .col .o { background: var(--ok); }
+  .col .f { background: var(--mal); }
+  .eje { display: flex; justify-content: space-between; color: var(--tinta-tenue); font: 10.5px var(--mono); margin-top: 7px; }
+
+  /* Tabla con waterfall por ejecución */
+  .panel-tabla {
+    background: var(--superficie);
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left;
+    font-size: 12px; font-weight: 600;
+    color: var(--tinta-suave);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--borde);
+  }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--borde); font-size: 13.5px; vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr.rodilla td { border-bottom: 0; }
+  .mono, td.mono { font-family: var(--mono); font-size: 12px; color: var(--tinta); }
+  .textoh { color: var(--tinta-suave); }
+  .insignia {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font: 500 11px/1 var(--mono);
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .insignia::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .succeeded { color: var(--ok); background: #E4F0E9; }
+  .failed    { color: var(--mal); background: #F7E6E2; }
+  .running   { color: var(--info); background: #E4EDF8; }
+  .skipped   { color: var(--aviso); background: #F4EBD7; }
+
+  .rastro { min-width: 168px; }
+  .rastro .pasos { display: flex; gap: 1.5px; height: 7px; align-items: stretch; }
+  .rastro .pasos i { display: block; border-radius: 1.5px; min-width: 2px; }
+  .rastro .pasos .p-ok  { background: var(--ok); }
+  .rastro .pasos .p-f   { background: var(--mal); }
+  .rastro .pasos .p-e   { background: var(--info); }
+  .rastro .pasos .p-s   { background: var(--aviso); opacity: .45; }
+  .rastro .total { font: 11px var(--mono); color: var(--tinta-suave); margin-top: 4px; }
+  .error-celda { color: var(--mal); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px var(--mono); }
+
+  /* Fila expandida: el rastro completo (la firma) */
+  .expansion td { background: #FAFBF9; padding: 14px 34px 16px 44px; }
+  .cable { display: grid; grid-template-columns: 14px 1fr; gap: 0 12px; }
+  .cable .rieles { position: relative; }
+  .cable .rieles::before { content: ""; position: absolute; left: 6px; top: 14px; bottom: -18px; width: 2px; background: var(--borde-fuerte); }
+  .cable .paso:last-child .rieles::before { bottom: auto; height: 18px; }
+  .cable .nudo { position: relative; width: 14px; height: 14px; border-radius: 50%; background: var(--superficie); border: 2px solid var(--borde-fuerte); margin-top: 12px; }
+  .cable .paso.f .nudo { border-color: var(--mal); background: #F7E6E2; }
+  .cable .cuerpo { padding: 4px 0 20px 0; }
+  .cable .fila-paso { display: flex; align-items: baseline; gap: 10px; }
+  .cable .nombre-paso { font: 600 12.5px var(--mono); }
+  .cable .duracion { font: 11.5px var(--mono); color: var(--tinta-suave); }
+  .cable .io {
+    margin-top: 6px;
+    font: 11px/1.55 var(--mono);
+    color: var(--tinta-suave);
+    background: var(--papel);
+    border: 1px solid var(--borde);
+    border-radius: 6px;
+    padding: 7px 10px;
+    max-width: 560px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+</style>
+</head>
+<body>
+  <aside>
+    <div class="marca">integraciones</div>
+    <nav>
+      <span class="activa">Ejecuciones</span>
+      <span>Puentes</span>
+      <span>Miembros</span>
+      <span>Credenciales</span>
+      <span>Bloques</span>
+    </nav>
+    <div class="lado-inferior">
+      <span class="rol">Owner</span>
+      <button class="salir">Salir</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="cabecera-pagina">
+      <h1>Ejecuciones</h1>
+      <span class="sub">Rastros de invocación de tus puentes</span>
+      <div class="controles">
+        <div class="rango"><b>7 días</b><b class="on">30 días</b><b>90 días</b></div>
+        <select><option>todos los estados</option></select>
+        <select><option>todos los puentes</option></select>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="etiqueta">Ejecuciones</div><div class="cifra">1 284</div><div class="detalle">+12,4 % frente al rango previo</div></div>
+      <div class="kpi"><div class="etiqueta">Éxito</div><div class="cifra ok">94,8 %</div><div class="detalle">1 217 correctas</div></div>
+      <div class="kpi"><div class="etiqueta">Fallos</div><div class="cifra mal">67</div><div class="detalle">5,2 % del total</div></div>
+      <div class="kpi"><div class="etiqueta">Duración media</div><div class="cifra">412 <small>ms</small></div><div class="detalle">p95 en 1,8 s</div></div>
+    </div>
+
+    <div class="serie">
+      <div class="fila-serie">
+        <span class="titulo-bloque">Serie diaria</span>
+        <div class="leyenda"><span><i style="background:var(--ok)"></i>correctas</span><span><i style="background:var(--mal)"></i>fallidas</span></div>
+      </div>
+      <div class="barras">
+        <div class="col"><i class="o" style="height:30px"></i><i class="f" style="height:4px"></i></div>
+        <div class="col"><i class="o" style="height:36px"></i><i class="f" style="height:3px"></i></div>
+        <div class="col"><i class="o" style="height:24px"></i></div>
+        <div class="col"><i class="o" style="height:46px"></i><i class="f" style="height:6px"></i></div>
+        <div class="col"><i class="o" style="height:41px"></i><i class="f" style="height:2px"></i></div>
+        <div class="col"><i class="o" style="height:52px"></i><i class="f" style="height:4px"></i></div>
+        <div class="col"><i class="o" style="height:57px"></i><i class="f" style="height:3px"></i></div>
+        <div class="col"><i class="o" style="height:39px"></i></div>
+        <div class="col"><i class="o" style="height:64px"></i><i class="f" style="height:8px"></i></div>
+        <div class="col"><i class="o" style="height:58px"></i><i class="f" style="height:3px"></i></div>
+        <div class="col"><i class="o" style="height:70px"></i><i class="f" style="height:5px"></i></div>
+        <div class="col"><i class="o" style="height:53px"></i><i class="f" style="height:2px"></i></div>
+        <div class="col"><i class="o" style="height:76px"></i><i class="f" style="height:6px"></i></div>
+        <div class="col"><i class="o" style="height:66px"></i><i class="f" style="height:4px"></i></div>
+        <div class="col"><i class="o" style="height:83px"></i><i class="f" style="height:7px"></i></div>
+        <div class="col"><i class="o" style="height:60px"></i><i class="f" style="height:3px"></i></div>
+        <div class="col"><i class="o" style="height:88px"></i><i class="f" style="height:5px"></i></div>
+        <div class="col"><i class="o" style="height:74px"></i><i class="f" style="height:4px"></i></div>
+        <div class="col"><i class="o" style="height:94px"></i><i class="f" style="height:9px"></i></div>
+        <div class="col"><i class="o" style="height:80px"></i><i class="f" style="height:3px"></i></div>
+        <div class="col"><i class="o" style="height:68px"></i><i class="f" style="height:6px"></i></div>
+        <div class="col"><i class="o" style="height:87px"></i><i class="f" style="height:4px"></i></div>
+        <div class="col"><i class="o" style="height:96px"></i><i class="f" style="height:7px"></i></div>
+        <div class="col"><i class="o" style="height:84px"></i><i class="f" style="height:5px"></i></div>
+        <div class="col"><i class="o" style="height:92px"></i><i class="f" style="height:6px"></i></div>
+        <div class="col"><i class="o" style="height:78px"></i><i class="f" style="height:4px"></i></div>
+        <div class="col"><i class="o" style="height:96px"></i><i class="f" style="height:8px"></i></div>
+        <div class="col"><i class="o" style="height:90px"></i><i class="f" style="height:5px"></i></div>
+        <div class="col"><i class="o" style="height:95px"></i><i class="f" style="height:6px"></i></div>
+        <div class="col"><i class="o" style="height:86px"></i><i class="f" style="height:4px"></i></div>
+      </div>
+      <div class="eje"><span>hace 30 d</span><span>hace 22 d</span><span>hace 15 d</span><span>hace 7 d</span><span>hoy</span></div>
+    </div>
+
+    <div class="panel-tabla">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:126px">Estado</th>
+            <th style="width:150px">Puente</th>
+            <th style="width:200px">Rastro</th>
+            <th style="width:80px">Trigger</th>
+            <th style="width:110px">Creada</th>
+            <th>Resultado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="insignia succeeded">succeeded</span></td>
+            <td class="mono">slack-notify</td>
+            <td class="rastro">
+              <div class="pasos">
+                <i class="p-ok" style="flex:120"></i><i class="p-ok" style="flex:45"></i><i class="p-ok" style="flex:210"></i>
+              </div>
+              <div class="total">3 pasos · 375 ms</div>
+            </td>
+            <td class="mono">http</td>
+            <td class="textoh">hace 2 min</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="insignia failed">failed</span></td>
+            <td class="mono">stripe-webhook</td>
+            <td class="rastro">
+              <div class="pasos">
+                <i class="p-ok" style="flex:90"></i><i class="p-f" style="flex:240"></i>
+              </div>
+              <div class="total">2 pasos · 330 ms</div>
+            </td>
+            <td class="mono">cron</td>
+            <td class="textoh">hace 9 min</td>
+            <td class="error-celda">BLOCK_ERROR: http-post recibió 429 (rate limit del proveedor)</td>
+          </tr>
+          <tr class="expansion">
+            <td colspan="6">
+              <div class="cable">
+                <div class="paso">
+                  <div class="rieles"><div class="nudo"></div></div>
+                  <div class="cuerpo">
+                    <div class="fila-paso"><span class="nombre-paso">solicitartarifa</span><span class="insignia succeeded">succeeded</span><span class="duracion">90 ms · http-get</span></div>
+                    <div class="io">{ "status": 200, "ms": 88, "out": { "tarifa": "standard", "precio": 49.9 } }</div>
+                  </div>
+                </div>
+                <div class="paso f">
+                  <div class="rieles"><div class="nudo"></div></div>
+                  <div class="cuerpo">
+                    <div class="fila-paso"><span class="nombre-paso">confirmapago</span><span class="insignia failed">failed</span><span class="duracion">240 ms · http-post</span></div>
+                    <div class="io">{ "status": 429, "err": "BLOCK_ERROR", "detalle": "rate limit del proveedor" }</div>
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="insignia running">running</span></td>
+            <td class="mono">sync-crm</td>
+            <td class="rastro">
+              <div class="pasos">
+                <i class="p-ok" style="flex:80"></i><i class="p-e" style="flex:120"></i>
+              </div>
+              <div class="total">en curso · 200 ms</div>
+            </td>
+            <td class="mono">http</td>
+            <td class="textoh">hace 12 s</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="insignia succeeded">succeeded</span></td>
+            <td class="mono">factura-pdf</td>
+            <td class="rastro">
+              <div class="pasos">
+                <i class="p-s" style="flex:12"></i><i class="p-ok" style="flex:310"></i>
+              </div>
+              <div class="total">2 pasos · 322 ms</div>
+            </td>
+            <td class="mono">event</td>
+            <td class="textoh">hace 14 min</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="insignia skipped">skipped</span></td>
+            <td class="mono">sync-crm</td>
+            <td class="rastro">
+              <div class="pasos"><i class="p-s" style="flex:16"></i></div>
+              <div class="total">rama switch sin coincidencia</div>
+            </td>
+            <td class="mono">manual</td>
+            <td class="textoh">hace 31 min</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="insignia failed">failed</span></td>
+            <td class="mono">slack-notify</td>
+            <td class="rastro">
+              <div class="pasos"><i class="p-f" style="flex:5000"></i></div>
+              <div class="total">1 paso · 5 000 ms</div>
+            </td>
+            <td class="mono">http</td>
+            <td class="textoh">hace 38 min</td>
+            <td class="error-celda">TIMEOUT: http-get superó 5 000 ms</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</body>
+</html>
