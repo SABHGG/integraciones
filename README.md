@@ -15,9 +15,13 @@ La especificación completa vive en [`openspec/`](openspec/) — empezar por `op
 | `crates/engine` | Ejecutor: cadena lineal, fail-fast, persistencia del trace |
 | `crates/api` | Servidor axum: plano admin `/api/v1` + plano invocación `/x` |
 
-## Cómo crear bloques y puentes
+## Documentación
 
-Guía paso a paso con ejemplos reales: [`docs/guia-bloques-y-puentes.md`](docs/guia-bloques-y-puentes.md) — bloques built-in y `custom_logic` (sandbox, `ui`, `ctx.*`), disparadores http/cron/event, referencias `$.`, condiciones, `emit`/`webhook`/`mask` y el flujo borrador → validar → publicar.
+| Guía | Para qué |
+|---|---|
+| [`docs/guia-consola.md`](docs/guia-consola.md) | Entrar, las cinco páginas, roles, leer un trace, flujos diarios |
+| [`docs/guia-bloques-y-puentes.md`](docs/guia-bloques-y-puentes.md) | Crear bloques (built-in y `custom_logic`, sandbox `ctx.*`) y puentes (disparadores, refs `$.`, condiciones, emit/webhook/mask) |
+| [`docs/errores-comunes.md`](docs/errores-comunes.md) | Diagnóstico rápido: 401/403/404/409/422, códigos de ejecución (`REF_UNRESOLVED`, `TIMEOUT`…), webhooks y eventos |
 
 ## Desarrollo local
 
