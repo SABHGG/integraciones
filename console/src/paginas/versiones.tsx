@@ -5,10 +5,10 @@
 //! Lectura para todos; adoptar/rollback solo para `editor` (D8).
 //! Render El rastro (MVP6): rutas y valores del diff en mono.
 import { useEffect, useState } from "preact/hooks";
-import { api, type Page } from "./api";
-import { diffEstructural, resumenDiff } from "./diff";
-import { artefactoExport } from "./transferir";
-import { Boton, Control, Panel } from "./ui";
+import { api, type Page } from "../lib/api";
+import { diffEstructural, resumenDiff } from "../lib/diff";
+import { artefactoExport } from "../lib/transferir";
+import { Boton, Control, Panel } from "../ui";
 
 interface VersionMeta {
   id: string;

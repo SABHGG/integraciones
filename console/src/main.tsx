@@ -2,15 +2,15 @@
 //! usuario o API key) y rol del principal (MVP4).
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { api, clearSesion, getApiKey, getToken, salir as cerrarSesionServidor } from "./api";
-import type { Rol } from "./roles";
-import { etiquetaRol } from "./roles";
-import { Login } from "./auth";
-import { Ejecuciones, DetalleEjecucion } from "./executions";
-import { EditorPuente, ListaPuentes } from "./bridges";
-import { Miembros } from "./members";
-import { Credenciales } from "./credentials";
-import { BibliotecaBloques } from "./blocks";
+import { api, clearSesion, getApiKey, getToken, salir as cerrarSesionServidor } from "./lib/api";
+import type { Rol } from "./lib/roles";
+import { etiquetaRol } from "./lib/roles";
+import { Login } from "./paginas/auth";
+import { Ejecuciones, DetalleEjecucion } from "./paginas/executions";
+import { EditorPuente, ListaPuentes } from "./paginas/bridges";
+import { Miembros } from "./paginas/members";
+import { Credenciales } from "./paginas/credentials";
+import { BibliotecaBloques } from "./paginas/blocks";
 import "./tema.css";
 
 type Ruta =

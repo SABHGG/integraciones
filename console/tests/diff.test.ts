@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { aplanar, diffEstructural, resumenDiff, AUSENTE } from "../src/diff";
+import { aplanar, diffEstructural, resumenDiff, AUSENTE } from "../src/lib/diff";
 
 describe("aplanar", () => {
   it("aplana objetos anidados con notación por puntos", () => {

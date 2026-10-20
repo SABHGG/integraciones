@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapearErrores, lineaDeTranspilacion, type Issue } from "../src/errors";
+import { mapearErrores, lineaDeTranspilacion, type Issue } from "../src/lib/errors";
 
 describe("mapearErrores", () => {
   it("reparte los issues del servidor entre globales y por instancia", () => {

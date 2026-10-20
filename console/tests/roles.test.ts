@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { puede, etiquetaRol, type Rol } from "../src/roles";
+import { puede, etiquetaRol, type Rol } from "../src/lib/roles";
 
 describe("puede (espejo de la matriz del servidor)", () => {
   it("viewer solo lee", () => {

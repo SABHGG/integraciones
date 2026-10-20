@@ -2,8 +2,8 @@
 //! banda de indicadores con divisores (sin tarjetas), serie diaria apilada
 //! correctas/fallidas y desglose por puente navegable al listado filtrado.
 //! La obtención de datos vive en la página; esto es presentación pura.
-import { formatearDuracion, picoSerie, rellenarSerie, type DiaCompleto } from "./metricas";
-import { Boton, Panel } from "./ui";
+import { formatearDuracion, picoSerie, rellenarSerie, type DiaCompleto } from "../lib/metricas";
+import { Boton, Panel } from "../ui";
 
 export interface Stats {
   from: string;

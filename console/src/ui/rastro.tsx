@@ -3,7 +3,7 @@
 //! duración real y coloreado por estado — ver qué bloque es lento o falló
 //! sin abrir el detalle. Datos del resumen aditivo de `GET /executions`
 //! (estado + duración por paso, sin IO).
-import { formatearDuracion } from "./metricas";
+import { formatearDuracion } from "../lib/metricas";
 
 export interface PasoResumen {
   status: string;

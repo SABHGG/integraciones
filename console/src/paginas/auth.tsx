@@ -3,8 +3,8 @@
 //! usuario pertenece a varios workspaces, se elige cuál fijar en la sesión.
 //! Rediseño MVP6: sistema visual El rastro (ui.tsx); lógica intacta.
 import { useState } from "preact/hooks";
-import { entrar, setApiKey, type SesionLogin } from "./api";
-import { Boton, Campo, Control, Panel } from "./ui";
+import { entrar, setApiKey, type SesionLogin } from "../lib/api";
+import { Boton, Campo, Control, Panel } from "../ui";
 
 interface Props {
   alEntrar: (rol: string) => void;
@@ -48,7 +48,7 @@ export function Login(props: Props) {
     setApiKey(clave.trim());
     // Validamos la key contra el plano: si es inválida, se muestra su error.
     try {
-      const { api } = await import("./api");
+      const { api } = await import("../lib/api");
       await api("GET", "/bridges?limit=1");
       props.alEntrar("owner");
     } catch (e) {

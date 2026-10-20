@@ -4,20 +4,20 @@
 //! Render El rastro (MVP6): la cadena se presenta como los pasos del rastro
 //! (nudo + raíl); lógica intacta desde el MVP3/MVP5.
 import { useEffect, useState } from "preact/hooks";
-import { api, type Page } from "./api";
-import { mapearErrores, type Issue } from "./errors";
-import { FormularioInstancia } from "./blockform";
+import { api, type Page } from "../lib/api";
+import { mapearErrores, type Issue } from "../lib/errors";
+import { FormularioInstancia } from "../ui";
 import type { Paso } from "./executions";
-import { EditorCodigo } from "./codeeditor";
-import { puede, type Rol } from "./roles";
+import { EditorCodigo } from "../ui";
+import { puede, type Rol } from "../lib/roles";
 import { PanelVersiones } from "./versiones";
 import {
   artefactoExport,
   validarImport,
   sufijarSlug,
   type ArtefactoPuente,
-} from "./transferir";
-import { Boton, Campo, Control, Esqueleto, Panel } from "./ui";
+} from "../lib/transferir";
+import { Boton, Campo, Control, Esqueleto, Panel } from "../ui";
 
 interface Puente {
   id: string;

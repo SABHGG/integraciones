@@ -5,7 +5,7 @@ import {
   picoSerie,
   crearPolling,
   INTERVALO_REFRESCO_MS,
-} from "../src/metricas";
+} from "../src/lib/metricas";
 
 afterEach(() => {
   vi.useRealTimers();

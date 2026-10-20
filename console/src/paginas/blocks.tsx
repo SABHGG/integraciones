@@ -5,9 +5,9 @@
 //! viewer inspecciona en lectura.
 //! Render El rastro (MVP6): misma lógica; presentación con ui.tsx.
 import { useEffect, useState } from "preact/hooks";
-import { api, type Page } from "./api";
-import { puede, type Rol } from "./roles";
-import { EditorCodigo } from "./codeeditor";
+import { api, type Page } from "../lib/api";
+import { puede, type Rol } from "../lib/roles";
+import { EditorCodigo } from "../ui";
 import {
   filtrarBloques,
   categorias,
@@ -15,8 +15,8 @@ import {
   erroresDelPlano,
   type BloqueResumen,
   type ProblemaCampo,
-} from "./bloques";
-import { Boton, Campo, Control, Esqueleto, Panel } from "./ui";
+} from "../lib/bloques";
+import { Boton, Campo, Control, Esqueleto, Panel } from "../ui";
 
 interface VersionBloque {
   id: string;

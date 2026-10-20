@@ -4,11 +4,11 @@
 //! la lógica provienen del MVP3+MVP5; el backend aditivo trae el resumen de
 //! pasos sin IO.
 import { useEffect, useRef, useState } from "preact/hooks";
-import { api, type Page } from "./api";
+import { api, type Page } from "../lib/api";
 import { BandaKpis, DesglosePuentes, RANGOS, SerieDiaria, type Stats } from "./dashboard";
-import { hace, crearPolling, INTERVALO_REFRESCO_MS } from "./metricas";
-import { Rastro, type PasoResumen } from "./rastro";
-import { Boton, Control, Esqueleto, Insignia, Panel } from "./ui";
+import { hace, crearPolling, INTERVALO_REFRESCO_MS } from "../lib/metricas";
+import { Rastro, type PasoResumen } from "../ui";
+import { Boton, Control, Esqueleto, Insignia, Panel } from "../ui";
 
 interface Ejecucion {
   id: string;

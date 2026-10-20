@@ -5,7 +5,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { basicSetup } from "codemirror";
 import { EditorView } from "@codemirror/view";
 import { useEffect, useRef } from "preact/hooks";
-import { lineaDeTranspilacion } from "./errors";
+import { lineaDeTranspilacion } from "../lib/errors";
 
 export function EditorCodigo(props: {
   codigo: string;

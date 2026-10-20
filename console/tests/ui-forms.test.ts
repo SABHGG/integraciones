@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { camposDeUi, valorDeCampo, type UiMeta } from "../src/ui-forms";
+import { camposDeUi, valorDeCampo, type UiMeta } from "../src/lib/ui-forms";
 
 describe("camposDeUi", () => {
   it("genera los campos en el orden declarado con widget y ayuda", () => {

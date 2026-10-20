@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { artefactoExport, validarImport, sufijarSlug } from "../src/transferir";
+import { artefactoExport, validarImport, sufijarSlug } from "../src/lib/transferir";
 
 const definicion = {
   trigger: { type: "http", method: "POST", path: "/x/uno" },

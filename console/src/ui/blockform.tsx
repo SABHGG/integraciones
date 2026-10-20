@@ -2,7 +2,7 @@
 //! versión del bloque; sin `ui` → editor JSON genérico con validación del
 //! servidor al guardar. Render El rastro (MVP6): los valores de configuración
 //! van en mono; etiquetas visibles siempre.
-import { camposDeUi, valorDeCampo, type UiMeta } from "./ui-forms";
+import { camposDeUi, valorDeCampo, type UiMeta } from "../lib/ui-forms";
 import { Campo, Control } from "./ui";
 
 export function FormularioInstancia(props: {

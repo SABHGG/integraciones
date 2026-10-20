@@ -4,16 +4,16 @@
 //! `editor`; viewer lee. Errores del servidor en línea.
 //! Render El rastro (MVP6): misma lógica; presentación con ui.tsx.
 import { useEffect, useState } from "preact/hooks";
-import { api, type Page } from "./api";
-import { puede, type Rol } from "./roles";
+import { api, type Page } from "../lib/api";
+import { puede, type Rol } from "../lib/roles";
 import {
   validarCreacion,
   validarRotacion,
   confirmarEliminacion,
   esVigente,
   type ProblemaCampo,
-} from "./credenciales";
-import { Boton, Campo, Control, Esqueleto, Panel } from "./ui";
+} from "../lib/credenciales";
+import { Boton, Campo, Control, Esqueleto, Panel } from "../ui";
 
 interface Credencial {
   id: string;

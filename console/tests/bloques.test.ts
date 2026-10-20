@@ -5,7 +5,7 @@ import {
   validarCreacionBloque,
   erroresDelPlano,
   type BloqueResumen,
-} from "../src/bloques";
+} from "../src/lib/bloques";
 
 const bloques: BloqueResumen[] = [
   {

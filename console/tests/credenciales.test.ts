@@ -4,7 +4,7 @@ import {
   validarRotacion,
   confirmarEliminacion,
   esVigente,
-} from "../src/credenciales";
+} from "../src/lib/credenciales";
 
 describe("validarCreacion", () => {
   it("acepta un formulario completo", () => {

@@ -3,9 +3,9 @@
 //! errores del servidor en línea (una sola fuente de verdad).
 //! Render El rastro (MVP6): misma lógica; presentación con ui.tsx.
 import { useEffect, useState } from "preact/hooks";
-import { api, type Page } from "./api";
-import { puede, type Rol } from "./roles";
-import { Boton, Campo, Control, Esqueleto, Panel } from "./ui";
+import { api, type Page } from "../lib/api";
+import { puede, type Rol } from "../lib/roles";
+import { Boton, Campo, Control, Esqueleto, Panel } from "../ui";
 
 interface Miembro {
   userId: string;
