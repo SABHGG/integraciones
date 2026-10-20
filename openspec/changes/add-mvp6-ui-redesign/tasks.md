@@ -29,16 +29,16 @@
 
 ## 5. Fase 5 — Credenciales, bloques y miembros
 
-- [ ] 5.1 Credenciales: listado, creación, rotación e historial (jamás valores), estados de error de la bóveda
-- [ ] 5.2 Biblioteca de bloques: listado con filtros, detalle de versiones con schemas y `ui`, editor de código con errores en línea
-- [ ] 5.3 Miembros: listado y gestión por rol con confirmación de expulsión
+- [x] 5.1 Credenciales: listado, creación, rotación e historial (jamás valores), estados de error de la bóveda
+- [x] 5.2 Biblioteca de bloques: listado con filtros, detalle de versiones con schemas y `ui`, editor de código con errores en línea
+- [x] 5.3 Miembros: listado y gestión por rol con confirmación de expulsión
 
 ## 6. Fase 6 — Estados, responsive y accesibilidad transversales
 
-- [ ] 6.1 Carga/vacío/error en las siete superficies, con copys de D7 (vacío que invita, error que explica)
-- [ ] 6.2 Responsive estructural: tablas apiladas <900px, KPIs 2×2, sin desbordes a 390px (checklist por página)
-- [ ] 6.3 Accesibilidad: foco visible en todos los controles, `prefers-reduced-motion` sin animaciones no esenciales, targets ≥40px
-- [ ] 6.4 Eliminar `styles.css` artesanal y clases muertas; suite Vitest de consola en verde
+- [x] 6.1 Carga/vacío/error en las siete superficies, con copys de D7 (vacío que invita, error que explica)
+- [x] 6.2 Responsive estructural: tablas apiladas <900px, KPIs 2×2, sin desbordes a 390px (checklist por página)
+- [x] 6.3 Accesibilidad: foco visible en todos los controles, `prefers-reduced-motion` sin animaciones no esenciales, targets ≥40px
+- [x] 6.4 Eliminar `styles.css` artesanal y clases muertas; suite Vitest de consola en verde
 
 ## 7. Fase 7 — Verificación visual y cierre
 

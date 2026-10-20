@@ -38,11 +38,11 @@ export function EditorCodigo(props: {
 
   return (
     <div>
-      <div ref={contenedor} style="border: 1px solid var(--borde); border-radius: 6px;" />
+      <div ref={contenedor} style="border: 1px solid var(--color-borde); border-radius: 6px;" />
       {(props.errores ?? []).map((mensaje) => {
         const linea = lineaDeTranspilacion(mensaje);
         return (
-          <p class="error-campo">
+          <p class="mt-1.5 rounded-[6px] border border-mal/40 bg-mal/5 px-2 py-1 font-mono text-[12px] text-mal">
             {linea ? `línea ${linea}: ` : ""}
             {mensaje}
           </p>

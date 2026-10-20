@@ -12,7 +12,6 @@ import { Miembros } from "./members";
 import { Credenciales } from "./credentials";
 import { BibliotecaBloques } from "./blocks";
 import "./tema.css";
-import "./styles.css";
 
 type Ruta =
   | { pantalla: "ejecuciones" }
@@ -145,7 +144,7 @@ function App(): preact.ComponentChildren {
 
       <main class="min-w-0 flex-1 px-4 py-5 md:px-7">
         <div class="mx-auto max-w-[1240px]">
-          {/* Páginas migradas (Ejecuciones target + Puentes F4): fuera de .legacy. */}
+          {/* Páginas migradas al sistema El rastro. */}
           {(ruta.pantalla === "ejecuciones" || ruta.pantalla === "ejecucion") && (
             <>
               {ruta.pantalla === "ejecuciones"
@@ -160,13 +159,9 @@ function App(): preact.ComponentChildren {
                 : <EditorPuente id={ruta.id} rol={rol} />}
             </>
           )}
-          {/* Páginas aún no migradas al sistema El rastro: viven bajo .legacy
-              (alcance de styles.css). Se sacarán del wrapper en F5. */}
-          <div class="legacy">
-            {ruta.pantalla === "miembros" && <Miembros rol={rol} />}
-            {ruta.pantalla === "credenciales" && <Credenciales rol={rol} />}
-            {ruta.pantalla === "bloques" && <BibliotecaBloques rol={rol} />}
-          </div>
+          {ruta.pantalla === "miembros" && <Miembros rol={rol} />}
+          {ruta.pantalla === "credenciales" && <Credenciales rol={rol} />}
+          {ruta.pantalla === "bloques" && <BibliotecaBloques rol={rol} />}
         </div>
       </main>
     </div>

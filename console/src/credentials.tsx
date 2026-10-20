@@ -2,6 +2,7 @@
 //! vigente, crear, rotar y eliminar con confirmación escrita, historial
 //! de versiones (ids y fechas, JAMÁS valores). Edición solo para
 //! `editor`; viewer lee. Errores del servidor en línea.
+//! Render El rastro (MVP6): misma lógica; presentación con ui.tsx.
 import { useEffect, useState } from "preact/hooks";
 import { api, type Page } from "./api";
 import { puede, type Rol } from "./roles";
@@ -12,6 +13,7 @@ import {
   esVigente,
   type ProblemaCampo,
 } from "./credenciales";
+import { Boton, Campo, Control, Esqueleto, Panel } from "./ui";
 
 interface Credencial {
   id: string;
@@ -27,11 +29,32 @@ interface VersionCredencial {
   createdAt: string;
 }
 
+/** Aviso de la página: verde para lo hecho, ladrillo para el error del servidor. */
+function Aviso(props: { texto: string; tono?: "ok" | "mal" }) {
+  const clase =
+    props.tono === "mal"
+      ? "border-mal/40 bg-mal/5 text-mal"
+      : "border-ok/30 bg-ok-fondo text-ok";
+  return (
+    <div class={`rounded-[8px] border px-3.5 py-2.5 text-[13.5px] ${clase}`}>{props.texto}</div>
+  );
+}
+
+/** Estado de la versión: valor del sistema, en mono y sin color (no es un paso). */
+function Etiqueta(props: { texto: string }) {
+  return (
+    <span class="rounded-[4px] border border-borde-fuerte bg-superficie px-2 py-1 font-mono text-[11.5px] text-tinta-suave">
+      {props.texto}
+    </span>
+  );
+}
+
 export function Credenciales(props: { rol: Rol | null }) {
   const [lista, setLista] = useState<Credencial[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [problemas, setProblemas] = useState<ProblemaCampo[]>([]);
+  const [cargando, setCargando] = useState(true);
 
   // Formulario de creación
   const [nombre, setNombre] = useState("");
@@ -53,6 +76,8 @@ export function Credenciales(props: { rol: Rol | null }) {
       setLista(pagina.items);
     } catch (e) {
       setError(e instanceof Error ? e.message : "error al listar credenciales");
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -137,138 +162,231 @@ export function Credenciales(props: { rol: Rol | null }) {
   const problemaDe = (campo: string) =>
     problemas.find((p) => p.field === campo)?.message;
 
+  const columnas = administra ? 5 : 4;
+
   return (
-    <div>
-      <h1>Credenciales</h1>
-      <p class="ayuda">
-        Bóveda write-only: los valores jamás se muestran ni se descargan; solo
-        se crean y se rotan. Cada ejecución audita qué versión usó.
-      </p>
-      {aviso && <p class="ayuda">{aviso}</p>}
-      {error && <p class="error-global">{error}</p>}
+    <div class="space-y-3">
+      <div class="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+        <h1 class="text-[21px] font-bold tracking-tight text-tinta">Credenciales</h1>
+        <span class="hidden text-[13.5px] text-tinta-suave lg:inline">
+          Bóveda write-only: los valores jamás se muestran ni se descargan; solo se crean y se rotan.
+          Cada ejecución audita qué versión usó.
+        </span>
+      </div>
+
+      {aviso && <Aviso texto={aviso} />}
+      {error && <Aviso texto={error} tono="mal" />}
 
       {administra && (
-        <form class="tarjeta" onSubmit={crear}>
-          <h3>nueva credencial</h3>
-          <label for="cred-nombre">nombre</label>
-          <input id="cred-nombre" value={nombre}
-            onInput={(e) => setNombre((e.target as HTMLInputElement).value)} />
-          {problemaDe("name") && <p class="error-campo">{problemaDe("name")}</p>}
-          <label for="cred-secreto">secreto (se cifra en reposo)</label>
-          <input id="cred-secreto" type="password" value={secreto}
-            onInput={(e) => setSecreto((e.target as HTMLInputElement).value)} />
-          {problemaDe("secret") && <p class="error-campo">{problemaDe("secret")}</p>}
-          <label for="cred-desc">descripción</label>
-          <input id="cred-desc" value={descripcion}
-            onInput={(e) => setDescripcion((e.target as HTMLInputElement).value)} />
-          <div class="acciones">
-            <button type="submit">crear</button>
-          </div>
-        </form>
+        <Panel class="p-4">
+          <form onSubmit={crear}>
+            <div class="text-[14px] font-semibold text-tinta">Nueva credencial</div>
+            <p class="mt-1 mb-3 text-[12.5px] text-tinta-suave">
+              El secreto se cifra en reposo y nunca se vuelve a mostrar: si se filtra, rótalo.
+            </p>
+            <div class="grid gap-x-4 gap-y-3 md:grid-cols-2">
+              <Campo etiqueta="Nombre" error={problemaDe("name")}>
+                <Control
+                  id="cred-nombre"
+                  value={nombre}
+                  onInput={(e: Event) => setNombre((e.target as HTMLInputElement).value)}
+                />
+              </Campo>
+              <Campo etiqueta="Secreto" ayuda="Se cifra en reposo." error={problemaDe("secret")}>
+                <Control
+                  id="cred-secreto"
+                  type="password"
+                  autocomplete="new-password"
+                  value={secreto}
+                  onInput={(e: Event) => setSecreto((e.target as HTMLInputElement).value)}
+                />
+              </Campo>
+              <Campo etiqueta="Descripción" class="md:col-span-2">
+                <Control
+                  id="cred-desc"
+                  value={descripcion}
+                  onInput={(e: Event) => setDescripcion((e.target as HTMLInputElement).value)}
+                />
+              </Campo>
+            </div>
+            <div class="mt-3">
+              <Boton type="submit">Crear credencial</Boton>
+            </div>
+          </form>
+        </Panel>
       )}
 
-      <div class="tarjeta">
-        <table>
-          <thead>
-            <tr>
-              <th>nombre</th><th>descripción</th><th>versión vigente</th><th>alta</th>
-              {administra && <th>acciones</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {lista.map((credencial) => (
-              <tr key={credencial.id}>
-                <td>{credencial.name}</td>
-                <td>{credencial.description}</td>
-                <td>
-                  {credencial.currentVersionId ? (
-                    <span class="insignia">vigente</span>
-                  ) : (
-                    <span class="insignia">sin versión</span>
-                  )}
-                </td>
-                <td>{new Date(credencial.createdAt).toLocaleDateString()}</td>
-                {administra && (
-                  <td>
-                    <div class="acciones">
-                      <input
-                        type="password"
-                        placeholder="valor nuevo"
-                        style="max-width: 140px;"
-                        value={rotando[credencial.id] ?? ""}
-                        onInput={(e) =>
-                          setRotando((previo) => ({
-                            ...previo,
-                            [credencial.id]: (e.target as HTMLInputElement).value,
-                          }))
-                        }
-                      />
-                      <button class="secundario" onClick={() => void rotar(credencial.id)}>
-                        rotar
-                      </button>
-                      <button class="secundario" onClick={() => void abrirHistorial(credencial)}>
-                        historial
-                      </button>
-                      <input
-                        placeholder={`teclea «${credencial.name}»`}
-                        style="max-width: 140px;"
-                        value={borrando[credencial.id] ?? ""}
-                        onInput={(e) =>
-                          setBorrando((previo) => ({
-                            ...previo,
-                            [credencial.id]: (e.target as HTMLInputElement).value,
-                          }))
-                        }
-                      />
-                      <button
-                        class="peligro"
-                        disabled={
-                          !confirmarEliminacion(credencial.name, borrando[credencial.id] ?? "")
-                        }
-                        onClick={() => void eliminar(credencial)}
-                      >
-                        eliminar
-                      </button>
-                    </div>
-                  </td>
-                )}
+      <Panel class="overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[1080px] border-collapse">
+            <thead>
+              <tr class="border-b border-borde text-left text-[12px] font-semibold text-tinta-suave">
+                <th class="px-4 py-2.5 font-semibold">Nombre</th>
+                <th class="px-4 py-2.5 font-semibold">Descripción</th>
+                <th class="px-4 py-2.5 font-semibold">Versión vigente</th>
+                <th class="px-4 py-2.5 font-semibold">Alta</th>
+                {administra && <th class="px-4 py-2.5 font-semibold">Acciones</th>}
               </tr>
-            ))}
-            {lista.length === 0 && <tr><td colspan={5}>sin credenciales</td></tr>}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {lista.map((credencial) => (
+                <tr key={credencial.id} class="border-b border-borde last:border-0">
+                  <td class="px-4 py-2.5 text-[13.5px]">{credencial.name}</td>
+                  <td class="px-4 py-2.5 text-[13px] text-tinta-suave">{credencial.description}</td>
+                  <td class="px-4 py-2.5">
+                    {credencial.currentVersionId ? (
+                      <Etiqueta texto="vigente" />
+                    ) : (
+                      <Etiqueta texto="sin versión" />
+                    )}
+                  </td>
+                  <td class="px-4 py-2.5 text-[13px] text-tinta-suave">
+                    {new Date(credencial.createdAt).toLocaleDateString()}
+                  </td>
+                  {administra && (
+                    <td class="px-4 py-2.5">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <Control
+                          type="password"
+                          class="max-w-[150px]"
+                          autocomplete="new-password"
+                          placeholder="Valor nuevo"
+                          aria-label={`Valor nuevo para ${credencial.name}`}
+                          value={rotando[credencial.id] ?? ""}
+                          onInput={(e: Event) =>
+                            setRotando((previo) => ({
+                              ...previo,
+                              [credencial.id]: (e.target as HTMLInputElement).value,
+                            }))
+                          }
+                        />
+                        <Boton
+                          variante="secundario"
+                          chico
+                          onClick={() => void rotar(credencial.id)}
+                          title="Publica una versión nueva y la deja vigente"
+                        >
+                          Rotar
+                        </Boton>
+                        <Boton
+                          variante="secundario"
+                          chico
+                          onClick={() => void abrirHistorial(credencial)}
+                          title="Versiones anteriores (ids y fechas, sin valores)"
+                        >
+                          Historial
+                        </Boton>
+                        <Control
+                          class="max-w-[170px]"
+                          placeholder={`Teclea «${credencial.name}»`}
+                          aria-label={`Escribe el nombre para confirmar la eliminación de ${credencial.name}`}
+                          value={borrando[credencial.id] ?? ""}
+                          onInput={(e: Event) =>
+                            setBorrando((previo) => ({
+                              ...previo,
+                              [credencial.id]: (e.target as HTMLInputElement).value,
+                            }))
+                          }
+                        />
+                        <Boton
+                          variante="peligro"
+                          chico
+                          deshabilitado={
+                            !confirmarEliminacion(credencial.name, borrando[credencial.id] ?? "")
+                          }
+                          onClick={() => void eliminar(credencial)}
+                          title="Eliminar es irreversible; las ejecuciones pasadas conservan su traza"
+                        >
+                          Eliminar
+                        </Boton>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+              {cargando && lista.length === 0 && (
+                <tr>
+                  <td colspan={columnas}>
+                    <Esqueleto filas={4} />
+                  </td>
+                </tr>
+              )}
+              {!cargando && lista.length === 0 && !error && (
+                <tr>
+                  <td colspan={columnas} class="px-4 py-8 text-center text-[13.5px] text-tinta-suave">
+                    {administra
+                      ? "Aún no hay credenciales. Crea la primera con el formulario de arriba."
+                      : "Aún no hay credenciales en este workspace."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {!administra && (
+          <p class="border-t border-borde px-4 py-2.5 text-[12.5px] text-tinta-tenue">
+            Solo un editor puede crear, rotar o eliminar credenciales.
+          </p>
+        )}
+      </Panel>
 
-        {lista.map((credencial) =>
-          historial[credencial.id] ? (
-            <details key={`hist-${credencial.id}`} open>
-              <summary>historial de {credencial.name}</summary>
-              <table>
+      {lista.map((credencial) =>
+        historial[credencial.id] ? (
+          <Panel key={`hist-${credencial.id}`}>
+            <div class="flex flex-wrap items-center gap-3 border-b border-borde px-4 py-3">
+              <span class="text-[14px] font-semibold text-tinta">
+                Historial de {credencial.name}
+              </span>
+              <Boton
+                variante="secundario"
+                chico
+                class="ml-auto"
+                onClick={() => void abrirHistorial(credencial)}
+              >
+                Cerrar
+              </Boton>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[420px] border-collapse">
                 <thead>
-                  <tr><th>versión</th><th>creada</th><th>estado</th></tr>
+                  <tr class="border-b border-borde text-left text-[12px] font-semibold text-tinta-suave">
+                    <th class="px-4 py-2 font-semibold">Versión</th>
+                    <th class="px-4 py-2 font-semibold">Creada</th>
+                    <th class="px-4 py-2 font-semibold">Estado</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {(historial[credencial.id] ?? []).map((version) => (
-                    <tr key={version.id}>
-                      <td>v{version.version}</td>
-                      <td>{new Date(version.createdAt).toLocaleString()}</td>
-                      <td>
+                    <tr key={version.id} class="border-b border-borde last:border-0">
+                      <td class="px-4 py-2 font-mono text-[12.5px]">v{version.version}</td>
+                      <td class="px-4 py-2 text-[13px] text-tinta-suave">
+                        {new Date(version.createdAt).toLocaleString()}
+                      </td>
+                      <td class="px-4 py-2">
                         {esVigente(version.id, credencial.currentVersionId) ? (
-                          <span class="insignia">vigente</span>
+                          <Etiqueta texto="vigente" />
                         ) : (
-                          "reemplazada"
+                          <span class="text-[13px] text-tinta-suave">reemplazada</span>
                         )}
                       </td>
                     </tr>
                   ))}
+                  {(historial[credencial.id] ?? []).length === 0 && (
+                    <tr>
+                      <td colspan={3} class="px-4 py-4 text-[13.5px] text-tinta-suave">
+                        Todavía no hay versiones registradas para esta credencial.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
-              <p class="ayuda">ids y fechas solamente: los valores nunca salen de la bóveda.</p>
-            </details>
-          ) : null,
-        )}
-
-        {!administra && <p class="ayuda">solo un editor puede crear, rotar o eliminar credenciales</p>}
-      </div>
+            </div>
+            <p class="border-t border-borde px-4 py-2.5 text-[12.5px] text-tinta-tenue">
+              Solo ids y fechas: los valores nunca salen de la bóveda.
+            </p>
+          </Panel>
+        ) : null,
+      )}
     </div>
   );
 }
