@@ -2257,12 +2257,13 @@
       },
       "BlockVersion": {
         "type": "object",
-        "description": "Versión inmutable de un bloque. `code` es el JS transpilado (null solo en históricos built-in).",
+        "description": "Versión inmutable de un bloque. `code` es siempre el JavaScript que ejecuta el sandbox (null en built-in http y en históricos sin código); `sourceCode` es el fuente original que escribió el autor (null en built-in http y en versiones publicadas antes de conservarse), nunca lo que ejecuta el runtime.",
         "required": [
           "id",
           "blockId",
           "version",
           "code",
+          "sourceCode",
           "configSchema",
           "inputSchema",
           "outputSchema",
@@ -2285,7 +2286,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "JavaScript transpilado (swc) que ejecuta el sandbox. Es el artefacto con significado en runtime."
+          },
+          "sourceCode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Fuente TypeScript original enviado al publicar, conservado para auditoría y para continuar editando. No lo ejecuta el runtime."
           },
           "configSchema": {
             "$ref": "#/components/schemas/JsonSchema"

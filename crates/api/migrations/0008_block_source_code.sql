@@ -1,0 +1,12 @@
+-- add-block-source-code (design D1/D2): el fuente TypeScript original de un
+-- bloque custom_logic se conservaba solo como recuerdo; `block_versions.code`
+-- guarda el JS transpilado con swc y el fuente se perdía al publicar.
+--
+-- `source_code` es TEXT NULLABLE, sin default y SIN backfill (D2): NULL
+-- significa «esta versión no tiene fuente original», que cubre los dos casos
+-- legítimos — built-in http (nunca lleva código) y versión custom_logic
+-- publicada antes de este change. Rellenarla con `code` mentiría: el JS
+-- emitido no es lo que escribió el autor.
+--
+-- Aditiva y sin rewrite de tabla en Postgres 11+; se aplica sola al arrancar.
+ALTER TABLE block_versions ADD COLUMN source_code TEXT;

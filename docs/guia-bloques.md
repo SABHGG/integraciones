@@ -11,7 +11,7 @@ sandbox permite. Todo es operable desde la consola (**Bloques**) o por API
 
 1. **Elige el tipo**: built-in `http` (ya existe, solo configúralo) o `custom_logic` (tu código).
 2. **Crea el bloque**: consola → *Bloques → Nuevo bloque*, o `POST /api/v1/blocks`.
-3. **Publica la v1**: escribe el código, define `inputSchema`/`outputSchema`/`ui` y publica — la consola muestra los errores de transpile con su línea.
+3. **Publica la v1**: escribe el código, define `inputSchema`/`outputSchema`/`ui` y publica — la consola muestra los errores de transpile con su línea. El TypeScript original se conserva junto al JS transpilado y lo puedes releer en el detalle del bloque.
 4. **Úsalo en un puente**: → [Guía: crear y publicar puentes](guia-puentes.md).
 
 ## Elige el tipo
@@ -88,6 +88,17 @@ curl -X POST /api/v1/blocks/$BLOQUE/versions -H "Authorization: Bearer $KEY" \
   }'
 ```
 
+El campo `code` que envías es el **TypeScript** del bloque. Al publicar se
+conservan **dos artefactos** en la versión inmutable:
+
+- `sourceCode` — el fuente TypeScript **tal como lo enviaste**, para auditar y
+  para seguir editando el bloque desde su código real. No lo ejecuta nada.
+- `code` — el **JavaScript transpilado con swc**, que es lo único que ve el
+  sandbox QuickJS.
+
+Un error de transpile responde 422 y no crea versión: nunca hay fuente sin JS.
+`GET /api/v1/blocks/{id}/versions` devuelve ambos campos por versión.
+
 ### Metadatos `ui` (formularios de la consola)
 
 Opcionales; sin ellos la instancia se configura como JSON libre validado
@@ -107,6 +118,28 @@ vigente hasta entonces: `latestVersion` avanza y las ejecuciones en curso
 terminan con la versión con la que empezaron. Las instancias de los puentes
 fijan `blockVersionId` — actualizar un puente a la versión nueva es una
 edición explícita tuya.
+
+### Ver el código de una versión
+
+En el detalle del bloque (**Bloques → clic en el slug**), cada versión del
+historial es un desplegable *Código de la vN* — en lectura, para cualquier rol
+(un `viewer` lo ve, pero no el editor ni el botón de publicar). Qué muestra
+depende de lo que la versión conserve:
+
+| Caso | Qué ves |
+|---|---|
+| Versión publicada **con este change o después** | El **TypeScript original**, sin etiqueta: es lo que escribió el autor |
+| Versión `custom_logic` **anterior a este change** | El **JS transpilado**, con la etiqueta «JS transpilado — versión anterior al change» |
+| Bloque **built-in `http`** | «built-in: sin código»: su comportamiento lo define el host |
+
+Las versiones anteriores al change **no tienen fuente recuperable**: nunca se
+guardó y el sistema no lo inventa, así que solo queda su JS. Es una limitación
+permanente, no un fallo de la instalación.
+
+El editor de *publicar nueva versión* arranca con el `sourceCode` de la última
+versión cuando existe (y con la plantilla si no), para que editar y publicar
+parta del código real del bloque. Un error de transpile sigue bloqueando la
+publicación y el validador señala la línea.
 
 ## El sandbox: qué tienes y qué no
 

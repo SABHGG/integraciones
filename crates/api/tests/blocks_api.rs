@@ -1020,6 +1020,126 @@ async fn las_versiones_se_listan_de_mas_nueva_a_mas_vieja_con_cursor() {
         .problem(StatusCode::BAD_REQUEST);
 }
 
+// ── fuente original del bloque (change add-block-source-code) ──────────
+
+#[tokio::test]
+async fn publicar_un_custom_logic_conserva_el_fuente_junto_al_js() {
+    let Some(h) = begin().await else { return };
+
+    let block = h.create_block("con-fuente", "custom_logic").await;
+    let id = uuid_of(&block);
+
+    let response = h
+        .publish(&id.to_string(), json!({ "code": BLOQUE_TS }))
+        .await;
+    assert_eq!(response.status, StatusCode::CREATED, "{}", response.body);
+    let version = response.json();
+
+    // El fuente expuesto es exactamente el TS enviado (no el JS emitido).
+    assert_eq!(
+        version["sourceCode"].as_str(),
+        Some(BLOQUE_TS),
+        "la respuesta devuelve el TS original: {}",
+        response.body
+    );
+    let js = version["code"].as_str().expect("el JS transpilado");
+    assert_ne!(js, BLOQUE_TS, "code y sourceCode son artefactos distintos");
+    assert!(
+        !js.contains(": string"),
+        "code sigue siendo el JS emitido: {js}"
+    );
+
+    // Ambos artefactos quedan persistidos en la misma fila inmutable.
+    let persisted: (String, String) =
+        sqlx::query_as("SELECT code, source_code FROM block_versions WHERE block_id = $1")
+            .bind(id)
+            .fetch_one(&h.pool)
+            .await
+            .expect("versión persistida");
+    assert_eq!(persisted.0, js);
+    assert_eq!(persisted.1, BLOQUE_TS);
+
+    // La lista de versiones expone el mismo par en campos separados.
+    let listado = h
+        .get(&format!("/api/v1/blocks/{id}/versions"))
+        .await
+        .json();
+    assert_eq!(listado["items"][0]["sourceCode"].as_str(), Some(BLOQUE_TS));
+    assert_eq!(listado["items"][0]["code"].as_str(), Some(js));
+}
+
+#[tokio::test]
+async fn un_builtin_http_no_expone_codigo_ni_fuente() {
+    let Some(h) = begin().await else { return };
+
+    let block = h.create_block("builtin-sin-codigo", "http").await;
+    let id = uuid_of(&block).to_string();
+
+    let version = h.publish(&id, json!({})).await.json();
+    assert!(
+        version["code"].is_null(),
+        "code NULL: {version}"
+    );
+    assert!(
+        version["sourceCode"].is_null(),
+        "sourceCode NULL, no cadena vacía: {version}"
+    );
+
+    let listado = h.get(&format!("/api/v1/blocks/{id}/versions")).await.json();
+    assert!(listado["items"][0]["code"].is_null());
+    assert!(listado["items"][0]["sourceCode"].is_null());
+}
+
+#[tokio::test]
+async fn una_version_historica_sin_fuente_se_lee_con_source_code_null() {
+    let Some(h) = begin().await else { return };
+
+    let block = h.create_block("historica", "custom_logic").await;
+    let id = uuid_of(&block);
+
+    // Simula una versión publicada ANTES del change: JS en `code`, sin fuente
+    // (la columna existe pero NULL; el INSERT la omite). No hay backfill.
+    let version_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO block_versions (id, block_id, version, code)
+         VALUES ($1, $2, 1, $3)",
+    )
+    .bind(version_id)
+    .bind(id)
+    .bind("const x = 1;\n")
+    .execute(&h.pool)
+    .await
+    .expect("versión histórica");
+
+    let listado = h
+        .get(&format!("/api/v1/blocks/{id}/versions"))
+        .await
+        .json();
+    let item = &listado["items"][0];
+    assert_eq!(item["code"].as_str(), Some("const x = 1;\n"));
+    assert!(
+        item["sourceCode"].is_null(),
+        "el sistema no inventa un fuente retroactivo: {item}"
+    );
+}
+
+#[tokio::test]
+async fn un_422_de_transpile_no_deja_fuente_sin_js() {
+    let Some(h) = begin().await else { return };
+
+    let block = h.create_block("roto-sin-version", "custom_logic").await;
+    let id = uuid_of(&block);
+
+    h.publish(
+        &id.to_string(),
+        json!({ "code": "export default function () {\n  const roto: = ;\n}" }),
+    )
+    .await
+    .problem(StatusCode::UNPROCESSABLE_ENTITY);
+
+    assert_eq!(h.count_versions(id).await, 0, "el 422 no crea versión");
+}
+
 // ── versiones de bloques built-in http (biblioteca base, task 4.6/5.1) ──
 
 #[tokio::test]
@@ -1049,6 +1169,11 @@ async fn un_bloque_http_publica_versiones_sin_codigo() {
     assert!(
         version["code"].is_null(),
         "code queda NULL: {}",
+        response.body
+    );
+    assert!(
+        version["sourceCode"].is_null(),
+        "sourceCode también NULL: {}",
         response.body
     );
     assert_eq!(

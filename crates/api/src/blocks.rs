@@ -13,8 +13,12 @@
 //!   propio, su comportamiento lo define el ejecutor. Un 409 invitaría al
 //!   cliente a reintentar con otro payload, y aquí ningún payload lo arregla
 //!   salvo crear un bloque `custom_logic`.
-//! - El `code` guardado es **siempre JavaScript transpilado** (`block_versions.code`);
-//!   el TypeScript del usuario no se persiste: es una fuente, no un artefacto.
+//! - La versión guarda **dos** artefactos de código (change add-block-source-code):
+//!   `block_versions.code` es siempre el **JavaScript transpilado con swc** — lo
+//!   único que ve el sandbox — y `block_versions.source_code` conserva el
+//!   **fuente TypeScript tal como lo escribió el autor** (NULL en built-in http
+//!   y en las versiones publicadas antes de ese change, que no se rellenan:
+//!   poner ahí el JS emitido sería mentir).
 //! - Las versiones son inmutables: publicar crea fila nueva con
 //!   `version = COALESCE(MAX(version), 0) + 1` dentro de una transacción que
 //!   bloquea la fila del bloque (`FOR UPDATE`), lo que serializa publicaciones
@@ -66,8 +70,8 @@ const BLOCK_COLUMNS: &str = "id, workspace_id, slug, name, block_type, category,
                              description, icon, latest_version, created_at, updated_at";
 
 /// Columnas de `block_versions` en el orden de [`BlockVersionDto`].
-const VERSION_COLUMNS: &str = "id, block_id, version, code, config_schema, input_schema, \
-                               output_schema, ui, created_at";
+const VERSION_COLUMNS: &str = "id, block_id, version, code, source_code, config_schema, \
+                               input_schema, output_schema, ui, created_at";
 
 /// Bloque tal como lo expone la API.
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -86,8 +90,11 @@ struct BlockDto {
     updated_at: DateTime<Utc>,
 }
 
-/// Versión inmutable de un bloque. `code` es el JS transpilado (NULL solo para
-/// filas históricas de bloques built-in).
+/// Versión inmutable de un bloque. `code` es siempre el **JavaScript que ejecuta
+/// el sandbox** (NULL en built-in http y en filas históricas sin código), nunca
+/// el TypeScript del autor; `source_code` conserva ese **fuente original** tal
+/// como se envió al publicar (NULL cuando no existe: built-in o versión anterior
+/// al change). El runtime sigue leyendo solo `code`.
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 struct BlockVersionDto {
@@ -95,6 +102,7 @@ struct BlockVersionDto {
     block_id: Uuid,
     version: i32,
     code: Option<String>,
+    source_code: Option<String>,
     config_schema: Value,
     input_schema: Value,
     output_schema: Value,
@@ -322,8 +330,7 @@ struct PublishVersionRequest {
     /// TypeScript del bloque (`export default function (input, ctx) { … }`).
     /// Solo para `custom_logic`: los built-in http publican sin código.
     #[serde(default)]
-    code: Option<String>,
-    #[serde(default)]
+    code: Option<String>,    #[serde(default)]
     config_schema: Option<Value>,
     #[serde(default)]
     input_schema: Option<Value>,
@@ -367,8 +374,10 @@ async fn publish_version(
     };
 
     // El código depende del tipo: custom_logic lo exige (el JS es su
-    // comportamiento); los built-in http lo prohíben (lo define el ejecutor)
-    // y publican versiones de solo schemas con `code` NULL.
+    // comportamiento) y conserva además el fuente original (add-block-source-code);
+    // los built-in http lo prohíben (lo define el ejecutor) y publican versiones
+    // de solo schemas con `code` y `source_code` NULL.
+    let mut fuente: Option<&String> = None;
     let js: Option<String> = if block_type == "custom_logic" {
         let Some(code) = &request.code else {
             return Err(invalid_body(
@@ -379,6 +388,8 @@ async fn publish_version(
                 )],
             ));
         };
+        // El TS que llegó se persiste tal cual; `code` guarda solo su JS emitido.
+        fuente = Some(code);
         // TypeScript → JavaScript: un error de compilación no crea versión.
         Some(
             transpile::transpile_typescript(code).map_err(|error| match error {
@@ -454,13 +465,15 @@ async fn publish_version(
              FROM block_versions WHERE block_id = $2
          )
          INSERT INTO block_versions
-             (id, block_id, version, code, config_schema, input_schema, output_schema, ui)
-         SELECT $1, $2, siguiente.version, $3, $4, $5, $6, $7 FROM siguiente
+             (id, block_id, version, code, source_code, config_schema, input_schema,
+              output_schema, ui)
+         SELECT $1, $2, siguiente.version, $3, $4, $5, $6, $7, $8 FROM siguiente
          RETURNING {VERSION_COLUMNS}"
     ))
     .bind(version_id)
     .bind(id)
     .bind(&js)
+    .bind(fuente)
     .bind(&config_schema)
     .bind(&input_schema)
     .bind(&output_schema)

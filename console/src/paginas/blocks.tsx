@@ -3,10 +3,12 @@
 //! el change add-blocks-detalle-ruta — el detalle de cada bloque es página
 //! propia en `/console/blocks/{id}`. Crear/editar/publicar solo para
 //! `editor`; viewer inspecciona en lectura. Render El rastro (MVP6).
-import { useEffect, useState } from "preact/hooks";
+import { Fragment } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { api, type Page } from "../lib/api";
 import { puede, type Rol } from "../lib/roles";
 import { EditorCodigo } from "../ui";
+import { codigoAMostrar } from "../lib/codigo-bloque";
 import {
   filtrarBloques,
   categorias,
@@ -21,7 +23,10 @@ interface VersionBloque {
   id: string;
   blockId: string;
   version: number;
+  /** JS transpilado que ejecuta el sandbox (null si la versión no tiene código). */
   code: string | null;
+  /** Fuente TypeScript original del autor (null si no existe). */
+  sourceCode: string | null;
   configSchema: unknown;
   inputSchema: unknown;
   outputSchema: unknown;
@@ -287,27 +292,47 @@ export function BibliotecaBloques(props: { rol: Rol | null; navegar: (ruta: stri
   );
 }
 
+const PLANTILLA_BLOQUE = "export default (ctx) => {\n  return { ok: true };\n};\n";
+
 export function DetalleBloque(props: { id: string; rol: Rol | null; navegar: (ruta: string) => void }) {
   const [bloque, setBloque] = useState<BloqueResumen | null>(null);
   const [versiones, setVersiones] = useState<VersionBloque[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [codigo, setCodigo] = useState(
-    "export default (ctx) => {\n  return { ok: true };\n};\n",
-  );
+  const [codigo, setCodigo] = useState(PLANTILLA_BLOQUE);
   const [erroresEditor, setErroresEditor] = useState<string[]>([]);
+  // Precarga del editor (design D6): solo UNA vez, en la primera carga de
+  // versiones. Tras publicar, el editor conserva lo que la persona escribió en
+  // vez de saltar al texto recién publicado; tampoco se precarga con `code`
+  // (presentar el JS emitido como fuente editable invitaría a publicarlo como
+  // si fuera el original).
+  const precargado = useRef(false);
+  // El editor (CodeMirror) lee `codigo` solo al montar: no se renderiza hasta
+  // que la carga de versiones decidió la precarga (D6), para que monte ya con
+  // el fuente vigente en vez de la plantilla.
+  const [cargado, setCargado] = useState(false);
 
   const administra = puede(props.rol, "administrar-recursos");
 
   useEffect(() => {
+    // Al cambiar de bloque el guard de precarga vuelve a cero.
+    precargado.current = false;
+    setCargado(false);
     void (async () => {
       try {
         const detalle = await api<BloqueResumen>("GET", `/blocks/${props.id}`);
         setBloque(detalle);
         const pagina = await api<Page<VersionBloque>>("GET", `/blocks/${props.id}/versions`);
         setVersiones(pagina.items);
+        if (!precargado.current) {
+          precargado.current = true;
+          const fuente = pagina.items[0]?.sourceCode;
+          if (fuente != null && fuente !== "") setCodigo(fuente);
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "no se pudo cargar el bloque");
+      } finally {
+        setCargado(true);
       }
     })();
   }, [props.id]);
@@ -382,14 +407,42 @@ export function DetalleBloque(props: { id: string; rol: Rol | null; navegar: (ru
               </tr>
             </thead>
             <tbody>
-              {versiones.map((version) => (
-                <tr key={version.id} class="border-b border-borde last:border-0">
-                  <td class="px-4 py-2 font-mono text-[12.5px]">v{version.version}</td>
-                  <td class="px-4 py-2 text-[13px] text-tinta-suave">
-                    {new Date(version.createdAt).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
+              {versiones.map((version) => {
+                const { codigo: visible, etiqueta } = codigoAMostrar(version);
+                return (
+                  <Fragment key={version.id}>
+                    <tr class="border-b border-borde last:border-0">
+                      <td class="px-4 py-2 font-mono text-[12.5px]">v{version.version}</td>
+                      <td class="px-4 py-2 text-[13px] text-tinta-suave">
+                        {new Date(version.createdAt).toLocaleString()}
+                      </td>
+                    </tr>
+                    {visible !== null ? (
+                      <tr class="border-b border-borde last:border-0">
+                        <td colspan={2} class="px-4 pb-3 pt-0">
+                          <details>
+                            <summary class="cursor-pointer text-[13px] text-tinta-suave hover:text-tinta">
+                              Código de la v{version.version}
+                              {etiqueta && (
+                                <span class="ml-2 text-[12px] text-tinta-tenue">{etiqueta}</span>
+                              )}
+                            </summary>
+                            <pre class="mt-2 max-h-64 overflow-auto rounded-[6px] border border-borde bg-papel p-2.5 font-mono text-[11.5px] leading-relaxed">
+                              {visible}
+                            </pre>
+                          </details>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr class="border-b border-borde last:border-0">
+                        <td colspan={2} class="px-4 pb-3 pt-0 text-[12.5px] text-tinta-tenue">
+                          v{version.version}: {etiqueta}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
               {versiones.length === 0 && (
                 <tr>
                   <td colspan={2} class="px-4 py-4 text-[13.5px] text-tinta-suave">
@@ -414,7 +467,7 @@ export function DetalleBloque(props: { id: string; rol: Rol | null; navegar: (ru
           </details>
         )}
 
-        {administra && bloque.blockType === "custom_logic" && (
+        {administra && bloque.blockType === "custom_logic" && cargado && (
           <div class="border-t border-borde px-4 py-3.5">
             <div class="text-[14px] font-semibold text-tinta">Código (publicar nueva versión)</div>
             <p class="mt-1 mb-3 text-[12.5px] text-tinta-suave">
