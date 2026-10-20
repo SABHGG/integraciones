@@ -145,17 +145,23 @@ function App(): preact.ComponentChildren {
 
       <main class="min-w-0 flex-1 px-4 py-5 md:px-7">
         <div class="mx-auto max-w-[1240px]">
-        {/* Páginas aún no migradas al sistema El rastro: viven bajo .legacy
-            (alcance de styles.css). Se irán sacando del wrapper en F3-F5. */}
-        <div class="legacy">
-          {ruta.pantalla === "ejecuciones" && <Ejecuciones navegar={navegar} />}
-          {ruta.pantalla === "ejecucion" && <DetalleEjecucion id={ruta.id} />}
-          {ruta.pantalla === "puentes" && <ListaPuentes navegar={navegar} rol={rol} />}
-          {ruta.pantalla === "puente" && <EditorPuente id={ruta.id} rol={rol} />}
-          {ruta.pantalla === "miembros" && <Miembros rol={rol} />}
-          {ruta.pantalla === "credenciales" && <Credenciales rol={rol} />}
-          {ruta.pantalla === "bloques" && <BibliotecaBloques rol={rol} />}
-        </div>
+          {/* Página target del MVP6 (Ejecuciones) ya migrada: vive fuera de .legacy. */}
+          {(ruta.pantalla === "ejecuciones" || ruta.pantalla === "ejecucion") && (
+            <>
+              {ruta.pantalla === "ejecuciones"
+                ? <Ejecuciones navegar={navegar} />
+                : <DetalleEjecucion id={ruta.id} />}
+            </>
+          )}
+          {/* Páginas aún no migradas al sistema El rastro: viven bajo .legacy
+              (alcance de styles.css). Se irán sacando del wrapper en F4-F5. */}
+          <div class="legacy">
+            {ruta.pantalla === "puentes" && <ListaPuentes navegar={navegar} rol={rol} />}
+            {ruta.pantalla === "puente" && <EditorPuente id={ruta.id} rol={rol} />}
+            {ruta.pantalla === "miembros" && <Miembros rol={rol} />}
+            {ruta.pantalla === "credenciales" && <Credenciales rol={rol} />}
+            {ruta.pantalla === "bloques" && <BibliotecaBloques rol={rol} />}
+          </div>
         </div>
       </main>
     </div>

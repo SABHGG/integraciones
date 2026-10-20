@@ -16,10 +16,10 @@
 ## 3. Fase 3 — Ejecuciones y el rastro (página target)
 
 - [x] 3.1 Backend aditivo: `GET /executions` incluye `pasos` (status, durationMs, sin IO) por ejecución; test de API del campo nuevo; openapi.json actualizado
-- [ ] 3.2 Banda de métricas con divisores (total, éxito, fallos, duración media con p95) conectada a `GET /stats` con rango 7/30/90
-- [ ] 3.3 Serie diaria apilada correctas/fallidas con leyenda y eje de fechas
-- [ ] 3.4 Tabla de ejecuciones con rastro en miniatura por fila (segmentos proporcionales, total "N pasos · X ms" / "en curso" / "en cola"), filtros y auto-refresh
-- [ ] 3.5 Detalle de ejecución renovado: trace completo como cadena (nudo + rail), IO en mono, fallo señalizado; comparar 1:1 contra `target/`
+- [x] 3.2 Banda de métricas con divisores (total, éxito, fallos, duración media con p95) conectada a `GET /stats` con rango 7/30/90
+- [x] 3.3 Serie diaria apilada correctas/fallidas con leyenda y eje de fechas
+- [x] 3.4 Tabla de ejecuciones con rastro en miniatura por fila (segmentos proporcionales, total "N pasos · X ms" / "en curso" / "en cola"), filtros y auto-refresh
+- [x] 3.5 Detalle de ejecución renovado: trace completo como cadena (nudo + rail), IO en mono, fallo señalizado; comparar 1:1 contra `target/`
 
 ## 4. Fase 4 — Puentes, editor y versiones
 

@@ -51,6 +51,20 @@ export function formatearDuracion(ms: number | null | undefined): string {
   return `${(ms / 1000).toFixed(1).replace(".", ",")} s`;
 }
 
+/** Instante legible en voz de operador: «hace 2 min», «hace 3 h», fecha vieja. */
+export function hace(instante: string | Date, ahora: Date = new Date()): string {
+  const fecha = typeof instante === "string" ? new Date(instante) : instante;
+  const segundos = Math.max(0, Math.round((ahora.getTime() - fecha.getTime()) / 1000));
+  if (segundos < 60) return segundos <= 0 ? "ahora mismo" : `hace ${segundos} s`;
+  const minutos = Math.round(segundos / 60);
+  if (minutos < 60) return `hace ${minutos} min`;
+  const horas = Math.round(minutos / 60);
+  if (horas < 24) return `hace ${horas} h`;
+  const dias = Math.round(horas / 24);
+  if (dias < 7) return `hace ${dias} d`;
+  return fecha.toLocaleDateString();
+}
+
 /** Pico de la serie para escalar las barras (mínimo 1 para evitar ÷0). */
 export function picoSerie(serie: DiaCompleto[]): number {
   return Math.max(1, ...serie.map((dia) => dia.total));

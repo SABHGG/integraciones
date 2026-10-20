@@ -58,3 +58,9 @@ Copys en español, voz de operador: verbos exactos ("Publicar versión" publica;
 ## Verificación
 
 1:1 contra el target en 1440×900 (captura Playwright comparada con `target/d-el-rastro.png`: mismo encuadre, proporciones, tipografía, estados). Después: 1280 (desktop bajo), 390 (móvil), estados vacío/carga/error en al menos dos páginas, focus con teclado, reduced-motion. La comparación visual es humana (limitación D1); la automatizada es estructural + contraste.
+
+### Desviaciones documentadas del target (resueltas en la implementación)
+
+- La cabecera del target solo contiene rango + estados + puentes. Los filtros funcionales del listado que no estaban en el mockup (rango fino `desde` del MVP3 y auto-refresh del MVP5) viven en una barra propia dentro del panel de la tabla: cabecera idéntica al target, funcionalidad intacta.
+- El target muestra «p95 · 1,8 s» como dato demo; `GET /stats` no expone p95 y este change no añade backend para métricas — el cuarto KPI muestra «media de exitosas».
+- Densidad: filas de 47px vs 44px del mockup y ~11px más de aire sobre la cabecera; tolerancia aceptada (el rastro de dos líneas no comprime más sin perder legibilidad).
