@@ -10,7 +10,7 @@ import { Ejecuciones, DetalleEjecucion } from "./paginas/executions";
 import { EditorPuente, ListaPuentes } from "./paginas/bridges";
 import { Miembros } from "./paginas/members";
 import { Credenciales } from "./paginas/credentials";
-import { BibliotecaBloques } from "./paginas/blocks";
+import { BibliotecaBloques, DetalleBloque } from "./paginas/blocks";
 import "./tema.css";
 
 type Ruta =
@@ -20,6 +20,7 @@ type Ruta =
   | { pantalla: "credenciales" }
   | { pantalla: "bloques" }
   | { pantalla: "puente"; id: string }
+  | { pantalla: "bloque"; id: string }
   | { pantalla: "miembros" };
 
 function leerRuta(): Ruta {
@@ -29,12 +30,13 @@ function leerRuta(): Ruta {
   if (partes[1] === "bridges" && partes[2]) return { pantalla: "puente", id: partes[2] };
   if (partes[1] === "members") return { pantalla: "miembros" };
   if (partes[1] === "credentials") return { pantalla: "credenciales" };
+  if (partes[1] === "blocks" && partes[2]) return { pantalla: "bloque", id: partes[2] };
   if (partes[1] === "blocks") return { pantalla: "bloques" };
   return { pantalla: "puentes" };
 }
 
 function navegar(ruta: string): void {
-  history.pushState(null, "", `/console${ruta}`);
+  history.pushState({ app: true }, "", `/console${ruta}`);
   dispatchEvent(new PopStateEvent("popstate"));
 }
 
@@ -76,7 +78,7 @@ function App(): preact.ComponentChildren {
     { ruta: "/bridges", texto: "Puentes", activo: ruta.pantalla === "puentes" || ruta.pantalla === "puente" },
     { ruta: "/members", texto: "Miembros", activo: ruta.pantalla === "miembros" },
     { ruta: "/credentials", texto: "Credenciales", activo: ruta.pantalla === "credenciales" },
-    { ruta: "/blocks", texto: "Bloques", activo: ruta.pantalla === "bloques" },
+    { ruta: "/blocks", texto: "Bloques", activo: ruta.pantalla === "bloques" || ruta.pantalla === "bloque" },
   ];
 
   const enlace = (s: (typeof secciones)[number]) => (
@@ -159,9 +161,12 @@ function App(): preact.ComponentChildren {
                 : <EditorPuente id={ruta.id} rol={rol} />}
             </>
           )}
+          {ruta.pantalla === "bloque" && (
+            <DetalleBloque id={ruta.id} rol={rol} navegar={navegar} />
+          )}
           {ruta.pantalla === "miembros" && <Miembros rol={rol} />}
           {ruta.pantalla === "credenciales" && <Credenciales rol={rol} />}
-          {ruta.pantalla === "bloques" && <BibliotecaBloques rol={rol} />}
+          {ruta.pantalla === "bloques" && <BibliotecaBloques rol={rol} navegar={navegar} />}
         </div>
       </main>
     </div>
