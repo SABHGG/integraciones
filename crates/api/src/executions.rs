@@ -242,10 +242,10 @@ async fn list_executions(
         .await
         .map_err(|error| rest::db_error("listar los pasos de la página", error))?;
         for (execution_id, status, duration_ms) in filas {
-            pasos
-                .entry(execution_id)
-                .or_default()
-                .push(PasoResumenDto { status, duration_ms });
+            pasos.entry(execution_id).or_default().push(PasoResumenDto {
+                status,
+                duration_ms,
+            });
         }
     }
 

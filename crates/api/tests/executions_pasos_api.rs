@@ -182,18 +182,28 @@ async fn el_listado_trae_el_resumen_de_pasos_en_orden_y_sin_io() {
     let Some(h) = begin().await else { return };
     let (puente, version) = h.sembrar_puente("pasos-a").await;
     let ok = h
-        .sembrar_ejecucion(puente, version, "succeeded", &[
-            (1, "succeeded", Some(120)),
-            (2, "succeeded", Some(45)),
-            (3, "succeeded", Some(210)),
-        ])
+        .sembrar_ejecucion(
+            puente,
+            version,
+            "succeeded",
+            &[
+                (1, "succeeded", Some(120)),
+                (2, "succeeded", Some(45)),
+                (3, "succeeded", Some(210)),
+            ],
+        )
         .await;
     let mala = h
-        .sembrar_ejecucion(puente, version, "failed", &[
-            (1, "succeeded", Some(90)),
-            (2, "failed", Some(240)),
-            (3, "skipped", None),
-        ])
+        .sembrar_ejecucion(
+            puente,
+            version,
+            "failed",
+            &[
+                (1, "succeeded", Some(90)),
+                (2, "failed", Some(240)),
+                (3, "skipped", None),
+            ],
+        )
         .await;
 
     let respuesta = h.admin(Method::GET, "/api/v1/executions").await;
@@ -226,10 +236,16 @@ async fn el_listado_trae_el_resumen_de_pasos_en_orden_y_sin_io() {
     assert_eq!(pasos_mal[2]["status"], json!("skipped"));
     assert!(pasos_mal[2]["durationMs"].is_null());
 
-    // Nada de IO en el resumen: solo status y durationMs.
+    // Nada de IO en el resumen: solo status y durationMs (sin depender del
+    // orden de claves del serializador).
     for paso in pasos_ok.iter().chain(pasos_mal.iter()) {
-        let claves: Vec<&str> = paso.as_object().expect("objeto").keys().map(String::as_str).collect();
-        assert_eq!(claves, vec!["status", "durationMs"], "el resumen no debe traer IO: {claves:?}");
+        let mut claves: Vec<String> = paso.as_object().expect("objeto").keys().cloned().collect();
+        claves.sort();
+        assert_eq!(
+            claves,
+            vec!["durationMs", "status"],
+            "el resumen no debe traer IO: {claves:?}"
+        );
     }
 }
 
@@ -267,6 +283,7 @@ async fn el_resumen_no_cruza_workspaces() {
         .await
         .expect("workspace ajeno");
     let puente_ajeno = Uuid::now_v7();
+    let version_ajena = Uuid::now_v7();
     sqlx::query("INSERT INTO bridges (id, workspace_id, slug, name) VALUES ($1, $2, $3, $4)")
         .bind(puente_ajeno)
         .bind(otro_workspace)
@@ -275,15 +292,25 @@ async fn el_resumen_no_cruza_workspaces() {
         .execute(&h.pool)
         .await
         .expect("puente ajeno");
+    sqlx::query(
+        "INSERT INTO bridge_versions (id, bridge_id, version, definition) \
+         VALUES ($1, $2, 1, '{\"trigger\":{\"type\":\"http\"}}'::jsonb)",
+    )
+    .bind(version_ajena)
+    .bind(puente_ajeno)
+    .execute(&h.pool)
+    .await
+    .expect("versión ajena");
     let ajena = Uuid::now_v7();
     sqlx::query(
         "INSERT INTO executions (id, workspace_id, bridge_id, bridge_version_id, \
          trigger_type, status, created_at, run_at) \
-         VALUES ($1, $2, $3, $3, 'manual', 'succeeded', now(), now())",
+         VALUES ($1, $2, $3, $4, 'manual', 'succeeded', now(), now())",
     )
     .bind(ajena)
     .bind(otro_workspace)
     .bind(puente_ajeno)
+    .bind(version_ajena)
     .execute(&h.pool)
     .await
     .expect("ejecución ajena");
