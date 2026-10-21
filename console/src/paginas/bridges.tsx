@@ -70,6 +70,11 @@ export function ListaPuentes(props: { navegar: (ruta: string) => void; rol: Rol 
   const [textoImport, setTextoImport] = useState("");
   const [publicarAlImportar, setPublicarAlImportar] = useState(false);
   const [erroresValidacion, setErroresValidacion] = useState<string[]>([]);
+  const [nombreNuevo, setNombreNuevo] = useState("");
+  const [slugNuevo, setSlugNuevo] = useState("");
+  const [slugEditado, setSlugEditado] = useState(false);
+  const [erroresNuevo, setErroresNuevo] = useState<string[]>([]);
+  const [creando, setCreando] = useState(false);
 
   const refrescar = () =>
     api<Page<Puente>>("GET", "/bridges?limit=100").then((pagina) => setPuentes(pagina.items));
@@ -81,6 +86,44 @@ export function ListaPuentes(props: { navegar: (ruta: string) => void; rol: Rol 
   }, []);
 
   const administra = puede(props.rol, "administrar-recursos");
+
+  /// Slug sugerido desde el nombre: minúsculas, sin acentos, guiones simples
+  /// (el patrón lo valida el plano; aquí solo sugerimos).
+  const sugerirSlug = (nombre: string) =>
+    nombre
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+  // Crear desde cero (spec web-console «Vacío que invita» + taller): POST del
+  // borrador vacío y directo a su editor; el disparador, la cadena y la
+  // publicación se hacen ahí.
+  const crear = async (evento: Event) => {
+    evento.preventDefault();
+    setAviso(null);
+    setError(null);
+    setErroresNuevo([]);
+    const slug = (slugNuevo.trim() || sugerirSlug(nombreNuevo)).trim();
+    if (!nombreNuevo.trim() || !slug) {
+      setErroresNuevo(["nombre: el puente necesita un nombre (y un slug)"]);
+      return;
+    }
+    setCreando(true);
+    try {
+      const creado = await api<Puente>("POST", "/bridges", { slug, name: nombreNuevo.trim() });
+      props.navegar(`/bridges/${creado.id}`);
+    } catch (e) {
+      if (e instanceof Error && "fields" in e) {
+        const campos = (e as { fields: { field: string; message: string }[] }).fields;
+        setErroresNuevo(campos.map((f) => `${f.field}: ${f.message}`));
+      }
+      setError(e instanceof Error ? e.message : "no se pudo crear el puente");
+    } finally {
+      setCreando(false);
+    }
+  };
 
   const descargar = (artefacto: ArtefactoPuente) => {
     const blob = new Blob([artefactoExport(artefacto)], { type: "application/json" });
@@ -187,6 +230,55 @@ export function ListaPuentes(props: { navegar: (ruta: string) => void; rol: Rol 
 
       {administra && (
         <Panel class="p-4">
+          <form onSubmit={crear}>
+            <div class="text-[14px] font-semibold text-tinta">Nuevo puente</div>
+            <p class="mt-1 mb-3 text-[12.5px] text-tinta-suave">
+              Crea el borrador vacío y abre su editor: disparador, cadena y publicación se hacen ahí.
+            </p>
+            <div class="flex flex-wrap items-end gap-3">
+              <label class="flex min-w-[220px] flex-1 flex-col gap-1 text-[12.5px] text-tinta-suave">
+                Nombre
+                <Control
+                  value={nombreNuevo}
+                  placeholder="Personajes de Rick and Morty"
+                  onInput={(e: Event) => {
+                    const valor = (e.target as HTMLInputElement).value;
+                    setNombreNuevo(valor);
+                    if (!slugEditado) setSlugNuevo(sugerirSlug(valor));
+                  }}
+                />
+              </label>
+              <label class="flex min-w-[180px] flex-col gap-1 text-[12.5px] text-tinta-suave">
+                Slug
+                <Control
+                  mono
+                  value={slugNuevo}
+                  placeholder="personajes-rm"
+                  onInput={(e: Event) => {
+                    setSlugEditado(true);
+                    setSlugNuevo((e.target as HTMLInputElement).value);
+                  }}
+                />
+              </label>
+              <Boton type="submit" procesando={creando} deshabilitado={creando}>
+                Crear y abrir el editor
+              </Boton>
+            </div>
+            {erroresNuevo.length > 0 && (
+              <div class="mt-2 space-y-1.5">
+                {erroresNuevo.map((mensaje) => (
+                  <p key={mensaje} class="rounded-[6px] border border-mal/40 bg-mal/5 px-2 py-1 font-mono text-[12px] text-mal">
+                    {mensaje}
+                  </p>
+                ))}
+              </div>
+            )}
+          </form>
+        </Panel>
+      )}
+
+      {administra && (
+        <Panel class="p-4">
           <form onSubmit={importar}>
             <div class="text-[14px] font-semibold text-tinta">Importar puente</div>
             <p class="mt-1 mb-3 text-[12.5px] text-tinta-suave">
@@ -276,8 +368,8 @@ export function ListaPuentes(props: { navegar: (ruta: string) => void; rol: Rol 
                 <tr>
                   <td colspan={4} class="px-4 py-8 text-center text-[13.5px] text-tinta-suave">
                     {administra
-                      ? "Aún no hay puentes. Importa un artefacto arriba para crear el primero."
-                      : "Aún no hay puentes. Pide a un editor que importe el primero."}
+                      ? "Aún no hay puentes. Crea el primero con «Nuevo puente» arriba, o importa un artefacto exportado."
+                      : "Aún no hay puentes. Pide a un editor que cree o importe el primero."}
                   </td>
                 </tr>
               )}
