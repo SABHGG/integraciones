@@ -386,10 +386,11 @@ export function ListaPuentes(props: { navegar: (ruta: string) => void; rol: Rol 
   );
 }
 
-export function EditorPuente(props: { id: string; rol: Rol | null }) {
+export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ruta: string) => void }) {
   const [puente, setPuente] = useState<Puente | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [bloques, setBloques] = useState<Bloque[]>([]);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [versiones, setVersiones] = useState<Map<string, VersionBloque>>(new Map());
   const [issues, setIssues] = useState<Issue[]>([]);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -404,17 +405,33 @@ export function EditorPuente(props: { id: string; rol: Rol | null }) {
 
   useEffect(() => {
     void (async () => {
-      await recargar();
-      const pagina = await api<Page<Bloque>>("GET", "/blocks?limit=200");
-      setBloques(pagina.items);
-      // ui de la última versión de cada bloque (para los formularios).
-      const mapa = new Map<string, VersionBloque>();
-      for (const bloque of pagina.items) {
-        const detalle = await api<{ versions: VersionBloque[] }>("GET", `/blocks/${bloque.id}`);
-        const ultima = detalle.versions.at(-1);
-        if (ultima) mapa.set(bloque.id, ultima);
+      try {
+        await recargar();
+        // La biblioteca completa, paginada (el plano limita `limit` a 100 y
+        // un 400 aquí dejaba «Añadir instancia» sin botones en silencio).
+        const toda: Bloque[] = [];
+        let cursor: string | null = null;
+        let pagina: Page<Bloque>;
+        do {
+          pagina = await api<Page<Bloque>>(
+            "GET",
+            `/blocks?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+          );
+          toda.push(...pagina.items);
+          cursor = pagina.nextCursor;
+        } while (cursor);
+        setBloques(toda);
+        // ui de la última versión de cada bloque (para los formularios).
+        const mapa = new Map<string, VersionBloque>();
+        for (const bloque of toda) {
+          const detalle = await api<{ versions: VersionBloque[] }>("GET", `/blocks/${bloque.id}`);
+          const ultima = detalle.versions.at(-1);
+          if (ultima) mapa.set(bloque.id, ultima);
+        }
+        setVersiones(mapa);
+      } catch (e) {
+        setErrorCarga(e instanceof Error ? e.message : "no se pudo cargar el editor");
       }
-      setVersiones(mapa);
     })();
   }, [props.id]);
 
@@ -553,6 +570,8 @@ export function EditorPuente(props: { id: string; rol: Rol | null }) {
           <Aviso key={`${issue.field}-${issue.message}`} texto={`${issue.field}: ${issue.message}`} tono="mal" />
         ))}
 
+      {errorCarga && <Aviso texto={errorCarga} tono="mal" />}
+
       <Panel class="p-4">
         <div class="mb-3 text-[14px] font-semibold text-tinta">Trigger</div>
         <FormularioInstancia
@@ -567,7 +586,9 @@ export function EditorPuente(props: { id: string; rol: Rol | null }) {
         <div class="mb-3 text-[14px] font-semibold text-tinta">Cadena</div>
         {instancias.length === 0 && (
           <p class="text-[13.5px] text-tinta-suave">
-            La cadena está vacía: añade el primer bloque con los botones de abajo.
+            {bloques.length === 0
+              ? "La cadena está vacía y la biblioteca tampoco tiene bloques todavía: crea primero tus bloques (abajo tienes el enlace)."
+              : "La cadena está vacía: añade el primer bloque con los botones de abajo."}
           </p>
         )}
         <ol>
@@ -665,13 +686,25 @@ export function EditorPuente(props: { id: string; rol: Rol | null }) {
         {administra && (
           <div class="mt-4 border-t border-borde pt-3.5">
             <div class="mb-2 text-[13.5px] font-medium text-tinta">Añadir instancia</div>
-            <div class="flex flex-wrap gap-2">
-              {bloques.map((bloque) => (
-                <Boton variante="secundario" chico key={bloque.id} onClick={() => anadirInstancia(bloque)}>
-                  + <span class="font-mono text-[11.5px]">{bloque.slug}</span>
-                </Boton>
-              ))}
-            </div>
+            {bloques.length === 0 && !errorCarga ? (
+              <p class="text-[13.5px] text-tinta-suave">
+                La biblioteca de bloques de este workspace está vacía: un puente encadena bloques ya
+                publicados, así que crea primero los tuyos (built-in `http` o `custom_logic`) en la
+                sección Bloques y vuelve. {props.navegar && (
+                  <Boton variante="secundario" chico onClick={() => props.navegar?.("/blocks")}>
+                    Ir a Bloques
+                  </Boton>
+                )}
+              </p>
+            ) : (
+              <div class="flex flex-wrap gap-2">
+                {bloques.map((bloque) => (
+                  <Boton variante="secundario" chico key={bloque.id} onClick={() => anadirInstancia(bloque)}>
+                    + <span class="font-mono text-[11.5px]">{bloque.slug}</span>
+                  </Boton>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </Panel>

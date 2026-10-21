@@ -289,7 +289,7 @@ function App(): preact.ComponentChildren {
             <>
               {ruta.pantalla === "puentes"
                 ? <ListaPuentes navegar={navegar} rol={rol} />
-                : <EditorPuente id={ruta.id} rol={rol} />}
+                : <EditorPuente id={ruta.id} rol={rol} navegar={navegar} />}
             </>
           )}
           {ruta.pantalla === "bloque" && (
