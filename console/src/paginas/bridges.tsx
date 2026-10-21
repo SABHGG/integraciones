@@ -35,6 +35,7 @@ interface Instancia {
   input: Record<string, unknown>;
   config: Record<string, unknown>;
   when?: unknown;
+  timeoutMs?: number;
   code?: string | null;
 }
 
@@ -421,11 +422,16 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
           cursor = pagina.nextCursor;
         } while (cursor);
         setBloques(toda);
-        // ui de la última versión de cada bloque (para los formularios).
+        // ui + blockVersionId de la versión VIGENTE de cada bloque (para los
+        // formularios y para añadir instancias). El detalle simple NO trae las
+        // versiones: hace falta el endpoint de listado (version DESC → la [0]).
         const mapa = new Map<string, VersionBloque>();
         for (const bloque of toda) {
-          const detalle = await api<{ versions: VersionBloque[] }>("GET", `/blocks/${bloque.id}`);
-          const ultima = detalle.versions.at(-1);
+          const paginaV = await api<Page<VersionBloque>>(
+            "GET",
+            `/blocks/${bloque.id}/versions?limit=100`,
+          );
+          const ultima = paginaV.items[0];
           if (ultima) mapa.set(bloque.id, ultima);
         }
         setVersiones(mapa);
@@ -583,6 +589,30 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
       </Panel>
 
       <Panel class="p-4">
+        <div class="mb-3 text-[14px] font-semibold text-tinta">Input schema</div>
+        <p class="mt-1 mb-3 text-[12.5px] text-tinta-suave">
+          JSON Schema del body del disparo (trigger http): si no cumple, la ejecución
+          falla con VALIDATION_FAILED antes de tocar ningún bloque.
+        </p>
+        <Campo etiqueta="inputSchema (JSON Schema, JSON)">
+          <Control
+            as="textarea"
+            mono
+            rows={4}
+            value={JSON.stringify(draft.inputSchema ?? {}, null, 2)}
+            onInput={(e: Event) => {
+              const crudo = (e.target as HTMLTextAreaElement).value.trim();
+              try {
+                actualizar({ inputSchema: JSON.parse(crudo) });
+              } catch {
+                // JSON incompleto mientras se escribe.
+              }
+            }}
+          />
+        </Campo>
+      </Panel>
+
+      <Panel class="p-4">
         <div class="mb-3 text-[14px] font-semibold text-tinta">Cadena</div>
         {instancias.length === 0 && (
           <p class="text-[13.5px] text-tinta-suave">
@@ -605,9 +635,21 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
                   aria-hidden="true"
                 />
                 <div class="flex flex-wrap items-center gap-2.5">
-                  <span class="font-mono text-[12.5px] font-semibold text-tinta">
-                    {indice + 1}. {instancia.name}
-                  </span>
+                  <span class="font-mono text-[12.5px] font-semibold text-tinta">{indice + 1}.</span>
+                  {administra ? (
+                    <input
+                      class="w-44 rounded-[6px] border border-borde-fuerte bg-superficie px-2 py-1 font-mono text-[12.5px] font-semibold text-tinta focus:border-tinta-suave focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tinta"
+                      value={instancia.name}
+                      aria-label={`Nombre de la instancia ${indice + 1} (las refs $. lo usan)`}
+                      onInput={(e: Event) => {
+                        const nuevas = [...instancias];
+                        nuevas[indice] = { ...instancia, name: (e.target as HTMLInputElement).value };
+                        actualizar({ blocks: nuevas });
+                      }}
+                    />
+                  ) : (
+                    <span class="font-mono text-[12.5px] font-semibold text-tinta">{instancia.name}</span>
+                  )}
                   {instancia.when !== undefined && (
                     <span class="rounded-[4px] border border-borde-fuerte bg-papel px-1.5 py-0.5 font-mono text-[10.5px] text-tinta-suave">when</span>
                   )}
@@ -635,6 +677,43 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
                       errores={errores}
                     />
                   )}
+                </div>
+                <div class="mt-3 grid gap-3 md:grid-cols-[1fr_150px]">
+                  <Campo etiqueta="input (refs $. hacia bloques anteriores, JSON)">
+                    <Control
+                      as="textarea"
+                      mono
+                      rows={3}
+                      value={JSON.stringify(instancia.input ?? {}, null, 2)}
+                      onInput={(e: Event) => {
+                        const crudo = (e.target as HTMLTextAreaElement).value.trim();
+                        const nuevas = [...instancias];
+                        try {
+                          nuevas[indice] = { ...instancia, input: JSON.parse(crudo) };
+                          actualizar({ blocks: nuevas });
+                        } catch {
+                          // JSON incompleto mientras se escribe.
+                        }
+                      }}
+                    />
+                  </Campo>
+                  <Campo etiqueta="timeoutMs (vacío = 5 s)">
+                    <Control
+                      type="number"
+                      value={instancia.timeoutMs ?? ""}
+                      onInput={(e: Event) => {
+                        const crudo = (e.target as HTMLInputElement).value;
+                        const nuevas = [...instancias];
+                        if (crudo === "") {
+                          delete nuevas[indice].timeoutMs;
+                        } else {
+                          const numero = Number(crudo);
+                          if (!Number.isNaN(numero)) nuevas[indice] = { ...instancia, timeoutMs: numero };
+                        }
+                        actualizar({ blocks: nuevas });
+                      }}
+                    />
+                  </Campo>
                 </div>
                 <div class="mt-3">
                   <Campo etiqueta="when (condición declarativa, JSON o vacío)">
