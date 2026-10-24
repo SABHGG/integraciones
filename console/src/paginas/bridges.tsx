@@ -6,7 +6,9 @@
 import { useEffect, useState } from "preact/hooks";
 import { api, type Page } from "../lib/api";
 import { mapearErrores, type Issue } from "../lib/errors";
-import { FormularioInstancia } from "../ui";
+import { FormularioInstancia, InputConRefs } from "../ui";
+import type { SugerenciaRef } from "../lib/refs-contexto";
+import { sugerenciasDeRefs } from "../lib/refs-contexto";
 import type { Paso } from "./executions";
 import { EditorCodigo } from "../ui";
 import { puede, type Rol } from "../lib/roles";
@@ -18,6 +20,13 @@ import {
   type ArtefactoPuente,
 } from "../lib/transferir";
 import { Boton, Campo, Control, Esqueleto, Panel } from "../ui";
+import { desglosarSchema, montarSchema, TIPOS_CAMPO, type CampoSchema } from "../lib/schema-builder";
+import {
+  erroresDeFormulario,
+  TIPOS_TRIGGER,
+  VERBOS_HTTP,
+  zonasIana,
+} from "../lib/validacion-trigger";
 
 interface Puente {
   id: string;
@@ -44,6 +53,8 @@ interface VersionBloque {
   version: number;
   ui: Record<string, unknown> | null;
   inputSchema: Record<string, unknown>;
+  configSchema: unknown;
+  outputSchema: unknown;
 }
 
 interface Bloque {
@@ -60,6 +71,302 @@ function Aviso(props: { texto: string; tono?: "ok" | "mal" }) {
       : "border-ok/30 bg-ok-fondo text-ok";
   return (
     <div class={`rounded-[8px] border px-3.5 py-2.5 text-[13.5px] ${clase}`}>{props.texto}</div>
+  );
+}
+
+/** Constructor visual del inputSchema del disparo: campos simples (nombre,
+ tipo, requerido) sobre lib/schema-builder; el resto del documento se conserva
+ intacto (pattern, additionalProperties…) y se lista como "avanzado". Pestaña
+ JSON avanzada compartiendo estado, igual que el trigger. */
+function ConstructorSchema(props: {
+  schema: Record<string, unknown>;
+  onChange: (schema: Record<string, unknown>) => void;
+}) {
+  const [avanzado, setAvanzado] = useState(false);
+  const desglose = desglosarSchema(props.schema);
+
+  const editarCampos = (campos: CampoSchema[]) =>
+    props.onChange(montarSchema(campos, desglose.resto));
+
+  const duplicados = new Set(
+    desglose.campos.filter((c, i) => desglose.campos.findIndex((o) => o.nombre === c.nombre) !== i).map((c) => c.nombre),
+  );
+  const hayProblema = (campo: CampoSchema) => campo.nombre.trim() === "" || duplicados.has(campo.nombre);
+
+  if (avanzado) {
+    return (
+      <div>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p class="text-[12.5px] text-tinta-suave">
+            Documento completo; al volver al constructor, las restricciones finas (pattern, format…) se conservan y sus campos simples siguen editables.
+          </p>
+          <Boton variante="secundario" chico onClick={() => setAvanzado(false)}>
+            ← Constructor de campos
+          </Boton>
+        </div>
+        <Campo etiqueta="inputSchema (JSON Schema, JSON)">
+          <Control
+            as="textarea"
+            mono
+            rows={5}
+            value={JSON.stringify(props.schema, null, 2)}
+            onInput={(e: Event) => {
+              try {
+                props.onChange(JSON.parse((e.target as HTMLTextAreaElement).value));
+              } catch {
+                // JSON incompleto mientras se escribe.
+              }
+            }}
+          />
+        </Campo>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p class="text-[12.5px] text-tinta-suave">
+          Campos del body del disparo; para restricciones finas (pattern, format…) usa el JSON avanzado.
+        </p>
+        <Boton variante="secundario" chico onClick={() => setAvanzado(true)}>
+          JSON avanzado
+        </Boton>
+      </div>
+      {desglose.campos.length === 0 && Object.keys(desglose.resto).length === 0 && (
+        <p class="mb-3 text-[13px] text-tinta-suave">
+          Sin campos declarados: el body del disparo no se valida (cualquier JSON pasa). Añade campos si quieres validarlo.
+        </p>
+      )}
+      <ol class="space-y-2">
+        {desglose.campos.map((campo, indice) => (
+          <li key={`${indice}-${campo.nombre}`} class="flex flex-wrap items-center gap-2">
+            <input
+              class={`w-44 rounded-[6px] border bg-superficie px-2 py-1.5 font-mono text-[12.5px] text-tinta focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tinta ${hayProblema(campo) ? "border-mal" : "border-borde-fuerte"}`}
+              value={campo.nombre}
+              aria-label={`Nombre del campo ${indice + 1}`}
+              onInput={(e: Event) => {
+                const campos = [...desglose.campos];
+                campos[indice] = { ...campo, nombre: (e.target as HTMLInputElement).value };
+                editarCampos(campos);
+              }}
+            />
+            <Control
+              as="select"
+              class="w-28"
+              value={campo.tipo}
+              aria-label={`Tipo del campo ${indice + 1}`}
+              onChange={(e: Event) => {
+                const campos = [...desglose.campos];
+                campos[indice] = { ...campo, tipo: (e.target as HTMLSelectElement).value as CampoSchema["tipo"] };
+                editarCampos(campos);
+              }}
+            >
+              {TIPOS_CAMPO.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </Control>
+            <label class="flex items-center gap-1.5 text-[12.5px] text-tinta-suave">
+              <input
+                type="checkbox"
+                class="h-4 w-4 accent-[#14352d]"
+                checked={campo.requerido}
+                onChange={(e) => {
+                  const campos = [...desglose.campos];
+                  campos[indice] = { ...campo, requerido: (e.target as HTMLInputElement).checked };
+                  editarCampos(campos);
+                }}
+              />
+              requerido
+            </label>
+            {hayProblema(campo) && (
+              <span class="text-[12px] text-mal">{campo.nombre.trim() === "" ? "nombre vacío" : "nombre duplicado"}</span>
+            )}
+            <Boton
+              variante="peligro"
+              chico
+              class="ml-auto"
+              title={`Quitar ${campo.nombre}`}
+              onClick={() => editarCampos(desglose.campos.filter((_, i) => i !== indice))}
+            >
+              Quitar
+            </Boton>
+          </li>
+        ))}
+      </ol>
+      <div class="mt-3">
+        <Boton
+          variante="secundario"
+          chico
+          onClick={() =>
+            editarCampos([...desglose.campos, { nombre: `campo${desglose.campos.length + 1}`, tipo: "string", requerido: false }])
+          }
+        >
+          + Añadir campo
+        </Boton>
+      </div>
+      {Object.keys(desglose.resto).length > 0 && (
+        <details class="mt-3 border-t border-borde pt-2.5">
+          <summary class="cursor-pointer text-[12.5px] text-tinta-suave">
+            Avanzado (se conserva tal cual al guardar)
+          </summary>
+          <pre class="mt-2 max-h-40 overflow-auto rounded-[6px] border border-borde bg-papel p-2 font-mono text-[11px] leading-relaxed">
+            {JSON.stringify(desglose.resto, null, 2)}
+          </pre>
+        </details>
+      )}
+    </div>
+  );
+}
+/** Formulario guiado del disparador: selector de tipo y solo los campos que
+ `validate_trigger` exige para cada uno; pestaña JSON avanzada que comparte
+ estado (lo editado por una vía se conserva en la otra). La validación en
+ cliente (lib/validacion-trigger) es ayuda temprana: el servidor manda. */
+function FormularioTrigger(props: {
+  trigger: Record<string, unknown>;
+  onChange: (trigger: Record<string, unknown>) => void;
+  issuesServidor: { field: string; message: string }[];
+}) {
+  const [avanzado, setAvanzado] = useState(false);
+  const tipo = typeof props.trigger.type === "string" ? props.trigger.type : "";
+  const errores = erroresDeFormulario(props.trigger, props.issuesServidor);
+  const listaErrores = Object.entries(errores);
+
+  const ponerCampo = (campo: string, valor: unknown) =>
+    props.onChange({ ...props.trigger, [campo]: valor });
+
+  if (avanzado) {
+    return (
+      <div>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p class="text-[12.5px] text-tinta-suave">
+            Documento completo del disparador; al volver al formulario guiado sus campos se rellenan con esto.
+          </p>
+          <Boton variante="secundario" chico onClick={() => setAvanzado(false)}>
+            ← Formulario guiado
+          </Boton>
+        </div>
+        <Campo etiqueta="trigger (JSON)">
+          <Control
+            as="textarea"
+            mono
+            rows={5}
+            value={JSON.stringify(props.trigger, null, 2)}
+            onInput={(e: Event) => {
+              try {
+                props.onChange(JSON.parse((e.target as HTMLTextAreaElement).value));
+              } catch {
+                // JSON incompleto mientras se escribe.
+              }
+            }}
+          />
+        </Campo>
+        {listaErrores.map(([campo, mensaje]) => (
+          <p key={campo} class="mt-1.5 rounded-[6px] border border-mal/40 bg-mal/5 px-2 py-1 font-mono text-[12px] text-mal">
+            trigger.{campo}: {mensaje}
+          </p>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p class="text-[12.5px] text-tinta-suave">
+          Cómo se dispara el puente: elige tipo y rellena sus campos (el servidor valida al guardar y publicar).
+        </p>
+        <Boton variante="secundario" chico onClick={() => setAvanzado(true)}>
+          JSON avanzado
+        </Boton>
+      </div>
+      <div class="grid gap-x-4 gap-y-3 md:grid-cols-2">
+        <Campo etiqueta="Tipo" error={errores["type"]}>
+          <Control
+            as="select"
+            value={tipo}
+            onChange={(e: Event) => ponerCampo("type", (e.target as HTMLSelectElement).value)}
+          >
+            {!tipo && <option value="">—</option>}
+            {TIPOS_TRIGGER.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </Control>
+        </Campo>
+
+        {tipo === "http" && (
+          <>
+            <Campo etiqueta="Verbo HTTP" error={errores["method"]}>
+              <Control
+                as="select"
+                value={typeof props.trigger.method === "string" ? props.trigger.method : ""}
+                onChange={(e: Event) => ponerCampo("method", (e.target as HTMLSelectElement).value)}
+              >
+                {!(typeof props.trigger.method === "string" && props.trigger.method !== "") && (
+                  <option value="">—</option>
+                )}
+                {VERBOS_HTTP.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </Control>
+            </Campo>
+            <Campo etiqueta="Path (ruta pública del puente)" error={errores["path"]} ayuda="Empieza por /; el puente queda expuesto en ANY /x{path}.">
+              <Control
+                mono
+                value={typeof props.trigger.path === "string" ? props.trigger.path : ""}
+                placeholder="/x/demo"
+                onInput={(e: Event) => ponerCampo("path", (e.target as HTMLInputElement).value)}
+              />
+            </Campo>
+          </>
+        )}
+
+        {tipo === "cron" && (
+          <>
+            <Campo etiqueta="Schedule (cron de 5 campos)" error={errores["schedule"]} ayuda="Minuto hora día mes día-semana; p. ej. */5 * * * * cada 5 minutos.">
+              <Control
+                mono
+                value={typeof props.trigger.schedule === "string" ? props.trigger.schedule : ""}
+                placeholder="*/5 * * * *"
+                onInput={(e: Event) => ponerCampo("schedule", (e.target as HTMLInputElement).value)}
+              />
+            </Campo>
+            <Campo etiqueta="Timezone (zona IANA)" error={errores["timezone"]} ayuda="Escribe para filtrar la lista (Europe/Madrid, UTC…).">
+              <Control
+                list="zonas-iana-trigger"
+                value={typeof props.trigger.timezone === "string" ? props.trigger.timezone : ""}
+                placeholder="Europe/Madrid"
+                onInput={(e: Event) => ponerCampo("timezone", (e.target as HTMLInputElement).value)}
+              />
+              <datalist id="zonas-iana-trigger">
+                {zonasIana().map((zona) => (
+                  <option key={zona} value={zona} />
+                ))}
+              </datalist>
+            </Campo>
+          </>
+        )}
+
+        {tipo === "event" && (
+          <div class="md:col-span-2">
+            <Campo etiqueta="Topic (canal al que se suscribe)" error={errores["topic"]} ayuda="Minúsculas, dígitos, puntos y guiones; sin separadores al inicio, final ni consecutivos.">
+              <Control
+                mono
+                value={typeof props.trigger.topic === "string" ? props.trigger.topic : ""}
+                placeholder="pedidos.creado"
+                onInput={(e: Event) => ponerCampo("topic", (e.target as HTMLInputElement).value)}
+              />
+            </Campo>
+          </div>
+        )}
+
+        {tipo === "manual" && (
+          <p class="text-[13px] text-tinta-suave md:col-span-2">
+            Sin campos adicionales: se dispara a mano (el ensayo de esta página o la invocación manual de la API).
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -547,6 +854,19 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
   const mapeado = mapearErrores(issues);
   const trigger = (draft.trigger ?? {}) as Record<string, unknown>;
 
+  /** Refs `$.` disponibles hasta el índice `hasta` de la cadena: raíces del
+   trigger según su tipo, $.now y salidas de bloques previos (output_schema de
+   su versión vigente). Fuente única para input, config y ref-template. */
+  const contextoDeRefs = (hasta: number): SugerenciaRef[] =>
+    sugerenciasDeRefs({
+      tipoTrigger: typeof trigger.type === "string" ? trigger.type : undefined,
+      inputSchema: draft.inputSchema,
+      previas: instancias.slice(0, hasta).map((inst) => ({
+        name: inst.name,
+        outputSchema: versiones.get(inst.blockId)?.outputSchema ?? null,
+      })),
+    });
+
   return (
     <div class="space-y-3">
       <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -580,11 +900,10 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
 
       <Panel class="p-4">
         <div class="mb-3 text-[14px] font-semibold text-tinta">Trigger</div>
-        <FormularioInstancia
-          ui={null}
-          config={trigger}
-          onChange={(config) => actualizar({ trigger: config })}
-          errores={mapeado.globales.filter((i) => i.field.startsWith("trigger"))}
+        <FormularioTrigger
+          trigger={trigger}
+          onChange={(t) => actualizar({ trigger: t })}
+          issuesServidor={mapeado.globales.filter((i) => i.field.startsWith("trigger"))}
         />
       </Panel>
 
@@ -594,22 +913,10 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
           JSON Schema del body del disparo (trigger http): si no cumple, la ejecución
           falla con VALIDATION_FAILED antes de tocar ningún bloque.
         </p>
-        <Campo etiqueta="inputSchema (JSON Schema, JSON)">
-          <Control
-            as="textarea"
-            mono
-            rows={4}
-            value={JSON.stringify(draft.inputSchema ?? {}, null, 2)}
-            onInput={(e: Event) => {
-              const crudo = (e.target as HTMLTextAreaElement).value.trim();
-              try {
-                actualizar({ inputSchema: JSON.parse(crudo) });
-              } catch {
-                // JSON incompleto mientras se escribe.
-              }
-            }}
-          />
-        </Campo>
+        <ConstructorSchema
+          schema={(draft.inputSchema ?? {}) as Record<string, unknown>}
+          onChange={(schema) => actualizar({ inputSchema: schema })}
+        />
       </Panel>
 
       <Panel class="p-4">
@@ -675,18 +982,17 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
                         actualizar({ blocks: nuevas });
                       }}
                       errores={errores}
+                      sugerencias={contextoDeRefs(indice)}
+                      configSchema={version?.configSchema}
+                      claveInstancia={instancia.id}
                     />
                   )}
                 </div>
                 <div class="mt-3 grid gap-3 md:grid-cols-[1fr_150px]">
                   <Campo etiqueta="input (refs $. hacia bloques anteriores, JSON)">
-                    <Control
-                      as="textarea"
-                      mono
-                      rows={3}
-                      value={JSON.stringify(instancia.input ?? {}, null, 2)}
-                      onInput={(e: Event) => {
-                        const crudo = (e.target as HTMLTextAreaElement).value.trim();
+                    <InputConRefs
+                      valor={JSON.stringify(instancia.input ?? {}, null, 2)}
+                      onInput={(crudo) => {
                         const nuevas = [...instancias];
                         try {
                           nuevas[indice] = { ...instancia, input: JSON.parse(crudo) };
@@ -695,6 +1001,10 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
                           // JSON incompleto mientras se escribe.
                         }
                       }}
+                      sugerencias={contextoDeRefs(indice)}
+                      modo="mapear"
+                      multilinea
+                      filas={3}
                     />
                   </Campo>
                   <Campo etiqueta="timeoutMs (vacío = 5 s)">
