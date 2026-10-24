@@ -44,6 +44,29 @@ export function categorias(bloques: BloqueResumen[]): string[] {
   return [...new Set(bloques.map((b) => b.category))].sort();
 }
 
+/** Un grupo del selector del editor: bloques del mismo blockType. */
+export interface GrupoBloques {
+  tipo: string;
+  bloques: BloqueResumen[];
+}
+
+/** Filtra por texto libre (slug/nombre) y agrupa por blockType en orden de
+ aparición (critique P2: la sopa de botones + slug gana búsqueda y grupos). */
+export function bloquesAgrupados(bloques: BloqueResumen[], texto: string): GrupoBloques[] {
+  const aguja = texto.trim().toLowerCase();
+  const encajan =
+    aguja === ""
+      ? bloques
+      : bloques.filter((b) => `${b.slug} ${b.name}`.toLowerCase().includes(aguja));
+  const grupos = new Map<string, BloqueResumen[]>();
+  for (const bloque of encajan) {
+    const lista = grupos.get(bloque.blockType) ?? [];
+    lista.push(bloque);
+    grupos.set(bloque.blockType, lista);
+  }
+  return [...grupos.entries()].map(([tipo, bs]) => ({ tipo, bloques: bs }));
+}
+
 const SLUG_VALIDO = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** Creación de bloque custom_logic: slug y nombre obligatorios, slug kebab. */

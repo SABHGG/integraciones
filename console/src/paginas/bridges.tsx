@@ -20,6 +20,7 @@ import {
 import type { Paso } from "./executions";
 import { EditorCodigo } from "../ui";
 import { puede, type Rol } from "../lib/roles";
+import { bloquesAgrupados, type BloqueResumen } from "../lib/bloques";
 import { PanelVersiones } from "./versiones";
 import {
   artefactoExport,
@@ -64,13 +65,6 @@ interface VersionBloque {
   inputSchema: Record<string, unknown>;
   configSchema: unknown;
   outputSchema: unknown;
-}
-
-interface Bloque {
-  id: string;
-  slug: string;
-  name: string;
-  blockType: string;
 }
 
 function Aviso(props: { texto: string; tono?: "ok" | "mal" }) {
@@ -366,6 +360,47 @@ function FormularioTrigger(props: {
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Selector de bloque para añadir instancia (critique P2): búsqueda por
+ slug/nombre y grupos por blockType, en lugar de la sopa de botones sin límite. */
+function SelectorBloque(props: { bloques: BloqueResumen[]; onAnadir: (bloque: BloqueResumen) => void }) {
+  const [texto, setTexto] = useState("");
+  const grupos = bloquesAgrupados(props.bloques, texto);
+  return (
+    <div>
+      <Control
+        value={texto}
+        placeholder="Buscar bloque por slug o nombre…"
+        aria-label="Buscar bloque para añadir a la cadena"
+        onInput={(e: Event) => setTexto((e.target as HTMLInputElement).value)}
+      />
+      {texto.trim() !== "" && grupos.length === 0 && (
+        <p class="mt-2 text-[13px] text-tinta-suave">Ningún bloque coincide con «{texto}».</p>
+      )}
+      {grupos.map((grupo) => (
+        <div key={grupo.tipo} class="mt-3">
+          <div class="mb-1.5 font-mono text-[11px] uppercase tracking-wide text-tinta-tenue">{grupo.tipo}</div>
+          <div class="flex flex-wrap gap-2">
+            {grupo.bloques.map((bloque) => (
+              <Boton
+                variante="secundario"
+                chico
+                key={bloque.id}
+                title={bloque.name !== bloque.slug ? bloque.name : undefined}
+                onClick={() => {
+                  props.onAnadir(bloque);
+                  setTexto("");
+                }}
+              >
+                + <span class="font-mono text-[11.5px]">{bloque.slug}</span>
+              </Boton>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -697,7 +732,7 @@ export function ListaPuentes(props: { navegar: (ruta: string) => void; rol: Rol 
 export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ruta: string) => void }) {
   const [puente, setPuente] = useState<Puente | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
-  const [bloques, setBloques] = useState<Bloque[]>([]);
+  const [bloques, setBloques] = useState<BloqueResumen[]>([]);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [versiones, setVersiones] = useState<Map<string, VersionBloque>>(new Map());
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -738,11 +773,11 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
         await recargar();
         // La biblioteca completa, paginada (el plano limita `limit` a 100 y
         // un 400 aquí dejaba «Añadir instancia» sin botones en silencio).
-        const toda: Bloque[] = [];
+        const toda: BloqueResumen[] = [];
         let cursor: string | null = null;
-        let pagina: Page<Bloque>;
+        let pagina: Page<BloqueResumen>;
         do {
-          pagina = await api<Page<Bloque>>(
+          pagina = await api<Page<BloqueResumen>>(
             "GET",
             `/blocks?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
           );
@@ -788,7 +823,7 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
     actualizar({ blocks: nuevas });
   };
 
-  const anadirInstancia = (bloque: Bloque) => {
+  const anadirInstancia = (bloque: BloqueResumen) => {
     const version = versiones.get(bloque.id);
     const instancia: Instancia = {
       id: `b${Date.now().toString(36)}`,
@@ -1206,13 +1241,7 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
                 )}
               </p>
             ) : (
-              <div class="flex flex-wrap gap-2">
-                {bloques.map((bloque) => (
-                  <Boton variante="secundario" chico key={bloque.id} onClick={() => anadirInstancia(bloque)}>
-                    + <span class="font-mono text-[11.5px]">{bloque.slug}</span>
-                  </Boton>
-                ))}
-              </div>
+              <SelectorBloque bloques={bloques} onAnadir={anadirInstancia} />
             )}
           </div>
         )}
