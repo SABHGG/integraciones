@@ -11,6 +11,12 @@ import type { SugerenciaRef } from "../lib/refs-contexto";
 import { sugerenciasDeRefs } from "../lib/refs-contexto";
 import { parseSeguro } from "../lib/parse-seguro";
 import { resumenPublicacion } from "../lib/resumen-publicacion";
+import {
+  estaExpandida,
+  purgarAbiertas,
+  quitarInstancia,
+  reinsertarInstancia,
+} from "../lib/tarjetas-cadena";
 import type { Paso } from "./executions";
 import { EditorCodigo } from "../ui";
 import { puede, type Rol } from "../lib/roles";
@@ -707,6 +713,16 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
   // acción irreversible. Errores de parseo JSON por campo, visibles en línea.
   const [confirmacion, setConfirmacion] = useState<string | null>(null);
   const [erroresJson, setErroresJson] = useState<Record<string, string>>({});
+  // Tarjetas de la cadena (critique P1): abiertas por el usuario (la última lo
+  // está por defecto); las que tienen errores se abren siempre. Deshacer de
+  // «Quitar»: la instancia vive en memoria hasta que el usuario decida.
+  const [abiertas, setAbiertas] = useState<number[]>([]);
+  const [pendienteUndo, setPendienteUndo] = useState<{ instancia: Instancia; indice: number } | null>(null);
+  const totalInstancias = ((draft.blocks as Instancia[] | undefined) ?? []).length;
+
+  useEffect(() => {
+    setAbiertas((prev) => purgarAbiertas(prev, totalInstancias));
+  }, [totalInstancias]);
 
   const recargar = async () => {
     const puente = await api<Puente>("GET", `/bridges/${props.id}`);
@@ -782,7 +798,24 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
       input: {},
       config: {},
     };
+    setAbiertas((prev) => [...new Set([...prev, instancias.length])]);
     actualizar({ blocks: [...instancias, instancia] });
+  };
+
+  const alternarTarjeta = (indice: number) =>
+    setAbiertas((prev) => (prev.includes(indice) ? prev.filter((i) => i !== indice) : [...prev, indice]));
+
+  const quitar = (indice: number) => {
+    const r = quitarInstancia(instancias, indice);
+    if (!r.quitada) return;
+    actualizar({ blocks: r.quedan });
+    setPendienteUndo({ instancia: r.quitada, indice });
+  };
+
+  const deshacerQuitar = () => {
+    if (!pendienteUndo) return;
+    actualizar({ blocks: reinsertarInstancia(instancias, pendienteUndo.indice, pendienteUndo.instancia) });
+    setPendienteUndo(null);
   };
 
   /** Persiste el borrador en el servidor y actualiza el snapshot guardado. */
@@ -965,6 +998,15 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
 
       {errorCarga && <Aviso texto={errorCarga} tono="mal" />}
 
+      {pendienteUndo && (
+        <div class="flex flex-wrap items-center gap-3 rounded-[8px] border border-info/40 bg-info-fondo px-3.5 py-2.5 text-[13.5px] text-tinta">
+          <span>
+            Instancia <span class="font-mono">{pendienteUndo.instancia.name || "sin nombre"}</span> quitada de la cadena.
+          </span>
+          <Boton variante="secundario" chico onClick={deshacerQuitar}>Deshacer</Boton>
+        </div>
+      )}
+
       <Panel class="p-4">
         <div class="mb-3 text-[14px] font-semibold text-tinta">Trigger</div>
         <FormularioTrigger
@@ -1000,6 +1042,7 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
           {instancias.map((instancia, indice) => {
             const version = versiones.get(instancia.blockId);
             const errores = mapeado.porInstancia.get(indice) ?? [];
+            const expandida = estaExpandida(indice, abiertas, errores.length > 0);
             return (
               <li
                 key={instancia.id}
@@ -1028,7 +1071,25 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
                   {instancia.when !== undefined && (
                     <span class="rounded-[4px] border border-borde-fuerte bg-papel px-1.5 py-0.5 font-mono text-[10.5px] text-tinta-suave">when</span>
                   )}
+                  {administra && (
+                    <div class="ml-auto flex items-center gap-1.5">
+                      <Boton variante="secundario" chico title={`Subir ${instancia.name}`} aria-label={`Subir la instancia ${indice + 1}`} deshabilitado={indice === 0} onClick={() => moverInstancia(indice, -1)}>↑</Boton>
+                      <Boton variante="secundario" chico title={`Bajar ${instancia.name}`} aria-label={`Bajar la instancia ${indice + 1}`} deshabilitado={indice === instancias.length - 1} onClick={() => moverInstancia(indice, 1)}>↓</Boton>
+                      <Boton variante="secundario" chico title={`Quitar ${instancia.name}`} aria-label={`Quitar la instancia ${indice + 1}`} onClick={() => quitar(indice)}>Quitar</Boton>
+                      <button
+                        type="button"
+                        class="rounded-[6px] px-1.5 py-1 font-mono text-[12px] text-tinta-suave hover:text-tinta"
+                        aria-expanded={expandida}
+                        aria-label={expandida ? `Plegar la instancia ${indice + 1}` : `Desplegar la instancia ${indice + 1}`}
+                        onClick={() => alternarTarjeta(indice)}
+                      >
+                        {expandida ? "▾" : "▸"}
+                      </button>
+                    </div>
+                  )}
                 </div>
+                {expandida && (
+                  <>
                 <div class="mt-2">
                   {instancia.code !== null && instancia.code !== undefined ? (
                     <EditorCodigo
@@ -1124,18 +1185,7 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
                   .map((issue) => (
                     <p class="mt-1.5 rounded-[6px] border border-mal/40 bg-mal/5 px-2 py-1 text-[12.5px] text-mal">{issue.message}</p>
                   ))}
-                {administra && (
-                  <div class="mt-2.5 flex gap-2">
-                    <Boton variante="secundario" chico onClick={() => moverInstancia(indice, -1)} deshabilitado={indice === 0}>↑</Boton>
-                    <Boton variante="secundario" chico onClick={() => moverInstancia(indice, 1)} deshabilitado={indice === instancias.length - 1}>↓</Boton>
-                    <Boton
-                      variante="peligro"
-                      chico
-                      onClick={() => actualizar({ blocks: instancias.filter((_, i) => i !== indice) })}
-                    >
-                      Quitar
-                    </Boton>
-                  </div>
+                  </>
                 )}
               </li>
             );
