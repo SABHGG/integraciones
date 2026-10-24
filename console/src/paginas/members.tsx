@@ -3,7 +3,7 @@
 //! errores del servidor en línea (una sola fuente de verdad).
 //! Render El rastro (MVP6): misma lógica; presentación con ui.tsx.
 import { useEffect, useState } from "preact/hooks";
-import { api, type Page } from "../lib/api";
+import { api } from "../lib/api";
 import { puede, type Rol } from "../lib/roles";
 import { Boton, Campo, Control, Esqueleto, Panel } from "../ui";
 
@@ -47,8 +47,9 @@ export function Miembros(props: { rol: Rol | null }) {
   const cargar = async () => {
     setError(null);
     try {
-      const pagina = await api<Page<Miembro>>("GET", "/members");
-      setMiembros(pagina.items);
+      // Contrato del plano: {members}, no la página paginada por cursor.
+      const { members } = await api<{ members: Miembro[] }>("GET", "/members");
+      setMiembros(members);
     } catch (e) {
       setError(e instanceof Error ? e.message : "error al listar");
     } finally {
