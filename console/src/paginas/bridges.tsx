@@ -73,7 +73,34 @@ function Aviso(props: { texto: string; tono?: "ok" | "mal" }) {
       ? "border-mal/40 bg-mal/5 text-mal"
       : "border-ok/30 bg-ok-fondo text-ok";
   return (
-    <div class={`rounded-[8px] border px-3.5 py-2.5 text-[13.5px] ${clase}`}>{props.texto}</div>
+    <div
+      role={props.tono === "mal" ? "alert" : "status"}
+      aria-live="polite"
+      class={`rounded-[8px] border px-3.5 py-2.5 text-[13.5px] ${clase}`}
+    >
+      {props.texto}
+    </div>
+  );
+}
+
+/** Cabecera compartida del par guiado↔avanzado (misma interacción en trigger
+ e input schema; antes era el patrón copiado dos veces). */
+function CabeceraAvanzado(props: {
+  avanzado: boolean;
+  alAlternar: () => void;
+  textoGuiado: string;
+  textoAvanzado: string;
+  etiquetaVuelta: string;
+}) {
+  return (
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <p class="text-[12.5px] text-tinta-suave">
+        {props.avanzado ? props.textoAvanzado : props.textoGuiado}
+      </p>
+      <Boton variante="secundario" chico onClick={props.alAlternar}>
+        {props.avanzado ? `← ${props.etiquetaVuelta}` : "JSON avanzado"}
+      </Boton>
+    </div>
   );
 }
 
@@ -99,14 +126,13 @@ function ConstructorSchema(props: {
   if (avanzado) {
     return (
       <div>
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <p class="text-[12.5px] text-tinta-suave">
-            Documento completo; al volver al constructor, las restricciones finas (pattern, format…) se conservan y sus campos simples siguen editables.
-          </p>
-          <Boton variante="secundario" chico onClick={() => setAvanzado(false)}>
-            ← Constructor de campos
-          </Boton>
-        </div>
+        <CabeceraAvanzado
+          avanzado
+          alAlternar={() => setAvanzado(false)}
+          textoGuiado=""
+          textoAvanzado="Documento completo; al volver al constructor, las restricciones finas (pattern, format…) se conservan y sus campos simples siguen editables."
+          etiquetaVuelta="Constructor de campos"
+        />
         <CampoJson
           key="schema-avanzado"
           etiqueta="inputSchema (JSON Schema, JSON)"
@@ -122,14 +148,13 @@ function ConstructorSchema(props: {
 
   return (
     <div>
-      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p class="text-[12.5px] text-tinta-suave">
-          Campos del body del disparo; para restricciones finas (pattern, format…) usa el JSON avanzado.
-        </p>
-        <Boton variante="secundario" chico onClick={() => setAvanzado(true)}>
-          JSON avanzado
-        </Boton>
-      </div>
+      <CabeceraAvanzado
+        avanzado={false}
+        alAlternar={() => setAvanzado(true)}
+        textoGuiado="Campos del body del disparo; para restricciones finas (pattern, format…) usa el JSON avanzado."
+        textoAvanzado=""
+        etiquetaVuelta=""
+      />
       {desglose.campos.length === 0 && Object.keys(desglose.resto).length === 0 && (
         <p class="mb-3 text-[13px] text-tinta-suave">
           Sin campos declarados: el body del disparo no se valida (cualquier JSON pasa). Añade campos si quieres validarlo.
@@ -235,14 +260,13 @@ function FormularioTrigger(props: {
   if (avanzado) {
     return (
       <div>
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <p class="text-[12.5px] text-tinta-suave">
-            Documento completo del disparador; al volver al formulario guiado sus campos se rellenan con esto.
-          </p>
-          <Boton variante="secundario" chico onClick={() => setAvanzado(false)}>
-            ← Formulario guiado
-          </Boton>
-        </div>
+        <CabeceraAvanzado
+          avanzado
+          alAlternar={() => setAvanzado(false)}
+          textoGuiado=""
+          textoAvanzado="Documento completo del disparador; al volver al formulario guiado sus campos se rellenan con esto."
+          etiquetaVuelta="Formulario guiado"
+        />
         <CampoJson
           key="trigger-avanzado"
           etiqueta="trigger (JSON)"
@@ -262,14 +286,13 @@ function FormularioTrigger(props: {
 
   return (
     <div>
-      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p class="text-[12.5px] text-tinta-suave">
-          Cómo se dispara el puente: elige tipo y rellena sus campos (el servidor valida al guardar y publicar).
-        </p>
-        <Boton variante="secundario" chico onClick={() => setAvanzado(true)}>
-          JSON avanzado
-        </Boton>
-      </div>
+      <CabeceraAvanzado
+        avanzado={false}
+        alAlternar={() => setAvanzado(true)}
+        textoGuiado="Cómo se dispara el puente: elige tipo y rellena sus campos (el servidor valida al guardar y publicar)."
+        textoAvanzado=""
+        etiquetaVuelta=""
+      />
       <div class="grid gap-x-4 gap-y-3 md:grid-cols-2">
         <Campo etiqueta="Tipo" error={errores["type"]}>
           <Control
@@ -736,7 +759,8 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [versiones, setVersiones] = useState<Map<string, VersionBloque>>(new Map());
   const [issues, setIssues] = useState<Issue[]>([]);
-  const [aviso, setAviso] = useState<string | null>(null);
+  // Aviso con tono decidido en el punto de emisión (no por string-matching).
+  const [aviso, setAviso] = useState<{ texto: string; tono: "ok" | "mal" } | null>(null);
   const [datosDryRun, setDatosDryRun] = useState("{}");
   const [dryRun, setDryRun] = useState<Record<string, unknown> | null>(null);
   // Contrato guardado/editado (critique P0-1): snapshot del borrador que el
@@ -873,9 +897,9 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
     setOcupado(true);
     try {
       await persistir();
-      setAviso("Borrador guardado.");
+      setAviso({ texto: "Borrador guardado.", tono: "ok" });
     } catch (e) {
-      setAviso(e instanceof Error ? e.message : "error al guardar");
+      setAviso({ texto: e instanceof Error ? e.message : "error al guardar", tono: "mal" });
     } finally {
       setOcupado(false);
     }
@@ -892,9 +916,9 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
         `/bridges/${puente.id}/validate`,
       );
       setIssues(resultado.errors);
-      setAviso(resultado.valid ? "El borrador es válido." : "Hay errores de validación.");
+      setAviso({ texto: resultado.valid ? "El borrador es válido." : "Hay errores de validación.", tono: resultado.valid ? "ok" : "mal" });
     } catch (e) {
-      setAviso(e instanceof Error ? e.message : "error al validar");
+      setAviso({ texto: e instanceof Error ? e.message : "error al validar", tono: "mal" });
     } finally {
       setOcupado(false);
     }
@@ -914,12 +938,12 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
       );
       setIssues(resultado.errors);
       if (!resultado.valid) {
-        setAviso("Hay errores de validación: corrígelos antes de publicar.");
+        setAviso({ texto: "Hay errores de validación: corrígelos antes de publicar.", tono: "mal" });
         return;
       }
       setConfirmacion(resumenPublicacion(trigger, instancias));
     } catch (e) {
-      setAviso(e instanceof Error ? e.message : "error al preparar la publicación");
+      setAviso({ texto: e instanceof Error ? e.message : "error al preparar la publicación", tono: "mal" });
     } finally {
       setOcupado(false);
     }
@@ -931,7 +955,7 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
     try {
       await api("POST", `/bridges/${puente.id}/versions`);
       setConfirmacion(null);
-      setAviso("Versión publicada.");
+      setAviso({ texto: "Versión publicada.", tono: "ok" });
       const actualizado = await api<Puente>("GET", `/bridges/${props.id}`);
       setPuente(actualizado);
     } catch (e) {
@@ -939,7 +963,7 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
       if (e && typeof e === "object" && "fields" in e) {
         setIssues((e as { fields: Issue[] }).fields);
       }
-      setAviso(e instanceof Error ? e.message : "error al publicar");
+      setAviso({ texto: e instanceof Error ? e.message : "error al publicar", tono: "mal" });
     } finally {
       setOcupado(false);
     }
@@ -953,7 +977,7 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
       try {
         datos = JSON.parse(datosDryRun);
       } catch {
-        setAviso("Los datos de prueba no son JSON válido.");
+        setAviso({ texto: "Los datos de prueba no son JSON válido.", tono: "mal" });
         return;
       }
       const resultado = await api<Record<string, unknown>>(
@@ -963,7 +987,7 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
       );
       setDryRun(resultado);
     } catch (e) {
-      setAviso(e instanceof Error ? e.message : "error en el dry-run");
+      setAviso({ texto: e instanceof Error ? e.message : "error en el dry-run", tono: "mal" });
     }
   };
 
@@ -985,7 +1009,16 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
     });
 
   return (
-    <div class="space-y-3">
+    <div
+      class="space-y-3"
+      onKeyDown={(e: KeyboardEvent) => {
+        // Atajo de guardado (Alex): Ctrl/Cmd+S guarda el borrador, como en un editor.
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && administra) {
+          e.preventDefault();
+          void guardar();
+        }
+      }}
+    >
       <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 class="font-mono text-[19px] font-semibold tracking-tight text-tinta">{puente.slug}</h1>
         <span class="rounded-[4px] border border-borde-fuerte bg-superficie px-2 py-1 font-mono text-[11.5px] text-tinta-suave">
@@ -1019,12 +1052,7 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
         </div>
       )}
 
-      {aviso && (
-        <Aviso
-          texto={aviso}
-          tono={aviso.startsWith("error") || aviso.includes("Hay errores") || aviso.includes("no son JSON") ? "mal" : "ok"}
-        />
-      )}
+      {aviso && <Aviso texto={aviso.texto} tono={aviso.tono} />}
       {mapeado.globales
         .filter((issue) => !issue.field.startsWith("trigger"))
         .map((issue) => (
@@ -1108,9 +1136,9 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
                   )}
                   {administra && (
                     <div class="ml-auto flex items-center gap-1.5">
-                      <Boton variante="secundario" chico title={`Subir ${instancia.name}`} aria-label={`Subir la instancia ${indice + 1}`} deshabilitado={indice === 0} onClick={() => moverInstancia(indice, -1)}>↑</Boton>
-                      <Boton variante="secundario" chico title={`Bajar ${instancia.name}`} aria-label={`Bajar la instancia ${indice + 1}`} deshabilitado={indice === instancias.length - 1} onClick={() => moverInstancia(indice, 1)}>↓</Boton>
-                      <Boton variante="secundario" chico title={`Quitar ${instancia.name}`} aria-label={`Quitar la instancia ${indice + 1}`} onClick={() => quitar(indice)}>Quitar</Boton>
+                      <Boton variante="secundario" chico title={`Subir ${instancia.name}`} ariaLabel={`Subir la instancia ${indice + 1}`} deshabilitado={indice === 0} onClick={() => moverInstancia(indice, -1)}>↑</Boton>
+                      <Boton variante="secundario" chico title={`Bajar ${instancia.name}`} ariaLabel={`Bajar la instancia ${indice + 1}`} deshabilitado={indice === instancias.length - 1} onClick={() => moverInstancia(indice, 1)}>↓</Boton>
+                      <Boton variante="secundario" chico title={`Quitar ${instancia.name}`} ariaLabel={`Quitar la instancia ${indice + 1}`} onClick={() => quitar(indice)}>Quitar</Boton>
                       <button
                         type="button"
                         class="rounded-[6px] px-1.5 py-1 font-mono text-[12px] text-tinta-suave hover:text-tinta"

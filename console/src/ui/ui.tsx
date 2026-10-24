@@ -15,6 +15,7 @@ export function Boton(props: {
   type?: "button" | "submit";
   deshabilitado?: boolean;
   title?: string;
+  ariaLabel?: string;
   onClick?: () => void;
 }) {
   const base =
@@ -31,6 +32,7 @@ export function Boton(props: {
       type={props.type ?? "button"}
       disabled={props.deshabilitado}
       title={props.title}
+      aria-label={props.ariaLabel}
       class={`${base} ${tamano} ${variantes[props.variante ?? "primario"]} ${props.class ?? ""}`}
       onClick={props.onClick}
     >

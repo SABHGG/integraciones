@@ -4,7 +4,7 @@
 //! config o mapeo directo `$.ref` en el input de la instancia. La lógica de
 //! inserción y filtrado vive en funciones puras exportadas (testeables sin
 //! DOM); el servidor sigue siendo la autoridad de si la ref resuelve.
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useId, useState } from "preact/hooks";
 import { Control } from "./ui";
 import type { SugerenciaRef } from "../lib/refs-contexto";
 import { insertarSugerencia } from "../lib/refs-contexto";
@@ -46,6 +46,7 @@ export function InputConRefs(props: {
   const [abierto, setAbierto] = useState(false);
   const [activa, setActiva] = useState(0);
   const [filtro, setFiltro] = useState("");
+  const idListbox = useId();
   // El nodo real (input/textarea): guarda el control para leer/mover el cursor.
   const [control, setControl] = useState<HTMLInputElement | HTMLTextAreaElement | null>(null);
   // Texto crudo interno: la edición a medio parsear NO se revierte (P0-2);
@@ -123,6 +124,11 @@ export function InputConRefs(props: {
         value={crudo}
         onInput={alEscribir}
         onKeyDown={enTecla}
+        role="combobox"
+        aria-expanded={abierto}
+        aria-controls={abierto ? idListbox : undefined}
+        aria-autocomplete="list"
+        aria-activedescendant={abierto && visibles[activa] ? `${idListbox}-op-${activa}` : undefined}
       />
       <button
         type="button"
@@ -136,15 +142,17 @@ export function InputConRefs(props: {
       </button>
       {abierto && (
         <ul
+          id={idListbox}
           class="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[7px] border border-borde-fuerte bg-superficie py-1 shadow-lg"
           role="listbox"
+          aria-label="Referencias disponibles"
           onMouseDown={(e) => e.preventDefault()}
         >
           {visibles.length === 0 && (
             <li class="px-3 py-1.5 text-[12.5px] text-tinta-suave">Ninguna ref coincide con «{filtro}».</li>
           )}
           {visibles.map((s, i) => (
-            <li key={s.ruta}>
+            <li key={s.ruta} id={`${idListbox}-op-${i}`}>
               <button
                 type="button"
                 class={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left font-mono text-[12.5px] ${i === activa ? "bg-tinta/5 text-tinta" : "text-tinta-suave hover:bg-tinta/5"}`}
