@@ -5,3 +5,4 @@ export * from "./rastro";
 export * from "./blockform";
 export * from "./codeeditor";
 export * from "./input-con-refs";
+export * from "./campo-json";

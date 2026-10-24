@@ -4,7 +4,7 @@
 //! config o mapeo directo `$.ref` en el input de la instancia. La lógica de
 //! inserción y filtrado vive en funciones puras exportadas (testeables sin
 //! DOM); el servidor sigue siendo la autoridad de si la ref resuelve.
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { Control } from "./ui";
 import type { SugerenciaRef } from "../lib/refs-contexto";
 import { insertarSugerencia } from "../lib/refs-contexto";
@@ -48,23 +48,37 @@ export function InputConRefs(props: {
   const [filtro, setFiltro] = useState("");
   // El nodo real (input/textarea): guarda el control para leer/mover el cursor.
   const [control, setControl] = useState<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  // Texto crudo interno: la edición a medio parsear NO se revierte (P0-2);
+  // un cambio externo del valor (rollback, recarga) sí se adopta.
+  const [crudo, setCrudo] = useState(() => props.valor);
+  const [reportado, setReportado] = useState(() => props.valor);
+
+  useEffect(() => {
+    if (props.valor !== reportado) {
+      setReportado(props.valor);
+      setCrudo(props.valor);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.valor]);
 
   const { visibles, ocultas } = filtrarSugerencias(props.sugerencias, filtro);
 
   const abrir = () => {
     if (!control || props.sugerencias.length === 0) return;
-    setFiltro(fragmentoEnCursor(props.valor, control.selectionStart ?? props.valor.length));
+    setFiltro(fragmentoEnCursor(crudo, control.selectionStart ?? crudo.length));
     setActiva(0);
     setAbierto(true);
   };
 
   const elegir = (ruta: string) => {
     if (!control) return;
-    const cursor = control.selectionStart ?? props.valor.length;
-    const r = insertarSugerencia(props.valor, cursor, ruta, props.modo);
+    const cursor = control.selectionStart ?? crudo.length;
+    const r = insertarSugerencia(crudo, cursor, ruta, props.modo);
     // El re-render controlado fijará el mismo texto; el cursor se conserva.
     control.value = r.texto;
     control.setSelectionRange(r.cursor, r.cursor);
+    setCrudo(r.texto);
+    setReportado(r.texto);
     props.onInput(r.texto);
     setAbierto(false);
     control.focus();
@@ -89,6 +103,8 @@ export function InputConRefs(props: {
 
   const alEscribir = (e: Event) => {
     const nodo = e.target as HTMLInputElement | HTMLTextAreaElement;
+    setCrudo(nodo.value);
+    setReportado(nodo.value);
     props.onInput(nodo.value);
     if (abierto) setFiltro(fragmentoEnCursor(nodo.value, nodo.selectionStart ?? 0));
   };
@@ -104,7 +120,7 @@ export function InputConRefs(props: {
         aria-label={props.ariaLabel}
         placeholder={props.placeholder}
         ref={setControl}
-        value={props.valor}
+        value={crudo}
         onInput={alEscribir}
         onKeyDown={enTecla}
       />

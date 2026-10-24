@@ -165,3 +165,23 @@ export function erroresDeFormulario(
   }
   return mapa;
 }
+
+/** Claves que cada tipo de trigger admite (validate_trigger solo lee estas). */
+const CLAVES_POR_TIPO: Record<string, string[]> = {
+  http: ["method", "path"],
+  cron: ["schedule", "timezone"],
+  event: ["topic"],
+  manual: [],
+};
+
+/** Al cambiar el tipo de trigger, conserva solo el type y las claves que el
+ nuevo tipo admite: http→cron no deja method/path huérfanos viajando al
+ borrador (los formularios escriben, nunca limpian; esto limpia por ellos). */
+export function limpiarTrigger(tipo: string, trigger: Record<string, unknown>): Record<string, unknown> {
+  const claves = CLAVES_POR_TIPO[tipo] ?? [];
+  const limpio: Record<string, unknown> = { type: tipo };
+  for (const clave of claves) {
+    if (trigger[clave] !== undefined) limpio[clave] = trigger[clave];
+  }
+  return limpio;
+}

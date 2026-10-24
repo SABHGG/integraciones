@@ -6,9 +6,11 @@
 import { useEffect, useState } from "preact/hooks";
 import { api, type Page } from "../lib/api";
 import { mapearErrores, type Issue } from "../lib/errors";
-import { FormularioInstancia, InputConRefs } from "../ui";
+import { FormularioInstancia, InputConRefs, CampoJson } from "../ui";
 import type { SugerenciaRef } from "../lib/refs-contexto";
 import { sugerenciasDeRefs } from "../lib/refs-contexto";
+import { parseSeguro } from "../lib/parse-seguro";
+import { resumenPublicacion } from "../lib/resumen-publicacion";
 import type { Paso } from "./executions";
 import { EditorCodigo } from "../ui";
 import { puede, type Rol } from "../lib/roles";
@@ -23,6 +25,7 @@ import { Boton, Campo, Control, Esqueleto, Panel } from "../ui";
 import { desglosarSchema, montarSchema, TIPOS_CAMPO, type CampoSchema } from "../lib/schema-builder";
 import {
   erroresDeFormulario,
+  limpiarTrigger,
   TIPOS_TRIGGER,
   VERBOS_HTTP,
   zonasIana,
@@ -104,21 +107,15 @@ function ConstructorSchema(props: {
             ← Constructor de campos
           </Boton>
         </div>
-        <Campo etiqueta="inputSchema (JSON Schema, JSON)">
-          <Control
-            as="textarea"
-            mono
-            rows={5}
-            value={JSON.stringify(props.schema, null, 2)}
-            onInput={(e: Event) => {
-              try {
-                props.onChange(JSON.parse((e.target as HTMLTextAreaElement).value));
-              } catch {
-                // JSON incompleto mientras se escribe.
-              }
-            }}
-          />
-        </Campo>
+        <CampoJson
+          key="schema-avanzado"
+          etiqueta="inputSchema (JSON Schema, JSON)"
+          ariaLabel="Documento del inputSchema en JSON"
+          filas={5}
+          valor={props.schema}
+          alVacio={{}}
+          onChange={(s) => props.onChange(s as Record<string, unknown>)}
+        />
       </div>
     );
   }
@@ -246,21 +243,14 @@ function FormularioTrigger(props: {
             ← Formulario guiado
           </Boton>
         </div>
-        <Campo etiqueta="trigger (JSON)">
-          <Control
-            as="textarea"
-            mono
-            rows={5}
-            value={JSON.stringify(props.trigger, null, 2)}
-            onInput={(e: Event) => {
-              try {
-                props.onChange(JSON.parse((e.target as HTMLTextAreaElement).value));
-              } catch {
-                // JSON incompleto mientras se escribe.
-              }
-            }}
-          />
-        </Campo>
+        <CampoJson
+          key="trigger-avanzado"
+          etiqueta="trigger (JSON)"
+          ariaLabel="Documento del trigger en JSON"
+          filas={5}
+          valor={props.trigger}
+          onChange={(t) => props.onChange(t as Record<string, unknown>)}
+        />
         {listaErrores.map(([campo, mensaje]) => (
           <p key={campo} class="mt-1.5 rounded-[6px] border border-mal/40 bg-mal/5 px-2 py-1 font-mono text-[12px] text-mal">
             trigger.{campo}: {mensaje}
@@ -285,7 +275,11 @@ function FormularioTrigger(props: {
           <Control
             as="select"
             value={tipo}
-            onChange={(e: Event) => ponerCampo("type", (e.target as HTMLSelectElement).value)}
+            onChange={(e: Event) => {
+              // Cambiar de tipo limpia las claves huérfanas del anterior
+              // (http→cron no deja method/path viajando al borrador).
+              props.onChange(limpiarTrigger((e.target as HTMLSelectElement).value, props.trigger));
+            }}
           >
             {!tipo && <option value="">—</option>}
             {TIPOS_TRIGGER.map((t) => (
@@ -704,11 +698,22 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
   const [aviso, setAviso] = useState<string | null>(null);
   const [datosDryRun, setDatosDryRun] = useState("{}");
   const [dryRun, setDryRun] = useState<Record<string, unknown> | null>(null);
+  // Contrato guardado/editado (critique P0-1): snapshot del borrador que el
+  // servidor tiene. Publicar y validar primero alinean servidor y pantalla:
+  // editar + Publicar ya no publica el borrador viejo en silencio.
+  const [guardado, setGuardado] = useState("{}");
+  const [ocupado, setOcupado] = useState(false);
+  // Confirmación de publicación: resumen de lo que se congela, antes de la
+  // acción irreversible. Errores de parseo JSON por campo, visibles en línea.
+  const [confirmacion, setConfirmacion] = useState<string | null>(null);
+  const [erroresJson, setErroresJson] = useState<Record<string, string>>({});
 
   const recargar = async () => {
     const puente = await api<Puente>("GET", `/bridges/${props.id}`);
     setPuente(puente);
-    setDraft((puente.draft ?? {}) as Record<string, unknown>);
+    const borrador = (puente.draft ?? {}) as Record<string, unknown>;
+    setDraft(borrador);
+    setGuardado(JSON.stringify(borrador));
   };
 
   useEffect(() => {
@@ -780,28 +785,40 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
     actualizar({ blocks: [...instancias, instancia] });
   };
 
+  /** Persiste el borrador en el servidor y actualiza el snapshot guardado. */
+  const persistir = async () => {
+    // Las secciones van sueltas en el PATCH (contrato del plano admin).
+    const { trigger, inputSchema, blocks, mask, emit, webhook } = draft;
+    await api("PATCH", `/bridges/${puente.id}`, {
+      trigger,
+      inputSchema: inputSchema ?? {},
+      blocks,
+      ...(mask !== undefined ? { mask } : {}),
+      ...(emit !== undefined ? { emit } : {}),
+      ...(webhook !== undefined ? { webhook } : {}),
+    });
+    setGuardado(JSON.stringify(draft));
+  };
+
   const guardar = async () => {
     setAviso(null);
+    setOcupado(true);
     try {
-      // Las secciones van sueltas en el PATCH (contrato del plano admin).
-      const { trigger, inputSchema, blocks, mask, emit, webhook } = draft;
-      await api("PATCH", `/bridges/${puente.id}`, {
-        trigger,
-        inputSchema: inputSchema ?? {},
-        blocks,
-        ...(mask !== undefined ? { mask } : {}),
-        ...(emit !== undefined ? { emit } : {}),
-        ...(webhook !== undefined ? { webhook } : {}),
-      });
+      await persistir();
       setAviso("Borrador guardado.");
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "error al guardar");
+    } finally {
+      setOcupado(false);
     }
   };
 
   const validar = async () => {
     setAviso(null);
+    setOcupado(true);
     try {
+      // Valida LO QUE VES: si hay edición sin guardar, se guarda primero.
+      if (JSON.stringify(draft) !== guardado) await persistir();
       const resultado = await api<{ valid: boolean; errors: Issue[] }>(
         "POST",
         `/bridges/${puente.id}/validate`,
@@ -810,13 +827,42 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
       setAviso(resultado.valid ? "El borrador es válido." : "Hay errores de validación.");
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "error al validar");
+    } finally {
+      setOcupado(false);
     }
   };
 
-  const publicar = async () => {
+  // Publicar en dos pasos: guardar si hace falta → validar → confirmación con
+  // resumen (irreversible). Con errores, no llega a preguntar.
+  const pedirPublicacion = async () => {
     setAviso(null);
+    setConfirmacion(null);
+    setOcupado(true);
+    try {
+      if (JSON.stringify(draft) !== guardado) await persistir();
+      const resultado = await api<{ valid: boolean; errors: Issue[] }>(
+        "POST",
+        `/bridges/${puente.id}/validate`,
+      );
+      setIssues(resultado.errors);
+      if (!resultado.valid) {
+        setAviso("Hay errores de validación: corrígelos antes de publicar.");
+        return;
+      }
+      setConfirmacion(resumenPublicacion(trigger, instancias));
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : "error al preparar la publicación");
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const publicarConfirmado = async () => {
+    setAviso(null);
+    setOcupado(true);
     try {
       await api("POST", `/bridges/${puente.id}/versions`);
+      setConfirmacion(null);
       setAviso("Versión publicada.");
       const actualizado = await api<Puente>("GET", `/bridges/${props.id}`);
       setPuente(actualizado);
@@ -826,6 +872,8 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
         setIssues((e as { fields: Issue[] }).fields);
       }
       setAviso(e instanceof Error ? e.message : "error al publicar");
+    } finally {
+      setOcupado(false);
     }
   };
 
@@ -853,6 +901,7 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
 
   const mapeado = mapearErrores(issues);
   const trigger = (draft.trigger ?? {}) as Record<string, unknown>;
+  const dirty = JSON.stringify(draft) !== guardado;
 
   /** Refs `$.` disponibles hasta el índice `hasta` de la cadena: raíces del
    trigger según su tipo, $.now y salidas de bloques previos (output_schema de
@@ -875,14 +924,32 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
           {puente.latestVersion ? `v${puente.latestVersion}` : "sin publicar"}
         </span>
         <span class="hidden text-[13.5px] text-tinta-suave lg:inline">{puente.name}</span>
+        {administra && dirty && (
+          <span class="rounded-[4px] border border-aviso/40 bg-aviso-fondo px-2 py-1 font-mono text-[11.5px] text-aviso">
+            cambios sin guardar
+          </span>
+        )}
         {administra && (
           <div class="ml-auto flex flex-wrap items-center gap-2">
-            <Boton variante="secundario" chico onClick={() => void guardar()}>Guardar borrador</Boton>
-            <Boton variante="secundario" chico onClick={() => void validar()}>Validar</Boton>
-            <Boton chico onClick={() => void publicar()}>Publicar versión</Boton>
+            <Boton variante="secundario" chico deshabilitado={ocupado} onClick={() => void guardar()}>Guardar borrador</Boton>
+            <Boton variante="secundario" chico deshabilitado={ocupado} onClick={() => void validar()}>Validar</Boton>
+            <Boton chico deshabilitado={ocupado} onClick={() => void pedirPublicacion()}>Publicar versión</Boton>
           </div>
         )}
       </div>
+
+      {confirmacion && (
+        <div class="rounded-[8px] border border-aviso/50 bg-aviso-fondo px-3.5 py-2.5">
+          <div class="text-[13.5px] font-medium text-tinta">
+            Se publicará una versión nueva e inmutable de este puente
+          </div>
+          <p class="mt-1 font-mono text-[12.5px] text-tinta-suave">{confirmacion}</p>
+          <div class="mt-2.5 flex gap-2">
+            <Boton chico deshabilitado={ocupado} onClick={() => void publicarConfirmado()}>Publicar ahora</Boton>
+            <Boton variante="secundario" chico deshabilitado={ocupado} onClick={() => setConfirmacion(null)}>Cancelar</Boton>
+          </div>
+        </div>
+      )}
 
       {aviso && (
         <Aviso
@@ -910,8 +977,9 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
       <Panel class="p-4">
         <div class="mb-3 text-[14px] font-semibold text-tinta">Input schema</div>
         <p class="mt-1 mb-3 text-[12.5px] text-tinta-suave">
-          JSON Schema del body del disparo (trigger http): si no cumple, la ejecución
-          falla con VALIDATION_FAILED antes de tocar ningún bloque.
+          {typeof trigger.type === "string" && trigger.type !== "http"
+            ? `JSON Schema del body del disparo: solo valida en el trigger http (el actual es ${trigger.type}); con él este panel no afecta la ejecución.`
+            : "JSON Schema del body del disparo (trigger http): si no cumple, la ejecución falla con VALIDATION_FAILED antes de tocar ningún bloque."}
         </p>
         <ConstructorSchema
           schema={(draft.inputSchema ?? {}) as Record<string, unknown>}
@@ -989,17 +1057,28 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
                   )}
                 </div>
                 <div class="mt-3 grid gap-3 md:grid-cols-[1fr_150px]">
-                  <Campo etiqueta="input (refs $. hacia bloques anteriores, JSON)">
+                  <Campo
+                    etiqueta="input (refs $. hacia bloques anteriores, JSON)"
+                    error={erroresJson[`${instancia.id}:input`]}
+                  >
                     <InputConRefs
                       valor={JSON.stringify(instancia.input ?? {}, null, 2)}
                       onInput={(crudo) => {
+                        const p = parseSeguro(crudo);
+                        const clave = `${instancia.id}:input`;
                         const nuevas = [...instancias];
-                        try {
-                          nuevas[indice] = { ...instancia, input: JSON.parse(crudo) };
-                          actualizar({ blocks: nuevas });
-                        } catch {
-                          // JSON incompleto mientras se escribe.
+                        if (p.ok) {
+                          setErroresJson((prev) => {
+                            if (!(clave in prev)) return prev;
+                            const resto = { ...prev };
+                            delete resto[clave];
+                            return resto;
+                          });
+                          nuevas[indice] = { ...instancia, input: (p.valor ?? {}) as Record<string, unknown> };
+                        } else {
+                          setErroresJson((prev) => ({ ...prev, [clave]: p.error }));
                         }
+                        actualizar({ blocks: nuevas });
                       }}
                       sugerencias={contextoDeRefs(indice)}
                       modo="mapear"
@@ -1026,28 +1105,19 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
                   </Campo>
                 </div>
                 <div class="mt-3">
-                  <Campo etiqueta="when (condición declarativa, JSON o vacío)">
-                    <Control
-                      as="textarea"
-                      mono
-                      rows={2}
-                      value={instancia.when === undefined ? "" : JSON.stringify(instancia.when)}
-                      onInput={(e: Event) => {
-                        const crudo = (e.target as HTMLTextAreaElement).value.trim();
-                        const nuevas = [...instancias];
-                        if (crudo === "") {
-                          delete nuevas[indice].when;
-                        } else {
-                          try {
-                            nuevas[indice] = { ...instancia, when: JSON.parse(crudo) };
-                          } catch {
-                            // JSON incompleto mientras se escribe.
-                          }
-                        }
-                        actualizar({ blocks: nuevas });
-                      }}
-                    />
-                  </Campo>
+                  <CampoJson
+                    key={`when-${instancia.id}`}
+                    etiqueta="when (condición declarativa, JSON o vacío)"
+                    ariaLabel={`Condición when de la instancia ${indice + 1}`}
+                    valor={instancia.when}
+                    filas={2}
+                    onChange={(valor) => {
+                      const nuevas = [...instancias];
+                      if (valor === undefined) delete nuevas[indice].when;
+                      else nuevas[indice] = { ...instancia, when: valor };
+                      actualizar({ blocks: nuevas });
+                    }}
+                  />
                 </div>
                 {errores
                   .filter((issue) => issue.field.endsWith(".when"))
