@@ -1,0 +1,261 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Publicación de bloques y puentes",
+    "output": "docs/diagramas/publicacion.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "borrador",
+        "label": "Borrador",
+        "focus": [
+          "codigo",
+          "puente_draft"
+        ],
+        "note": "El bloque es una función export default (input, ctx); el puente la instancia con config y refs $."
+      },
+      {
+        "id": "puertas",
+        "label": "Puertas al publicar",
+        "focus": [
+          "puente_draft",
+          "transpile",
+          "schemas",
+          "error422",
+          "dryrun"
+        ],
+        "note": "Transpile swc, schemas estrictos y dry-run con mocks: los errores se ven antes de crear versión."
+      },
+      {
+        "id": "inmutabilidad",
+        "label": "Versión inmutable",
+        "focus": [
+          "dryrun",
+          "version",
+          "rollback"
+        ],
+        "note": "Publicar crea una versión única con el JS compilado; revertir es re-publicar, jamás reescribir."
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "autor",
+      "label": "Autoría"
+    },
+    {
+      "id": "validacion",
+      "label": "Validación al publicar"
+    },
+    {
+      "id": "runtime",
+      "label": "Catálogo versionado"
+    },
+    {
+      "id": "excepciones",
+      "label": "Corrección",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "borrador",
+      "label": "Borrador",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "validar",
+      "label": "Validar",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "publicar",
+      "label": "Publicar",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "codigo",
+    "puente_draft",
+    "transpile",
+    "schemas",
+    "dryrun",
+    "version"
+  ],
+  "nodes": [
+    {
+      "id": "codigo",
+      "lane": "autor",
+      "col": 0,
+      "type": "frontend",
+      "label": "Código del bloque",
+      "sublabel": "(input, ctx) → salida",
+      "tag": "TS o JS",
+      "width": 136
+    },
+    {
+      "id": "puente_draft",
+      "lane": "autor",
+      "col": 1,
+      "type": "frontend",
+      "label": "Puente borrador",
+      "sublabel": "instancias + refs $.",
+      "width": 136
+    },
+    {
+      "id": "transpile",
+      "lane": "validacion",
+      "col": 2,
+      "type": "backend",
+      "label": "Transpile swc",
+      "sublabel": "TS → JS al publicar",
+      "tag": "nunca en runtime",
+      "width": 136
+    },
+    {
+      "id": "schemas",
+      "lane": "validacion",
+      "col": 3,
+      "type": "security",
+      "label": "Schemas + ui",
+      "sublabel": "input/output/config",
+      "tag": "subconjunto estricto",
+      "width": 136
+    },
+    {
+      "id": "dryrun",
+      "lane": "validacion",
+      "col": 4,
+      "type": "backend",
+      "label": "Dry-run",
+      "sublabel": "mocks por instancia",
+      "tag": "sin IO real",
+      "width": 136
+    },
+    {
+      "id": "version",
+      "lane": "runtime",
+      "col": 5,
+      "type": "database",
+      "label": "Versión inmutable",
+      "sublabel": "UNIQUE(block, version)",
+      "tag": "latest_version",
+      "width": 136
+    },
+    {
+      "id": "error422",
+      "lane": "excepciones",
+      "col": 3,
+      "type": "security",
+      "label": "Rechazada · 422",
+      "sublabel": "Problem Details",
+      "tag": "sin versión creada",
+      "width": 136
+    },
+    {
+      "id": "rollback",
+      "lane": "excepciones",
+      "col": 5,
+      "type": "messagebus",
+      "label": "Rollback",
+      "sublabel": "re-publicar versión previa",
+      "tag": "el pasado no se reescribe",
+      "width": 136
+    }
+  ],
+  "edges": [
+    {
+      "id": "codigo-puente",
+      "from": "codigo",
+      "to": "puente_draft",
+      "label": "una instancia por bloque"
+    },
+    {
+      "id": "puente-transpile",
+      "from": "puente_draft",
+      "to": "transpile",
+      "label": "publicar",
+      "variant": "emphasis"
+    },
+    {
+      "id": "transpile-schemas",
+      "from": "transpile",
+      "to": "schemas",
+      "label": "JS válido"
+    },
+    {
+      "id": "schemas-error",
+      "from": "schemas",
+      "to": "error422",
+      "label": "sintaxis o schema inválido",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "schemas-dryrun",
+      "from": "schemas",
+      "to": "dryrun",
+      "label": "válido"
+    },
+    {
+      "id": "dryrun-version",
+      "from": "dryrun",
+      "to": "version",
+      "label": "confirmar",
+      "variant": "emphasis"
+    },
+    {
+      "id": "version-rollback",
+      "from": "version",
+      "to": "rollback",
+      "label": "revertir",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "rollback-version",
+      "from": "rollback",
+      "to": "version",
+      "label": "re-publica la versión buena",
+      "variant": "dashed",
+      "role": "return",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Inmutabilidad",
+      "items": [
+        "Cada versión es UNIQUE(block_id, version) y guarda el JS ya compilado",
+        "Los puentes referencian bloque + versión exactos, jamás latest a la hora de correr",
+        "Revertir no reescribe el pasado: es re-publicar la versión buena"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Puertas al publicar",
+      "items": [
+        "swc transpila TS → JS solo al publicar; el runtime recibe JS",
+        "inputSchema, outputSchema, configSchema y metadatos ui contra el subconjunto estricto",
+        "Error de compilación o schema: 422 Problem Details sin crear la versión"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Ensayo antes de volar",
+      "items": [
+        "Dry-run del borrador con mocks por instancia, sin filas de ejecución",
+        "La consola muestra los errores de transpile en línea, junto al código",
+        "El puente publicado queda invocable en /x/{slug}"
+      ]
+    }
+  ]
+}

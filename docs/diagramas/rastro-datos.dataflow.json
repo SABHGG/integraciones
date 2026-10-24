@@ -1,0 +1,259 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Rastro de datos: observabilidad y retención",
+    "output": "docs/diagramas/rastro-datos.html",
+    "viewBox": [
+      1080,
+      540
+    ],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "origenes",
+        "label": "Orígenes del disparo",
+        "focus": [
+          "http_call",
+          "cron_evt",
+          "engine_run"
+        ],
+        "note": "HTTP, cron, eventos y manual dejan trigger_data rastreable en la ejecución."
+      },
+      {
+        "id": "persistencia",
+        "label": "Persistencia enmascarada",
+        "focus": [
+          "engine_run",
+          "mask",
+          "steps_row"
+        ],
+        "note": "El mask se aplica antes de dormir: el valor original no existe en ninguna tabla."
+      },
+      {
+        "id": "consumos",
+        "label": "Consumos del rastro",
+        "focus": [
+          "steps_row",
+          "consola_trace",
+          "replay"
+        ],
+        "note": "La consola, el polling, el replay y el webhook firman leen del mismo almacén."
+      }
+    ]
+  },
+  "stages": [
+    {
+      "label": "Disparo"
+    },
+    {
+      "label": "Ejecución"
+    },
+    {
+      "label": "Persistencia"
+    },
+    {
+      "label": "Consumo"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "http_call",
+      "type": "external",
+      "label": "POST /x/{slug}",
+      "sublabel": "sync · async",
+      "stage": 0,
+      "row": 0,
+      "tag": "HTTP",
+      "width": 130
+    },
+    {
+      "id": "cron_evt",
+      "type": "cloud",
+      "label": "Cron · eventos",
+      "sublabel": "scheduler · fan-out",
+      "stage": 0,
+      "row": 1,
+      "tag": "triggers",
+      "width": 130
+    },
+    {
+      "id": "engine_run",
+      "type": "backend",
+      "label": "Engine",
+      "sublabel": "cadena · fail-fast",
+      "stage": 1,
+      "row": 1,
+      "tag": "isolate fresco",
+      "width": 130
+    },
+    {
+      "id": "mask",
+      "type": "security",
+      "label": "Mask",
+      "sublabel": "congelado por versión",
+      "stage": 1,
+      "row": 2,
+      "tag": "irreversible",
+      "width": 130
+    },
+    {
+      "id": "exec_row",
+      "type": "database",
+      "label": "executions",
+      "sublabel": "estado · trigger_data",
+      "stage": 2,
+      "row": 0,
+      "tag": "365 d",
+      "width": 130
+    },
+    {
+      "id": "steps_row",
+      "type": "database",
+      "label": "execution_steps",
+      "sublabel": "IO + duración",
+      "stage": 2,
+      "row": 2,
+      "tag": "30 d",
+      "width": 130
+    },
+    {
+      "id": "consola_trace",
+      "type": "frontend",
+      "label": "El rastro",
+      "sublabel": "miniatura por fila",
+      "stage": 3,
+      "row": 2,
+      "tag": "solo lectura",
+      "width": 130
+    },
+    {
+      "id": "replay",
+      "type": "backend",
+      "label": "Replay",
+      "sublabel": "versión congelada",
+      "stage": 3,
+      "row": 0,
+      "tag": "nueva ejecución",
+      "width": 130
+    }
+  ],
+  "flows": [
+    {
+      "id": "http-trigger",
+      "from": "http_call",
+      "to": "engine_run",
+      "label": "trigger_data + entrada",
+      "classification": "disparo",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "cron-trigger",
+      "from": "cron_evt",
+      "to": "engine_run",
+      "label": "topic · run_at",
+      "classification": "disparo",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelDx": -30,
+      "labelAt": [
+        178,
+        314
+      ],
+      "route": "straight"
+    },
+    {
+      "id": "paso-salida",
+      "from": "engine_run",
+      "to": "mask",
+      "label": "salida por paso",
+      "classification": "antes de persistir",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        315,
+        314
+      ]
+    },
+    {
+      "id": "estado-row",
+      "from": "engine_run",
+      "to": "exec_row",
+      "label": "estado · duración · error",
+      "classification": "misma transacción",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "io-masked",
+      "from": "mask",
+      "to": "steps_row",
+      "label": "IO con ***",
+      "classification": "mask aplicado",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "lectura-consola",
+      "from": "steps_row",
+      "to": "consola_trace",
+      "label": "trace por paso",
+      "classification": "GET /executions · /trace",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelAt": [
+        638,
+        428
+      ]
+    },
+    {
+      "id": "replay-read",
+      "from": "exec_row",
+      "to": "replay",
+      "label": "replayOf + versión",
+      "classification": "re-ejecutar",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelAt": [
+        638,
+        200
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Toda ejecución es interpretable",
+      "items": [
+        "trigger_data registra topic, payload, run_at o el replay original",
+        "El registro guarda la versión exacta con la que corrió",
+        "El resumen queda consultable un año; el IO, 30 días"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "El secreto muere antes de dormir",
+      "items": [
+        "El mask congelado por versión aplica *** antes de persistir",
+        "El valor original no existe en ninguna tabla del trace",
+        "La bóveda audita la versión de credencial de cada ejecución"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Consumos del mismo almacén",
+      "items": [
+        "La consola lee el trace por paso y pinta el rastro por fila",
+        "El resumen vive un año aunque el IO se purgue a los 30 días"
+      ]
+    }
+  ]
+}

@@ -23,6 +23,7 @@ La especificación completa vive en [`openspec/`](openspec/) — empezar por `op
 | [`docs/guia-bloques.md`](docs/guia-bloques.md) | Crear bloques: built-in `http` vs `custom_logic`, contrato del código, sandbox `ctx.*`, metadatos `ui`, versiones inmutables |
 | [`docs/guia-puentes.md`](docs/guia-puentes.md) | Crear puentes: disparadores, refs `$.`, `when`/`switch`, emit/webhook/mask, dry-run, publicar e invocar |
 | [`docs/errores-comunes.md`](docs/errores-comunes.md) | Diagnóstico rápido: 401/403/404/409/422, códigos de ejecución (`REF_UNRESOLVED`, `TIMEOUT`…), webhooks y eventos |
+| [`docs/diagramas/`](docs/diagramas/) | Diagramas interactivos (arquitectura, invocación, publicación, ciclo de vida, rastro de datos) con su fuente JSON y recibos de verificación |
 
 ## Desarrollo local
 

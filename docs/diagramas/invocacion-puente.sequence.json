@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Invocación de un puente: de /x al sobre",
+    "output": "docs/diagramas/invocacion-puente.html",
+    "viewBox": [
+      1070,
+      570
+    ],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "disparo",
+        "label": "Disparo sync o async",
+        "focus": [
+          "cliente",
+          "api",
+          "store"
+        ],
+        "note": "Sync corre inline y responde 200; con Prefer: respond-async encola y responde 202."
+      },
+      {
+        "id": "ejecucion",
+        "label": "Ejecución aislada",
+        "focus": [
+          "store",
+          "worker",
+          "sandbox",
+          "ext"
+        ],
+        "note": "El worker reclama la fila y el engine recorre la cadena en un isolate fresco."
+      },
+      {
+        "id": "cierre",
+        "label": "Cierre y observabilidad",
+        "focus": [
+          "worker",
+          "hook",
+          "cliente",
+          "api"
+        ],
+        "note": "El commit persiste trace y estado; webhook firmado y polling como observadores."
+      }
+    ],
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "cliente",
+      "type": "external",
+      "label": "Cliente"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Plano /x",
+      "sublabel": "invoke.rs"
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "executions"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Engine",
+      "sublabel": "inline o worker"
+    },
+    {
+      "id": "sandbox",
+      "type": "security",
+      "label": "QuickJS",
+      "sublabel": "isolate fresco"
+    },
+    {
+      "id": "ext",
+      "type": "cloud",
+      "label": "API externa",
+      "sublabel": "ctx.http.request"
+    },
+    {
+      "id": "hook",
+      "type": "messagebus",
+      "label": "Job webhook",
+      "sublabel": "HMAC-SHA256"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 234,
+      "label": "Disparo"
+    },
+    {
+      "from": 246,
+      "to": 394,
+      "label": "Ejecución aislada"
+    },
+    {
+      "from": 406,
+      "to": 490,
+      "label": "Cierre"
+    }
+  ],
+  "messages": [
+    {
+      "from": "cliente",
+      "to": "api",
+      "y": 164,
+      "label": "POST /x/{slug}",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "store",
+      "y": 192,
+      "label": "versión publicada + idempotencia · INSERT pending"
+    },
+    {
+      "from": "api",
+      "to": "cliente",
+      "y": 220,
+      "label": "200 inline · o 202 + executionId",
+      "variant": "return"
+    },
+    {
+      "from": "store",
+      "to": "worker",
+      "y": 252,
+      "label": "SKIP LOCKED · running"
+    },
+    {
+      "from": "worker",
+      "to": "sandbox",
+      "y": 284,
+      "label": "paso k: (input, ctx)",
+      "variant": "emphasis"
+    },
+    {
+      "from": "sandbox",
+      "to": "ext",
+      "y": 316,
+      "label": "ctx.http.request · allowlist + deadline"
+    },
+    {
+      "from": "sandbox",
+      "to": "worker",
+      "y": 348,
+      "label": "salida | throw",
+      "variant": "return"
+    },
+    {
+      "from": "worker",
+      "to": "store",
+      "y": 380,
+      "label": "commit: steps (IO, mask ***) + estado final",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "cliente",
+      "y": 412,
+      "label": "200 {success, data|error, executionId}",
+      "variant": "return"
+    },
+    {
+      "from": "worker",
+      "to": "hook",
+      "y": 444,
+      "label": "programa entrega firmada",
+      "variant": "dashed"
+    },
+    {
+      "from": "hook",
+      "to": "cliente",
+      "y": 476,
+      "label": "POST HMAC-SHA256 · reintentos",
+      "variant": "dashed"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "api",
+      "from": 158,
+      "to": 226,
+      "type": "backend"
+    },
+    {
+      "participant": "store",
+      "from": 186,
+      "to": 386,
+      "type": "database"
+    },
+    {
+      "participant": "worker",
+      "from": 246,
+      "to": 386,
+      "type": "backend"
+    },
+    {
+      "participant": "sandbox",
+      "from": 278,
+      "to": 354,
+      "type": "security"
+    },
+    {
+      "participant": "ext",
+      "from": 310,
+      "to": 322,
+      "type": "cloud"
+    },
+    {
+      "participant": "worker",
+      "from": 438,
+      "to": 450,
+      "type": "backend"
+    },
+    {
+      "participant": "hook",
+      "from": 470,
+      "to": 482,
+      "type": "messagebus"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Un motor, dos modos",
+      "items": [
+        "Sync: /x reclama la fila y corre inline; sobre 200 al terminar",
+        "Async (Prefer: respond-async): encolado y 202 con executionId",
+        "Idempotency-Key repetida devuelve la ejecución original"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Aislamiento por paso",
+      "items": [
+        "Isolate QuickJS fresco; sin estado entre ejecuciones",
+        "ctx.http.request sale por el host con allowlist y deadline",
+        "Fail-fast: el primer throw corta y queda en el trace"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Cierre trazable",
+      "items": [
+        "Steps, estado y mask *** en la misma transacción",
+        "Webhook firmado HMAC-SHA256 con reintentos",
+        "El trace por paso alimenta polling y El rastro"
+      ]
+    }
+  ]
+}

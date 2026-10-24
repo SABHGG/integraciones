@@ -1,0 +1,254 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Arquitectura de Bloques y Puentes",
+    "output": "docs/diagramas/arquitectura.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "dos-planos",
+        "label": "Dos planos HTTP",
+        "focus": [
+          "caller",
+          "invoke",
+          "operador",
+          "consola",
+          "admin"
+        ],
+        "note": "El plano público /x y el plano admin /api/v1 viven en el mismo binario pero no comparten superficie."
+      },
+      {
+        "id": "ejecucion",
+        "label": "Ejecución aislada",
+        "focus": [
+          "invoke",
+          "engine",
+          "sandbox",
+          "externo",
+          "vault"
+        ],
+        "note": "Del disparo al isolate QuickJS: refs $., schemas y capacidades ctx con allowlist y bóveda."
+      },
+      {
+        "id": "estado",
+        "label": "Estado y observable",
+        "focus": [
+          "pg",
+          "engine",
+          "events"
+        ],
+        "note": "PostgreSQL es cola y registro; el fan-out de eventos reencola puentes suscritos."
+      }
+    ]
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 5,
+    "cellW": 168,
+    "cellH": 60,
+    "gapX": 64,
+    "gapY": 28
+  },
+  "components": [
+    {
+      "id": "operador",
+      "type": "external",
+      "label": "Equipo",
+      "sublabel": "owner · editor · runner",
+      "row": 0,
+      "col": 0
+    },
+    {
+      "id": "consola",
+      "type": "frontend",
+      "label": "Consola",
+      "sublabel": "Preact + Vite · /console",
+      "row": 0,
+      "col": 1
+    },
+    {
+      "id": "admin",
+      "type": "backend",
+      "label": "Plano admin",
+      "sublabel": "/api/v1 · sesión o Bearer",
+      "row": 0,
+      "col": 2
+    },
+    {
+      "id": "vault",
+      "type": "security",
+      "label": "Bóveda",
+      "sublabel": "AES-GCM · inmutable",
+      "row": 0,
+      "col": 3
+    },
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "Consumidor /x",
+      "sublabel": "cliente HTTP",
+      "row": 2,
+      "col": 0
+    },
+    {
+      "id": "invoke",
+      "type": "backend",
+      "label": "Plano invocación",
+      "sublabel": "POST /x/{slug}",
+      "row": 2,
+      "col": 1
+    },
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "Engine + worker",
+      "sublabel": "fail-fast · when/switch",
+      "row": 2,
+      "col": 2,
+      "tag": "cron · eventos · HTTP"
+    },
+    {
+      "id": "sandbox",
+      "type": "security",
+      "label": "Sandbox QuickJS",
+      "sublabel": "isolate fresco · timeout",
+      "row": 2,
+      "col": 3
+    },
+    {
+      "id": "externo",
+      "type": "cloud",
+      "label": "APIs externas",
+      "sublabel": "allowlist · deadline",
+      "row": 2,
+      "col": 4
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "executions = cola + trace",
+      "row": 4,
+      "col": 2
+    },
+    {
+      "id": "events",
+      "type": "messagebus",
+      "label": "Eventos",
+      "sublabel": "emit onSuccess/onFailure",
+      "row": 4,
+      "col": 3
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Binario Rust único (api + engine + sandbox + core)",
+      "wraps": [
+        "admin",
+        "invoke",
+        "engine",
+        "sandbox",
+        "vault",
+        "events"
+      ],
+      "pad": 24
+    }
+  ],
+  "connections": [
+    {
+      "from": "operador",
+      "to": "consola",
+      "label": "navegador"
+    },
+    {
+      "from": "consola",
+      "to": "admin",
+      "label": "fetch JSON"
+    },
+    {
+      "from": "admin",
+      "to": "vault",
+      "label": "rotar + auditar",
+      "variant": "dashed"
+    },
+    {
+      "from": "caller",
+      "to": "invoke",
+      "label": "POST /x/{slug}",
+      "variant": "emphasis"
+    },
+    {
+      "from": "invoke",
+      "to": "engine",
+      "label": "sync: inline",
+      "variant": "emphasis"
+    },
+    {
+      "from": "engine",
+      "to": "sandbox",
+      "label": "(input, ctx)",
+      "variant": "emphasis"
+    },
+    {
+      "from": "sandbox",
+      "to": "externo",
+      "label": "ctx.http.request"
+    },
+    {
+      "from": "sandbox",
+      "to": "vault",
+      "label": "ctx.credential(name)",
+      "variant": "security"
+    },
+    {
+      "from": "engine",
+      "to": "pg",
+      "label": "executions: cola · commit IO ***",
+      "labelDy": 24
+    },
+    {
+      "from": "engine",
+      "to": "events",
+      "label": "emit",
+      "variant": "dashed"
+    },
+    {
+      "from": "events",
+      "to": "pg",
+      "label": "fan-out",
+      "variant": "dashed",
+      "labelDy": 22
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Dos planos separados",
+      "items": [
+        "/api/v1 autentica con sesión (roles owner > editor > runner > viewer) o Bearer de API key",
+        "/x/{slug} es el plano público de invocación, con Idempotency-Key opcional",
+        "Async: Prefer: respond-async encola la fila y responde 202 con executionId"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Ejecución observable",
+      "items": [
+        "La tabla executions es a la vez cola (pending + SKIP LOCKED) y registro",
+        "IO y duración por paso en execution_steps; mask *** antes de persistir",
+        "Retención configurable: IO a 30 días, resúmenes a 365"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Sandbox y secretos",
+      "items": [
+        "Isolate QuickJS fresco por ejecución, con límite de memoria e interrupt handler",
+        "ctx.http.request con timeout obligatorio y allowlist de dominios por workspace",
+        "ctx.credential resuelve en la bóveda la versión auditada de la credencial"
+      ]
+    }
+  ]
+}

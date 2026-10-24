@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Ciclo de vida de una ejecución",
+    "output": "docs/diagramas/ciclo-ejecucion.html",
+    "viewBox": [
+      1075,
+      610
+    ],
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Ciclo de la ejecución"
+    },
+    {
+      "id": "recovery",
+      "label": "Recuperación"
+    },
+    {
+      "id": "terminal",
+      "label": "Purga"
+    }
+  ],
+  "states": [
+    {
+      "id": "pending",
+      "type": "start",
+      "label": "Pending",
+      "sublabel": "nace con el commit",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "fila = cola"
+    },
+    {
+      "id": "running",
+      "type": "active",
+      "label": "Running",
+      "sublabel": "SKIP LOCKED",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "inline o worker"
+    },
+    {
+      "id": "paso",
+      "type": "decision",
+      "label": "Paso k",
+      "sublabel": "when/switch en el host",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "fail-fast"
+    },
+    {
+      "id": "succeeded",
+      "type": "success",
+      "label": "Succeeded",
+      "sublabel": "sobre success: true",
+      "lane": "main",
+      "col": 3,
+      "step": "04",
+      "tag": "terminal"
+    },
+    {
+      "id": "failed",
+      "type": "failure",
+      "label": "Failed",
+      "sublabel": "código de error estable",
+      "lane": "main",
+      "col": 4,
+      "step": "05",
+      "tag": "terminal"
+    },
+    {
+      "id": "replay",
+      "type": "neutral",
+      "label": "Replay",
+      "sublabel": "misma versión congelada",
+      "lane": "recovery",
+      "col": 0,
+      "tag": "nueva ejecución"
+    },
+    {
+      "id": "purga",
+      "type": "neutral",
+      "label": "Purgado",
+      "sublabel": "IO 30 d · resumen 365 d",
+      "lane": "terminal",
+      "col": 1,
+      "tag": "job de retención",
+      "yOffset": -105
+    }
+  ],
+  "transitions": [
+    {
+      "from": "pending",
+      "to": "running",
+      "label": "worker reclama",
+      "labelAt": [
+        225,
+        202
+      ]
+    },
+    {
+      "from": "running",
+      "to": "paso",
+      "label": "resolver + schema",
+      "labelAt": [
+        302,
+        104
+      ]
+    },
+    {
+      "from": "paso",
+      "to": "running",
+      "label": "k ok → k+1",
+      "route": "bottom-channel"
+    },
+    {
+      "from": "paso",
+      "to": "succeeded",
+      "label": "último paso ok",
+      "route": "straight",
+      "labelAt": [
+        440,
+        202
+      ]
+    },
+    {
+      "from": "paso",
+      "to": "failed",
+      "label": "throw · TIMEOUT · VALIDATION_FAILED · REF_UNRESOLVED",
+      "route": "top-channel"
+    },
+    {
+      "from": "failed",
+      "to": "replay",
+      "label": "reproducir",
+      "variant": "dashed",
+      "route": "bottom-channel",
+      "channelY": 545
+    },
+    {
+      "from": "replay",
+      "to": "pending",
+      "label": "encola nueva ejecución",
+      "variant": "dashed",
+      "route": "left-channel"
+    },
+    {
+      "from": "succeeded",
+      "to": "purga",
+      "label": "job de retención",
+      "variant": "dashed",
+      "route": "bottom-channel"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Una fila, dos consumos",
+      "items": [
+        "La fila nace pending en un solo commit; executions es a la vez cola y registro",
+        "Sync la reclama inline; async la reclama el worker cada 200 ms con SKIP LOCKED",
+        "Cron programa run_at futuro; solape o caída queda en missed_triggers (overlap|downtime)"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Fail-fast con códigos estables",
+      "items": [
+        "BLOCK_FAILED, VALIDATION_FAILED, REF_UNRESOLVED y TIMEOUT forman contrato",
+        "Un when falso o una ruta no elegida registra el paso como skipped, sin invocar el sandbox",
+        "El primer error corta la cadena; los pasos previos conservan su IO y duración"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Segundas vidas",
+      "items": [
+        "El replay crea una ejecución nueva con la versión congelada y enlace replayOf",
+        "La retención purga primero el IO de execution_steps y después el resumen",
+        "El webhook de resultado vive aparte: webhook_deliveries con attempts y next_retry_at"
+      ]
+    }
+  ]
+}
