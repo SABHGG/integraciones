@@ -330,7 +330,8 @@ struct PublishVersionRequest {
     /// TypeScript del bloque (`export default function (input, ctx) { … }`).
     /// Solo para `custom_logic`: los built-in http publican sin código.
     #[serde(default)]
-    code: Option<String>,    #[serde(default)]
+    code: Option<String>,
+    #[serde(default)]
     config_schema: Option<Value>,
     #[serde(default)]
     input_schema: Option<Value>,

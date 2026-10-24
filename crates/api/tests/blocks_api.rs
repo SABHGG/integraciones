@@ -1060,10 +1060,7 @@ async fn publicar_un_custom_logic_conserva_el_fuente_junto_al_js() {
     assert_eq!(persisted.1, BLOQUE_TS);
 
     // La lista de versiones expone el mismo par en campos separados.
-    let listado = h
-        .get(&format!("/api/v1/blocks/{id}/versions"))
-        .await
-        .json();
+    let listado = h.get(&format!("/api/v1/blocks/{id}/versions")).await.json();
     assert_eq!(listado["items"][0]["sourceCode"].as_str(), Some(BLOQUE_TS));
     assert_eq!(listado["items"][0]["code"].as_str(), Some(js));
 }
@@ -1076,10 +1073,7 @@ async fn un_builtin_http_no_expone_codigo_ni_fuente() {
     let id = uuid_of(&block).to_string();
 
     let version = h.publish(&id, json!({})).await.json();
-    assert!(
-        version["code"].is_null(),
-        "code NULL: {version}"
-    );
+    assert!(version["code"].is_null(), "code NULL: {version}");
     assert!(
         version["sourceCode"].is_null(),
         "sourceCode NULL, no cadena vacía: {version}"
@@ -1111,10 +1105,7 @@ async fn una_version_historica_sin_fuente_se_lee_con_source_code_null() {
     .await
     .expect("versión histórica");
 
-    let listado = h
-        .get(&format!("/api/v1/blocks/{id}/versions"))
-        .await
-        .json();
+    let listado = h.get(&format!("/api/v1/blocks/{id}/versions")).await.json();
     let item = &listado["items"][0];
     assert_eq!(item["code"].as_str(), Some("const x = 1;\n"));
     assert!(
