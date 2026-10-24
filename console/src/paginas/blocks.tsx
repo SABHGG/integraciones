@@ -9,6 +9,7 @@ import { api, type Page } from "../lib/api";
 import { puede, type Rol } from "../lib/roles";
 import { EditorCodigo } from "../ui";
 import { codigoAMostrar } from "../lib/codigo-bloque";
+import { AUTORIA_VACIA, construirUi, uiDeAutoria, IDS_WIDGET_UI, type AutoriaUi } from "../lib/ui-meta";
 import {
   filtrarBloques,
   categorias,
@@ -301,6 +302,9 @@ export function DetalleBloque(props: { id: string; rol: Rol | null; navegar: (ru
   const [aviso, setAviso] = useState<string | null>(null);
   const [codigo, setCodigo] = useState(PLANTILLA_BLOQUE);
   const [erroresEditor, setErroresEditor] = useState<string[]>([]);
+  // Autoría de metadatos ui del formulario de la consola (D6): prellenada con
+  // el ui de la última versión para que republicar conserve lo declarado.
+  const [autoria, setAutoria] = useState<AutoriaUi>(AUTORIA_VACIA);
   // Precarga del editor (design D6): solo UNA vez, en la primera carga de
   // versiones. Tras publicar, el editor conserva lo que la persona escribió en
   // vez de saltar al texto recién publicado; tampoco se precarga con `code`
@@ -324,6 +328,7 @@ export function DetalleBloque(props: { id: string; rol: Rol | null; navegar: (ru
         setBloque(detalle);
         const pagina = await api<Page<VersionBloque>>("GET", `/blocks/${props.id}/versions`);
         setVersiones(pagina.items);
+        setAutoria(uiDeAutoria(pagina.items[0]?.ui ?? null));
         if (!precargado.current) {
           precargado.current = true;
           const fuente = pagina.items[0]?.sourceCode;
@@ -342,16 +347,50 @@ export function DetalleBloque(props: { id: string; rol: Rol | null; navegar: (ru
     setAviso(null);
     setErroresEditor([]);
     try {
-      await api("POST", `/blocks/${bloque.id}/versions`, { code: codigo });
-      setAviso(`Versión publicada de ${bloque.slug}.`);
+      // ui solo cuando el autor declaró campos: sin metadatos la publicación
+      // es byte a byte la de antes (el servidor guarda ui = {}).
+      const ui = construirUi(autoria);
+      await api("POST", `/blocks/${bloque.id}/versions`, ui ? { code: codigo, ui } : { code: codigo });
+      setAviso(ui
+        ? `Versión publicada de ${bloque.slug} con formulario ui (${(ui.order as string[]).length} campos).`
+        : `Versión publicada de ${bloque.slug}.`);
       const pagina = await api<Page<VersionBloque>>("GET", `/blocks/${bloque.id}/versions`);
       setVersiones(pagina.items);
+      setAutoria(uiDeAutoria(pagina.items[0]?.ui ?? null));
     } catch (e) {
       if (e instanceof Error) {
         const apiError = e as { status?: number; message: string; fields?: ProblemaCampo[] };
         setErroresEditor(erroresDelPlano(apiError.message, apiError.fields ?? []));
       }
     }
+  };
+
+  const editarAutoria = (cambios: Partial<AutoriaUi>) => setAutoria((a) => ({ ...a, ...cambios }));
+  const moverCampoUi = (indice: number, delta: number) => {
+    const campos = [...autoria.campos];
+    const destino = indice + delta;
+    if (destino < 0 || destino >= campos.length) return;
+    [campos[indice], campos[destino]] = [campos[destino], campos[indice]];
+    editarAutoria({ campos });
+  };
+  // Renombrar un campo conserva su widget y ayuda elegidos.
+  const renombrarCampoUi = (indice: number, nombre: string) => {
+    const campoViejo = autoria.campos[indice];
+    const campos = [...autoria.campos];
+    campos[indice] = nombre;
+    const widgets = { ...autoria.widgets };
+    const helps = { ...autoria.helps };
+    if (campoViejo !== nombre && campoViejo !== "") {
+      if (widgets[campoViejo] !== undefined) {
+        widgets[nombre] = widgets[campoViejo];
+        delete widgets[campoViejo];
+      }
+      if (helps[campoViejo] !== undefined) {
+        helps[nombre] = helps[campoViejo];
+        delete helps[campoViejo];
+      }
+    }
+    editarAutoria({ campos, widgets, helps });
   };
 
   // Volver: si llegamos navegando dentro de la consola, atrás restaura la
@@ -487,6 +526,82 @@ export function DetalleBloque(props: { id: string; rol: Rol | null; navegar: (ru
                 ))}
               </div>
             )}
+            <details class="mt-3 rounded-[7px] border border-borde p-3">
+              <summary class="cursor-pointer text-[13px] text-tinta-suave hover:text-tinta">
+                Formulario en la consola (metadatos ui)
+                {autoria.campos.length > 0 && (
+                  <span class="ml-2 font-mono text-[11.5px] text-tinta-tenue">{autoria.campos.length} campos</span>
+                )}
+              </summary>
+              <p class="mt-2 text-[12.5px] text-tinta-suave">
+                Declara qué campos mostrará el formulario de este bloque al añadirlo a un puente
+                (title, orden, widget y ayuda). Sin declarar nada, su configuración se edita como JSON.
+              </p>
+              <div class="mt-2.5">
+                <Campo etiqueta="Título del formulario (opcional)">
+                  <Control
+                    value={autoria.title}
+                    placeholder="Configuración de la llamada"
+                    onInput={(e: Event) => editarAutoria({ title: (e.target as HTMLInputElement).value })}
+                  />
+                </Campo>
+              </div>
+              {autoria.campos.length > 0 && (
+                <ol class="mt-3 space-y-2">
+                  {autoria.campos.map((campo, indice) => (
+                    <li key={`${indice}-${campo}`} class="flex flex-wrap items-center gap-2">
+                      <input
+                        class="w-40 rounded-[6px] border border-borde-fuerte bg-superficie px-2 py-1.5 font-mono text-[12.5px] text-tinta focus:border-tinta-suave focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tinta"
+                        value={campo}
+                        aria-label={`Campo ${indice + 1}: nombre`}
+                        onInput={(e: Event) => renombrarCampoUi(indice, (e.target as HTMLInputElement).value)}
+                      />
+                      <Control
+                        as="select"
+                        class="w-36"
+                        value={autoria.widgets[campo] ?? "text"}
+                        aria-label={`Widget del campo ${campo || indice + 1}`}
+                        onChange={(e: Event) =>
+                          editarAutoria({ widgets: { ...autoria.widgets, [campo]: (e.target as HTMLSelectElement).value } })
+                        }
+                      >
+                        {IDS_WIDGET_UI.map((id) => (
+                          <option key={id} value={id}>{id}</option>
+                        ))}
+                      </Control>
+                      <input
+                        class="min-w-[150px] flex-1 rounded-[6px] border border-borde-fuerte bg-superficie px-2 py-1.5 text-[12.5px] text-tinta focus:border-tinta-suave focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tinta"
+                        value={autoria.helps[campo] ?? ""}
+                        placeholder="Ayuda (opcional)"
+                        aria-label={`Ayuda del campo ${campo || indice + 1}`}
+                        onInput={(e: Event) =>
+                          editarAutoria({ helps: { ...autoria.helps, [campo]: (e.target as HTMLInputElement).value } })
+                        }
+                      />
+                      <Boton variante="secundario" chico onClick={() => moverCampoUi(indice, -1)} deshabilitado={indice === 0} title="Subir">↑</Boton>
+                      <Boton variante="secundario" chico onClick={() => moverCampoUi(indice, 1)} deshabilitado={indice === autoria.campos.length - 1} title="Bajar">↓</Boton>
+                      <Boton
+                        variante="peligro"
+                        chico
+                        title={`Quitar ${campo || "campo"}`}
+                        onClick={() => editarAutoria({ campos: autoria.campos.filter((_, i) => i !== indice) })}
+                      >
+                        ×
+                      </Boton>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              <div class="mt-2.5">
+                <Boton
+                  variante="secundario"
+                  chico
+                  onClick={() => editarAutoria({ campos: [...autoria.campos, `campo${autoria.campos.length + 1}`] })}
+                >
+                  + Añadir campo
+                </Boton>
+              </div>
+            </details>
             <div class="mt-3">
               <Boton onClick={() => void publicarVersion()}>Publicar versión</Boton>
             </div>
