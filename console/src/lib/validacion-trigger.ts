@@ -174,6 +174,18 @@ const CLAVES_POR_TIPO: Record<string, string[]> = {
   manual: [],
 };
 
+/** Claves del tipo (para el aviso de cambio de tipo). */
+export function clavesDeTipo(tipo: string): string[] {
+  return CLAVES_POR_TIPO[tipo] ?? [];
+}
+
+/** Qué campos desaparecen del borrador al cambiar de tipo (aviso F3).
+ Claves del tipo viejo que el nuevo no admite. */
+export function clavesQuitadasAlCambiar(tipoAnterior: string, tipoNuevo: string): string[] {
+  const nuevas = new Set(clavesDeTipo(tipoNuevo));
+  return clavesDeTipo(tipoAnterior).filter((c) => !nuevas.has(c));
+}
+
 /** Al cambiar el tipo de trigger, conserva solo el type y las claves que el
  nuevo tipo admite: http→cron no deja method/path huérfanos viajando al
  borrador (los formularios escriben, nunca limpian; esto limpia por ellos). */

@@ -4,6 +4,7 @@ import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { driver, type Driver } from "driver.js";
 import { api, clearSesion, getApiKey, getToken, salir as cerrarSesionServidor } from "./lib/api";
+import { permitirSalidaUnaVez, preguntaDeSalida } from "./lib/nav-guarda";
 import type { Rol } from "./lib/roles";
 import { etiquetaRol } from "./lib/roles";
 import { leerTourVisto, marcarTourVisto, movimientoReducido, pasosDisponibles } from "./lib/tour";
@@ -41,6 +42,10 @@ function leerRuta(): Ruta {
 }
 
 function navegar(ruta: string): void {
+  // Guardia de salida (R2 P1): trabajo sin guardar se pregunta antes de mover.
+  const mensaje = preguntaDeSalida();
+  if (mensaje !== null && !window.confirm(mensaje)) return;
+  permitirSalidaUnaVez();
   history.pushState({ app: true }, "", `/console${ruta}`);
   dispatchEvent(new PopStateEvent("popstate"));
 }
@@ -68,6 +73,9 @@ function App(): preact.ComponentChildren {
   // `undefined` = whoami pendiente; `null` = sesión sin workspace fijado.
   const [workspace, setWorkspace] = useState<string | null | undefined>(undefined);
   const [ruta, setRuta] = useState<Ruta>(leerRuta());
+  // URL vigente para restaurar si el usuario cancela un salir con guardia
+  // activa (popstate no se puede prevenir: se reempuja).
+  const urlVigente = useRef(location.pathname);
   const drv = useRef<Driver | null>(null);
   const tourAutomaticoLanzado = useRef(false);
 
@@ -87,7 +95,16 @@ function App(): preact.ComponentChildren {
   }, [conSesion]);
 
   useEffect(() => {
-    const alMover = () => setRuta(leerRuta());
+    const alMover = () => {
+      const mensaje = preguntaDeSalida();
+      if (mensaje !== null && !window.confirm(mensaje)) {
+        // Cancelar el rastro: restaurar la URL de donde veníamos.
+        history.pushState({ app: true }, "", urlVigente.current);
+        return;
+      }
+      urlVigente.current = location.pathname;
+      setRuta(leerRuta());
+    };
     addEventListener("popstate", alMover);
     return () => removeEventListener("popstate", alMover);
   }, []);

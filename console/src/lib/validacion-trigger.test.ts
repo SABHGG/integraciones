@@ -2,6 +2,7 @@
 //! (crates/api/src/bridges.rs) y de `domain::cron`.
 import { describe, expect, it } from "vitest";
 import {
+  clavesQuitadasAlCambiar,
   erroresDeFormulario,
   esTimezoneIana,
   validarCron,
@@ -91,6 +92,17 @@ describe("validarTrigger", () => {
   it("no es un objeto: necesita disparador", () => {
     expect(campos(undefined)).toEqual(["type"]);
     expect(campos("http")).toEqual(["type"]);
+  });
+});
+
+describe("clavesQuitadasAlCambiar", () => {
+  it("http→cron pierde method y path; cron→http no pierde schedule si no tenía", () => {
+    expect(clavesQuitadasAlCambiar("http", "cron")).toEqual(["method", "path"]);
+    expect(clavesQuitadasAlCambiar("cron", "http")).toEqual(["schedule", "timezone"]);
+  });
+  it("manual pierde todas; subscribe al mismo tipo no quita nada", () => {
+    expect(clavesQuitadasAlCambiar("http", "manual")).toEqual(["method", "path"]);
+    expect(clavesQuitadasAlCambiar("http", "http")).toEqual([]);
   });
 });
 

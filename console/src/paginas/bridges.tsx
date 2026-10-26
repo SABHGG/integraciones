@@ -17,6 +17,7 @@ import {
   quitarInstancia,
   reinsertarInstancia,
 } from "../lib/tarjetas-cadena";
+import { ponerGuardia } from "../lib/nav-guarda";
 import type { Paso } from "./executions";
 import { EditorCodigo } from "../ui";
 import { puede, type Rol } from "../lib/roles";
@@ -31,6 +32,7 @@ import {
 import { Boton, Campo, Control, Esqueleto, Panel } from "../ui";
 import { desglosarSchema, montarSchema, TIPOS_CAMPO, type CampoSchema } from "../lib/schema-builder";
 import {
+  clavesQuitadasAlCambiar,
   erroresDeFormulario,
   limpiarTrigger,
   TIPOS_TRIGGER,
@@ -205,7 +207,7 @@ function ConstructorSchema(props: {
               <span class="text-[12px] text-mal">{campo.nombre.trim() === "" ? "nombre vacío" : "nombre duplicado"}</span>
             )}
             <Boton
-              variante="peligro"
+              variante="secundario"
               chico
               class="ml-auto"
               title={`Quitar ${campo.nombre}`}
@@ -250,12 +252,26 @@ function FormularioTrigger(props: {
   issuesServidor: { field: string; message: string }[];
 }) {
   const [avanzado, setAvanzado] = useState(false);
+  // Aviso de cambio de tipo (R2 P2): listar qué campos se quitaron y ofrecer
+  // Deshacer, para que limpiarTrigger deje de ser una pérdida silenciosa.
+  const [cambioTipo, setCambioTipo] = useState<{
+    anterior: Record<string, unknown>;
+    clavesQuitadas: string[];
+  } | null>(null);
   const tipo = typeof props.trigger.type === "string" ? props.trigger.type : "";
   const errores = erroresDeFormulario(props.trigger, props.issuesServidor);
   const listaErrores = Object.entries(errores);
 
   const ponerCampo = (campo: string, valor: unknown) =>
     props.onChange({ ...props.trigger, [campo]: valor });
+
+  const nuevoTriggerConAviso = (tipoNuevo: string): Record<string, unknown> => {
+    const quitadas = clavesQuitadasAlCambiar(tipo, tipoNuevo);
+    if (quitadas.length > 0) {
+      setCambioTipo({ anterior: props.trigger, clavesQuitadas: quitadas });
+    }
+    return limpiarTrigger(tipoNuevo, props.trigger);
+  };
 
   if (avanzado) {
     return (
@@ -293,6 +309,32 @@ function FormularioTrigger(props: {
         textoAvanzado=""
         etiquetaVuelta=""
       />
+      {cambioTipo && (
+        <div role="status" class="mb-3 flex flex-wrap items-center gap-3 rounded-[7px] border border-info/40 bg-info-fondo px-3 py-2 text-[13px] text-tinta">
+          <span>
+            Se quitaron los campos del tipo anterior:{" "}
+            <span class="font-mono">{cambioTipo.clavesQuitadas.join(", ")}</span>.
+          </span>
+          <Boton
+            variante="secundario"
+            chico
+            onClick={() => {
+              props.onChange(cambioTipo.anterior);
+              setCambioTipo(null);
+            }}
+          >
+            Deshacer
+          </Boton>
+          <button
+            type="button"
+            aria-label="Descartar el aviso del cambio de tipo"
+            class="ml-auto rounded-[5px] px-1.5 font-mono text-[12px] text-tinta-suave hover:text-tinta"
+            onClick={() => setCambioTipo(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div class="grid gap-x-4 gap-y-3 md:grid-cols-2">
         <Campo etiqueta="Tipo" error={errores["type"]}>
           <Control
@@ -301,7 +343,7 @@ function FormularioTrigger(props: {
             onChange={(e: Event) => {
               // Cambiar de tipo limpia las claves huérfanas del anterior
               // (http→cron no deja method/path viajando al borrador).
-              props.onChange(limpiarTrigger((e.target as HTMLSelectElement).value, props.trigger));
+            props.onChange(nuevoTriggerConAviso((e.target as HTMLSelectElement).value));
             }}
           >
             {!tipo && <option value="">—</option>}
@@ -783,6 +825,25 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
     setAbiertas((prev) => purgarAbiertas(prev, totalInstancias));
   }, [totalInstancias]);
 
+  // Guardia de salida (R2 P1): al abandonar con edición pendiente (reload o
+  // navegación dentro de la consola), el usuario decide; nada se descarta.
+  useEffect(() => {
+    const sinGuardar = JSON.stringify(draft) !== guardado;
+    ponerGuardia(sinGuardar ? () => "Hay cambios sin guardar en el borrador del puente." : null);
+    const alCierro = (e: BeforeUnloadEvent) => {
+      if (sinGuardar) {
+        e.preventDefault();
+        // Chrome exige returnValue para mostrar el diálogo.
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", alCierro);
+    return () => {
+      ponerGuardia(null);
+      window.removeEventListener("beforeunload", alCierro);
+    };
+  }, [draft, guardado]);
+
   const recargar = async () => {
     const puente = await api<Puente>("GET", `/bridges/${props.id}`);
     setPuente(puente);
@@ -973,6 +1034,9 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
     setAviso(null);
     setDryRun(null);
     try {
+      // Ensayo de LO QUE VES (R2 P1): si hay edición sin guardar, se guarda
+      // antes de correr, como ya hacen validar y pedirPublicacion.
+      if (JSON.stringify(draft) !== guardado) await persistir();
       let datos: unknown = {};
       try {
         datos = JSON.parse(datosDryRun);
@@ -1046,7 +1110,7 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
           </div>
           <p class="mt-1 font-mono text-[12.5px] text-tinta-suave">{confirmacion}</p>
           <div class="mt-2.5 flex gap-2">
-            <Boton chico deshabilitado={ocupado} onClick={() => void publicarConfirmado()}>Publicar ahora</Boton>
+            <Boton variante="peligro" chico deshabilitado={ocupado} onClick={() => void publicarConfirmado()}>Publicar ahora</Boton>
             <Boton variante="secundario" chico deshabilitado={ocupado} onClick={() => setConfirmacion(null)}>Cancelar</Boton>
           </div>
         </div>

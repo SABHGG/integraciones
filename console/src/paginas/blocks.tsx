@@ -581,7 +581,7 @@ export function DetalleBloque(props: { id: string; rol: Rol | null; navegar: (ru
                       <Boton variante="secundario" chico onClick={() => moverCampoUi(indice, -1)} deshabilitado={indice === 0} title="Subir">↑</Boton>
                       <Boton variante="secundario" chico onClick={() => moverCampoUi(indice, 1)} deshabilitado={indice === autoria.campos.length - 1} title="Bajar">↓</Boton>
                       <Boton
-                        variante="peligro"
+                        variante="secundario"
                         chico
                         title={`Quitar ${campo || "campo"}`}
                         onClick={() => editarAutoria({ campos: autoria.campos.filter((_, i) => i !== indice) })}
