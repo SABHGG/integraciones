@@ -32,4 +32,4 @@
 
 ## 7. Integración y cierre
 
-- [ ] 7.1 Suite completa y build de producción: `npm run test` y `npm run build` (tsc --noEmit + vite) en verde; repaso de que ningún requisito del delta de `specs/web-console/spec.md` queda sin escenario manual comprobado (verificación: comandos en verde + lista de escenarios recorrida).
+- [x] 7.1 Suite completa y build de producción: `npm run test` y `npm run build` (tsc --noEmit + vite) en verde; repaso de que ningún requisito del delta de `specs/web-console/spec.md` queda sin escenario manual comprobado (verificación: comandos en verde + lista de escenarios recorrida).
