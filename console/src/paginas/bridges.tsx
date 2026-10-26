@@ -6,11 +6,12 @@
 import { useEffect, useState } from "preact/hooks";
 import { api, type Page } from "../lib/api";
 import { mapearErrores, type Issue } from "../lib/errors";
-import { FormularioInstancia, InputConRefs, CampoJson } from "../ui";
+import { FormularioInstancia, InputConRefs, CampoJson, TablaDiff } from "../ui";
 import type { SugerenciaRef } from "../lib/refs-contexto";
 import { sugerenciasDeRefs } from "../lib/refs-contexto";
 import { parseSeguro } from "../lib/parse-seguro";
 import { resumenPublicacion } from "../lib/resumen-publicacion";
+import { diffEstructural, lineasDeSecciones, resumenDiff, type LineaDiff } from "../lib/diff";
 import {
   estaExpandida,
   purgarAbiertas,
@@ -68,6 +69,10 @@ interface VersionBloque {
   configSchema: unknown;
   outputSchema: unknown;
 }
+
+/** Secciones editables del borrador (contrato del PATCH): el diff de la
+ confirmación solo mira aquí, para no confundir decisión con resolución. */
+const SECCIONES_EDITABLES = ["trigger", "inputSchema", "blocks", "mask", "emit", "webhook"] as const;
 
 function Aviso(props: { texto: string; tono?: "ok" | "mal" }) {
   const clase =
@@ -812,7 +817,18 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
   const [ocupado, setOcupado] = useState(false);
   // Confirmación de publicación: resumen de lo que se congela, antes de la
   // acción irreversible. Errores de parseo JSON por campo, visibles en línea.
-  const [confirmacion, setConfirmacion] = useState<string | null>(null);
+  const [confirmacion, setConfirmacion] = useState<ConfirmacionPublicacion | null>(null);
+
+  /** Confirmación de publicación (add-publish-diff): resumen orgánico + diff
+   contra la última versión publicada, o degradación honesta (primera versión,
+   definición no cargada). El diff filtrado usa lib/diff.ts (design D1–D6). */
+  interface ConfirmacionPublicacion {
+    resumen: string;
+    primeraVersion?: boolean;
+    sinDiff?: string;
+    lineas?: LineaDiff[];
+    ladoIzq?: string;
+  }
   const [erroresJson, setErroresJson] = useState<Record<string, string>>({});
   // Tarjetas de la cadena (critique P1): abiertas por el usuario (la última lo
   // está por defecto); las que tienen errores se abren siempre. Deshacer de
@@ -1002,7 +1018,27 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
         setAviso({ texto: "Hay errores de validación: corrígelos antes de publicar.", tono: "mal" });
         return;
       }
-      setConfirmacion(resumenPublicacion(trigger, instancias));
+      const resumen = resumenPublicacion(trigger, instancias);
+      const versionAnterior = puente.latestVersion;
+      if (versionAnterior === null) {
+        // Primera publicación: no hay una anterior con la que comparar (D4).
+        setConfirmacion({ resumen, primeraVersion: true });
+        return;
+      }
+      try {
+        const detalle = await api<{ definition: unknown }>(
+          "GET",
+          `/bridges/${puente.id}/versions/${versionAnterior}`,
+        );
+        const lineas = lineasDeSecciones(
+          diffEstructural(draft, detalle.definition),
+          SECCIONES_EDITABLES,
+        );
+        setConfirmacion({ resumen, lineas, ladoIzq: `v${versionAnterior}` });
+      } catch {
+        // Degradación honesta (D5): sin diff no se bloquea la publicación.
+        setConfirmacion({ resumen, sinDiff: `no se pudo comparar con v${versionAnterior}` });
+      }
     } catch (e) {
       setAviso({ texto: e instanceof Error ? e.message : "error al preparar la publicación", tono: "mal" });
     } finally {
@@ -1108,7 +1144,30 @@ export function EditorPuente(props: { id: string; rol: Rol | null; navegar?: (ru
           <div class="text-[13.5px] font-medium text-tinta">
             Se publicará una versión nueva e inmutable de este puente
           </div>
-          <p class="mt-1 font-mono text-[12.5px] text-tinta-suave">{confirmacion}</p>
+          <p class="mt-1 font-mono text-[12.5px] text-tinta-suave">{confirmacion.resumen}</p>
+          {confirmacion.primeraVersion && (
+            <p class="mt-1.5 text-[12.5px] text-tinta-suave">Primera versión — no hay una anterior con la que comparar.</p>
+          )}
+          {confirmacion.sinDiff && (
+            <p class="mt-1.5 text-[12.5px] text-tinta-suave">No se pudo comparar ({confirmacion.sinDiff}); el servidor revalidará al congelar.</p>
+          )}
+          {confirmacion.lineas !== undefined && (
+            <details class="mt-2.5 rounded-[7px] border border-borde bg-superficie p-2.5">
+              <summary class="cursor-pointer text-[13px] text-tinta">
+                <span class="rounded-[4px] border border-borde-fuerte bg-papel px-2 py-0.5 font-mono text-[11px] text-tinta-suave">
+                  {resumenDiff(confirmacion.lineas)}
+                </span>{" "}
+                contra {confirmacion.ladoIzq}
+              </summary>
+              <div class="mt-2 max-h-64 overflow-y-auto">
+                <TablaDiff
+                  lineas={confirmacion.lineas}
+                  etiquetaIzq={confirmacion.ladoIzq ?? "anterior"}
+                  etiquetaDer="borrador"
+                />
+              </div>
+            </details>
+          )}
           <div class="mt-2.5 flex gap-2">
             <Boton variante="peligro" chico deshabilitado={ocupado} onClick={() => void publicarConfirmado()}>Publicar ahora</Boton>
             <Boton variante="secundario" chico deshabilitado={ocupado} onClick={() => setConfirmacion(null)}>Cancelar</Boton>

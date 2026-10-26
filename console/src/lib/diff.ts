@@ -87,3 +87,21 @@ export function resumenDiff(lineas: LineaDiff[]): string {
   if (lineas.length === 0) return "idénticos";
   return `${lineas.length} diferencia${lineas.length === 1 ? "" : "s"}`;
 }
+
+/** Ruta de resolución del servidor que no es editable en el borrador: el
+ código vive en la versión del bloque (el cambio de bloque ya se ve en
+ `blockVersionId`); mostrar el JS congelado como «diferencia del puente»
+ sería ruido de resolución, no información de decisión. */
+const RUTA_CODE = /^blocks\.\d+\.code(?:\.|$)/;
+
+/** Filtra líneas del diff a las secciones editables del borrador
+ (`trigger`, `inputSchema`, `blocks`, `mask`, `emit`, `webhook`) y descarta
+ las rutas de resolución `blocks.*.code…`. Función pura (D2 del design). */
+export function lineasDeSecciones(lineas: LineaDiff[], secciones: readonly string[]): LineaDiff[] {
+  const raices = new Set(secciones);
+  return lineas.filter((linea) => {
+    const raiz = linea.ruta.split(".")[0];
+    if (!raices.has(raiz)) return false;
+    return !(raiz === "blocks" && RUTA_CODE.test(linea.ruta));
+  });
+}

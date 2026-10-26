@@ -8,7 +8,7 @@ import { useEffect, useState } from "preact/hooks";
 import { api, type Page } from "../lib/api";
 import { diffEstructural, resumenDiff } from "../lib/diff";
 import { artefactoExport } from "../lib/transferir";
-import { Boton, Control, Panel } from "../ui";
+import { Boton, Control, Panel, TablaDiff } from "../ui";
 
 interface VersionMeta {
   id: string;
@@ -236,29 +236,8 @@ export function PanelVersiones(props: Props) {
         </div>
 
         {lineas.length > 0 && (
-          <div class="mt-3 overflow-x-auto rounded-[6px] border border-borde">
-            <table class="w-full min-w-[560px] border-collapse">
-              <thead>
-                <tr class="border-b border-borde bg-papel text-left text-[11.5px] font-semibold text-tinta-suave">
-                  <th class="px-3 py-2 font-semibold">Ruta</th>
-                  <th class="px-3 py-2 font-semibold">{etiqueta(ladoA)}</th>
-                  <th class="px-3 py-2 font-semibold">{etiqueta(ladoB)}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lineas.map((linea) => (
-                  <tr key={linea.ruta} class="border-b border-borde last:border-0 align-top">
-                    <td class="px-3 py-2 font-mono text-[11.5px] text-tinta">{linea.ruta}</td>
-                    <td class="max-w-[320px] truncate px-3 py-2 font-mono text-[11.5px] text-tinta-suave" title={JSON.stringify(linea.izq)}>
-                      {JSON.stringify(linea.izq)}
-                    </td>
-                    <td class="max-w-[320px] truncate px-3 py-2 font-mono text-[11.5px] text-tinta" title={JSON.stringify(linea.der)}>
-                      {JSON.stringify(linea.der)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div class="mt-3">
+            <TablaDiff lineas={lineas} etiquetaIzq={etiqueta(ladoA)} etiquetaDer={etiqueta(ladoB)} />
           </div>
         )}
 

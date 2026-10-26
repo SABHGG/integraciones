@@ -10,7 +10,7 @@
 ## 2. Autocompletado de refs
 
 - [x] 2.1 Crear componente `console/src/ui/input-con-refs.tsx`: dropdown anclado al cursor (botón `$` + Ctrl/Cmd+Espacio) sobre textareas e inputs, con inserción en `selectionStart` — `{$.ruta}` en config, `$.ruta` en input; tests de inserción y de foco (verificación: `npm run test` en verde).
-- [ ] 2.2 Cablear `InputConRefs` en las textarea de `input` y `config` (sin `ui`) del editor de puentes y en el widget `ref-template` de `FormularioInstancia`, alimentado por `refs-contexto.ts` con las instancias previas reales; comprobación manual en `npm run dev` con el puente del taller rick-and-morty (verificación: las sugerencias muestran `$.trigger…`, `$.now` y la salida del bloque 1, y la inserción produce interpolación/mapeo correctos).
+- [x] 2.2 Cablear `InputConRefs` en las textarea de `input` y `config` (sin `ui`) del editor de puentes y en el widget `ref-template` de `FormularioInstancia`, alimentado por `refs-contexto.ts` con las instancias previas reales; comprobación manual en `npm run dev` con el puente del taller rick-and-morty (verificación: las sugerencias muestran `$.trigger…`, `$.now` y la salida del bloque 1, y la inserción produce interpolación/mapeo correctos).
 
 ## 3. Formulario guiado del trigger
 
