@@ -1,0 +1,265 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-24T03:05:00Z",
+  "title": "Design System: El rastro",
+  "extensions": {
+    "colorMeta": {
+      "tinta": {
+        "role": "primary",
+        "displayName": "Tinta petróleo",
+        "canonical": "#14352d",
+        "tonalRamp": [
+          "#0b1a16",
+          "#14352d",
+          "#1d4840",
+          "#265b52",
+          "#317064",
+          "#4d8b7e",
+          "#7aa89d",
+          "#a9c6bf"
+        ]
+      },
+      "papel": {
+        "role": "neutral",
+        "displayName": "Papel hueso",
+        "canonical": "#f5f6f3",
+        "tonalRamp": [
+          "#4a4f4a",
+          "#6a7169",
+          "#8a9188",
+          "#aab1a6",
+          "#c3c9be",
+          "#dcded7",
+          "#e9ebe5",
+          "#f5f6f3"
+        ]
+      },
+      "superficie": {
+        "role": "neutral",
+        "displayName": "Superficie",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#8b928b",
+          "#a3aaa2",
+          "#b8beb6",
+          "#ccd1ca",
+          "#dde0da",
+          "#eceedf",
+          "#f4f5f1",
+          "#ffffff"
+        ]
+      },
+      "ok": {
+        "role": "state",
+        "displayName": "Verde de estado",
+        "canonical": "#1e7a4e",
+        "tonalRamp": [
+          "#0e3d27",
+          "#1e7a4e",
+          "#2c8f60",
+          "#3ea371",
+          "#66b68c",
+          "#8dc9a8",
+          "#b4dcc3",
+          "#e4f0e9"
+        ]
+      },
+      "mal": {
+        "role": "state",
+        "displayName": "Ladrillo de estado",
+        "canonical": "#b3402e",
+        "tonalRamp": [
+          "#5e2015",
+          "#b3402e",
+          "#c25442",
+          "#d1685a",
+          "#dd8478",
+          "#e6a79c",
+          "#efcac2",
+          "#f7e6e2"
+        ]
+      },
+      "aviso": {
+        "role": "state",
+        "displayName": "Ámbar de estado",
+        "canonical": "#855d0e",
+        "tonalRamp": [
+          "#433006",
+          "#855d0e",
+          "#967028",
+          "#a88447",
+          "#ba9a6c",
+          "#ccb394",
+          "#dedcbc",
+          "#f4ebd7"
+        ]
+      },
+      "info": {
+        "role": "state",
+        "displayName": "Azul de estado",
+        "canonical": "#2b6cb0",
+        "tonalRamp": [
+          "#16365c",
+          "#2b6cb0",
+          "#3b7cc0",
+          "#4f8eca",
+          "#71a6d6",
+          "#95bfe1",
+          "#b9daed",
+          "#e4edf8"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Título de página de listado (700, 21px)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Título de panel (600, 14px)."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Prosa y avisos (400, 13.5px)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Etiquetas de campo (500, 12.5px)."
+      },
+      "mono": {
+        "displayName": "Machine value",
+        "purpose": "Solo valores de máquina: slugs, refs $., estados, versiones (Spline Sans Mono 11–12.5px)."
+      }
+    },
+    "shadows": [
+      {
+        "name": "menu-lifted",
+        "value": "0 10px 24px rgba(20, 53, 45, 0.14)",
+        "purpose": "Dropdown temporal (autocompletado $): la única elevación de menú del sistema."
+      },
+      {
+        "name": "tour-glide",
+        "value": "0 12px 32px rgba(20, 53, 45, 0.18)",
+        "purpose": "Popover del tour guiado: el único difuminado, reservado a la capa guiada."
+      }
+    ],
+    "motion": [
+      {
+        "name": "user-response",
+        "value": "150ms ease",
+        "purpose": "Transiciones de color/hover como respuesta al usuario; cae a 0.01ms con prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botón primario",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "La única acción primaria de la página: guardar, crear. Tinta sólida sobre papel.",
+      "html": "<button class=\"ds-btn-primary\">Guardar borrador</button>",
+      "css": ".ds-btn-primary { background: var(--color-tinta); color: var(--color-papel); border: none; border-radius: var(--radius-control); padding: 8px 14px; font-family: var(--font-sans); font-size: 13.5px; font-weight: 500; transition: background 0.15s ease, outline 0.15s ease; } .ds-btn-primary:hover { background: #0e2822; } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-tinta); outline-offset: 2px; }"
+    },
+    {
+      "name": "Botón secundario",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Acciones de apoyo: superficie con borde fuerte, hover hacia borde más oscuro.",
+      "html": "<button class=\"ds-btn-secondary\">Validar</button>",
+      "css": ".ds-btn-secondary { background: var(--color-superficie); color: var(--color-tinta); border: 1px solid var(--color-borde-fuerte); border-radius: var(--radius-control); padding: 7px 13px; font-family: var(--font-sans); font-size: 13.5px; font-weight: 500; transition: border-color 0.15s ease; } .ds-btn-secondary:hover { border-color: var(--color-tinta-suave); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-tinta); outline-offset: 2px; }"
+    },
+    {
+      "name": "Botón peligro",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destruye o publica irreversible: ladrillo de estado como consecuencia, no como decoración.",
+      "html": "<button class=\"ds-btn-danger\">Quitar</button>",
+      "css": ".ds-btn-danger { background: var(--color-mal); color: var(--color-superficie); border: none; border-radius: var(--radius-control); padding: 7px 13px; font-family: var(--font-sans); font-size: 13.5px; font-weight: 500; transition: background 0.15s ease; } .ds-btn-danger:hover { background: #93301f; } .ds-btn-danger:focus-visible { outline: 2px solid var(--color-tinta); outline-offset: 2px; }"
+    },
+    {
+      "name": "Campo de texto",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Superficie con borde fuerte y foco de tinta; los valores de máquina van en mono.",
+      "html": "<input class=\"ds-input\" value=\"/x/demo\" aria-label=\"Path del puente\" />",
+      "css": ".ds-input { width: 100%; background: var(--color-superficie); color: var(--color-tinta); border: 1px solid var(--color-borde-fuerte); border-radius: var(--radius-control); padding: 8px 10px; font-family: var(--font-mono); font-size: 12.5px; } .ds-input:focus { border-color: var(--color-tinta-suave); outline: 2px solid var(--color-tinta); outline-offset: 2px; } .ds-input::placeholder { color: var(--color-tinta-tenue); font-family: var(--font-sans); } .ds-input[aria-invalid=\"true\"] { border-color: var(--color-mal); }"
+    },
+    {
+      "name": "Insignia de estado",
+      "kind": "chip",
+      "refersTo": "components.panel",
+      "description": "Valor de máquina con LED del color del estado: el color ES el dato.",
+      "html": "<span class=\"ds-chip ds-chip-ok\">succeeded</span> <span class=\"ds-chip ds-chip-mal\">failed</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--radius-chip); padding: 4px 8px; font-family: var(--font-mono); font-size: 11px; font-weight: 500; } .ds-chip::before { content: \"\"; width: 6px; height: 6px; border-radius: 9999px; background: currentColor; } .ds-chip-ok { background: var(--color-ok-fondo); color: var(--color-ok); } .ds-chip-mal { background: var(--color-mal-fondo); color: var(--color-mal); } .ds-chip-aviso { background: var(--color-aviso-fondo); color: var(--color-aviso); } .ds-chip-info { background: var(--color-info-fondo); color: var(--color-info); }"
+    },
+    {
+      "name": "Tarjeta del rastro",
+      "kind": "custom",
+      "refersTo": "components.panel",
+      "description": "Componente firma: paso de la cadena sobre el raíl; el nudo se tiñe con el estado y la fila-resumen lleva cuenta de errores.",
+      "html": "<div class=\"ds-rastra\"><div class=\"ds-rastra-nudo ds-rastra-nudo-mal\" aria-hidden=\"true\"></div><span class=\"ds-rastra-num\">2.</span><span class=\"ds-rastra-name\">enrich-order</span><span class=\"ds-rastra-badge\">when</span><span class=\"ds-rastra-errores\">1 error</span><button class=\"ds-rastra-plegar\" aria-label=\"Desplegar el paso 2\">▸</button></div>",
+      "css": ".ds-rastra { position: relative; display: flex; align-items: center; gap: 10px; margin-left: 7px; padding: 2px 0 14px 24px; border-left: 2px solid var(--color-borde-fuerte); } .ds-rastra-nudo { position: absolute; left: -9px; top: 0; width: 16px; height: 16px; border-radius: 9999px; border: 2px solid var(--color-borde-fuerte); background: var(--color-superficie); } .ds-rastra-nudo-mal { border-color: var(--color-mal); background: var(--color-mal-fondo); } .ds-rastra-num { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--color-tinta); } .ds-rastra-name { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--color-tinta); } .ds-rastra-badge { font-family: var(--font-mono); font-size: 10.5px; color: var(--color-tinta-suave); background: var(--color-papel); border: 1px solid var(--color-borde-fuerte); border-radius: var(--radius-chip); padding: 2px 6px; } .ds-rastra-errores { font-family: var(--font-mono); font-size: 10.5px; color: var(--color-mal); background: var(--color-mal-fondo); border-radius: var(--radius-chip); padding: 2px 6px; } .ds-rastra-plegar { margin-left: auto; padding: 2px 6px; color: var(--color-tinta-suave); background: none; border: none; font-family: var(--font-mono); font-size: 12px; cursor: pointer; } .ds-rastra-plegar:hover { color: var(--color-tinta); } .ds-rastra-plegar:focus-visible { outline: 2px solid var(--color-tinta); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "El rastro de tinta",
+    "overview": "El rastro es la consola de un terreno acotado: papel hueso sobre el que se dibuja con una tinta verde petróleo; el verde es la única marca. El color no decora — acota información: cuatro tintas de estado funcionan como las acotaciones de un mapa topográfico. La voz del sistema es precisa, sobria y operativa: lo que se nota es el rastro que cada puente deja al ejecutarse.",
+    "keyCharacteristics": [
+      "Cromo binario papel/tinta con estados como única acotación de color.",
+      "Familias autoalojadas: Schibsted Grotesk (interfaz) y Spline Sans Mono (valores de máquina).",
+      "La cadena es un rastro de raíl y nudos (metáfora del producto literalizada).",
+      "Profundidad por línea, no por sombra; sin movimiento automático."
+    ],
+    "rules": [
+      {
+        "name": "The Only-Data-Color Rule",
+        "body": "El color significa datos: estado de ejecución o de paso, y la variante de peligro en acciones irreversibles. Si un elemento no informa de un estado, no lleva croma.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Terrain Rule",
+        "body": "Petróleo (#14352d) aparece en ≤2 roles por pantalla; la acotación de estados es el único bono.",
+        "section": "colors"
+      },
+      {
+        "name": "The Machine-Value Rule",
+        "body": "La mono imprime exclusivamente valores de máquina: slugs, refs, estados, versiones. En prosa, siempre la grotesca.",
+        "section": "typography"
+      },
+      {
+        "name": "The Line-Depth Rule",
+        "body": "La profundidad se dibuja con borde; sombras solo en capas temporales (dropdown, tour).",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do imprimir en mono todo valor de máquina (slug, ref $., estado, versión, durationMs) y en grotesca toda prosa.",
+      "Do usar el par estado/fondo exacto para cada estado (ok #1e7a4e/#e4f0e9, mal #b3402e/#f7e6e2, aviso #855d0e/#f4ebd7, info #2b6cb0/#e4edf8).",
+      "Do anunciar lo irreversible con variante peligro (ladrillo) — color = consecuencia.",
+      "Do mantener foco visible de 2px tinta con offset en todo control enfocable.",
+      "Do respetar prefers-reduced-motion (dura 0.01ms) — las animaciones solo responden al usuario."
+    ],
+    "donts": [
+      "Don't usar cromo (papel/tinta) para comunicar estados ni estados como decoración.",
+      "Don't añadir sombras a superficies estáticas: profundidad por línea salvo dropdown/tour.",
+      "Don't meter animaciones automáticas: sin estado no hay movimiento.",
+      "Don't cargar fuentes por CDN: archivos self-hosted en console/src/fonts/.",
+      "Don't redactar mono en más de una frase: es un valor de máquina, no prosa."
+    ]
+  }
+}
