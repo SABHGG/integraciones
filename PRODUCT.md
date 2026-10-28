@@ -38,6 +38,7 @@ Dos cosas que un SaaS vecino no copiaría tal cual, decididas por el propietario
 
 ## Brand Commitments
 
+- **Nombre del producto: Vado** (decidido por el propietario; el repo sigue siendo `integraciones`).
 - Sistema visual **«El rastro»** (nombre documentado en specs y commits; es vinculante).
 - Idioma de UI: español (con términos de dominio en mono: slugs, refs `$.`, estados de ejecución).
 - La mono se reserva para valores de máquina; el color significa estado (ok/mal/info/aviso), no decoración.

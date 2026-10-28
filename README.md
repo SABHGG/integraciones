@@ -1,4 +1,6 @@
-# Bloques y Puentes (nombre provisional)
+# Vado
+
+**Vado — plataforma de integraciones auto-hosted.** Bloques de código aislados (sandbox) encadenados en puentes disparables por HTTP, cron y eventos: construyes, validas, publicas versiones inmutables y cada ejecución deja su rastro.
 
 [![CI](https://github.com/SABHGG/integraciones/actions/workflows/ci.yml/badge.svg)](https://github.com/SABHGG/integraciones/actions/workflows/ci.yml)
 
